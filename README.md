@@ -72,6 +72,9 @@ brew install curl-impersonate        # only if searches report "Blocked by Cloud
 
 1. Install the requirements above (`ani-cli`, `fzf`, and IINA or mpv).
 2. Download the latest **AniGUI-…-macOS-AppleSilicon.dmg** from [**Releases**](https://github.com/JRodriguez-Luna/anigui/releases/latest), open it, and drag **AniGUI** onto the **Applications** folder.
+
+   > **Your browser may block the download.** Chrome in particular flags new apps that aren't signed by an Apple-registered developer as "dangerous". AniGUI is open source and built by GitHub Actions straight from this repo, but it isn't notarized (that needs a paid Apple account). To keep the file, open `chrome://downloads` and choose **Keep** (it may be under the **⋮** menu), or download it with **Safari**. If you'd rather not, [build it yourself](#build-from-source).
+
 3. **First launch:** AniGUI isn't notarized by Apple, so macOS blocks it the first time. Open it once, then go to **System Settings → Privacy & Security** and click **Open Anyway**. Or run:
    ```sh
    xattr -dr com.apple.quarantine /Applications/AniGUI.app
@@ -221,6 +224,8 @@ QT_QPA_PLATFORM=offscreen QT_SCALE_FACTOR=2 python tools/ui_preview.py docs/scre
 
 | Symptom | Fix |
 |---|---|
+| Chrome says the download is dangerous | AniGUI isn't notarized by Apple, so new downloads get flagged. Open `chrome://downloads` → **Keep**, use Safari, or build from source. |
+| "AniGUI can't be opened" on first launch | **System Settings → Privacy & Security → Open Anyway**, or `xattr -dr com.apple.quarantine /Applications/AniGUI.app`. |
 | A banner says playback needs tools | Install what it lists: `brew install ani-cli fzf` and IINA or mpv. |
 | "Blocked by Cloudflare" | `brew install curl-impersonate`; AniGUI and ani-cli pick it up automatically. |
 | "Playing without progress tracking" | Quit IINA and play again (it only accepts tracking for windows AniGUI opens), or choose **mpv** under Playback. |
