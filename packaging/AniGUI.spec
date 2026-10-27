@@ -2,11 +2,15 @@
 #   pyinstaller --noconfirm packaging/AniGUI.spec
 # ani-cli, fzf, curl and IINA/mpv stay external: they come from Homebrew at run time.
 
+import os
+import re
 import sys
 from pathlib import Path
 
 ROOT = Path(SPECPATH).parent
-VERSION = "1.0.0"
+# Release builds pass ANIGUI_VERSION (from the git tag); otherwise use core/__init__.py.
+VERSION = os.environ.get("ANIGUI_VERSION") or re.search(
+    r'__version__ = "([^"]+)"', (ROOT / "core" / "__init__.py").read_text()).group(1)
 
 a = Analysis(
     [str(ROOT / "main.py")],

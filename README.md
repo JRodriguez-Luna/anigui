@@ -15,6 +15,7 @@
   <img src="https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white" alt="Python 3.12+">
   <img src="https://img.shields.io/badge/UI-PySide6%20(Qt%206)-41CD52?logo=qt&logoColor=white" alt="PySide6">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-blue" alt="GPL-3.0"></a>
+  <a href="https://github.com/JRodriguez-Luna/anigui/releases/latest"><img src="https://img.shields.io/github/v/release/JRodriguez-Luna/anigui?label=download&color=FF6B3D" alt="Latest release"></a>
 </p>
 
 <p align="center">
@@ -67,12 +68,27 @@ brew install curl-impersonate        # only if searches report "Blocked by Cloud
 
 ## Install
 
+### Download (Apple silicon)
+
+1. Install the requirements above (`ani-cli`, `fzf`, and IINA or mpv).
+2. Download the latest **AniGUI-…-macOS-AppleSilicon.zip** from [**Releases**](https://github.com/JRodriguez-Luna/anigui/releases/latest), unzip it, and drag **AniGUI.app** into **Applications**.
+3. **First launch:** AniGUI isn't notarized by Apple, so macOS blocks it the first time. Open it once, then go to **System Settings → Privacy & Security** and click **Open Anyway**. Or run:
+   ```sh
+   xattr -dr com.apple.quarantine /Applications/AniGUI.app
+   ```
+
+To update, download the new release and replace the app. Your library and progress are stored separately and carry over.
+
+### Build from source
+
+Works on Apple silicon and Intel.
+
 ```sh
 git clone https://github.com/JRodriguez-Luna/anigui.git
 cd anigui
 ```
 
-### Option 1: build the app (recommended)
+#### Option 1: build the app
 
 Double-click **`Build AniGUI.app.command`** in Finder, or run it from Terminal:
 
@@ -80,11 +96,11 @@ Double-click **`Build AniGUI.app.command`** in Finder, or run it from Terminal:
 ./"Build AniGUI.app.command"
 ```
 
-It sets up a virtual environment, builds `AniGUI.app` with PyInstaller, runs a self-test, installs the app to `/Applications` (or `~/Applications` if that isn't writable) and opens it. Building takes a minute or two. Run it again after pulling updates.
+It sets up a virtual environment, builds `AniGUI.app` with PyInstaller, runs a self-test, installs the app to `/Applications` (or `~/Applications` if that isn't writable) and opens it. Building takes a minute or two. Run it again after `git pull` to update.
 
 To keep AniGUI in the Dock, right-click its Dock icon → **Options** → **Keep in Dock**.
 
-### Option 2: run from source
+#### Option 2: run without building
 
 ```sh
 python3 -m venv .venv
@@ -185,7 +201,12 @@ The 71 tests run fully offline, using:
 - a **fake mpv** that speaks the JSON IPC protocol over a real Unix socket,
 - **real widgets** rendered offscreen, driven through click-to-play, search, My List and auto-next.
 
-GitHub Actions runs the suite on macOS and Ubuntu on every push, against a pinned ani-cli version.
+GitHub Actions runs the suite on macOS and Ubuntu on every push, against a pinned ani-cli version. Pushing a version tag builds `AniGUI.app` on an Apple-silicon runner, self-tests it and publishes it as a GitHub Release:
+
+```sh
+# bump __version__ in core/__init__.py first
+git tag v1.0.1 && git push origin v1.0.1
+```
 
 Handy tools:
 

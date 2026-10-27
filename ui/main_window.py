@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
 )
 
 from core.anilist import Media
+from core import __version__
 from core.ani_cli import doctor
 from core.env import which
 
@@ -191,7 +192,7 @@ class MainWindow(QMainWindow):
     def _on_doctor(self, rows) -> None:
         missing = [(name, detail) for name, ok, detail in rows if not ok and name in REQUIRED]
         version = next((detail for name, ok, detail in rows if name == "ani-cli version"), None)
-        self.footer.setText(f"ani-cli {version}" if version else "")
+        self.footer.setText(f"AniGUI {__version__}" + (f"  ·  ani-cli {version}" if version else ""))
         if missing:
             fixes = "   ·   ".join(f"{name}: {detail}" for name, detail in missing)
             self.banner.setText(f"Playback needs a few tools first.   {fixes}")

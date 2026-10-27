@@ -1,0 +1,84 @@
+name: release
+
+# Tag push (v1.2.3)   -> build AniGUI.app and publish a GitHub Release with the zip
+# Packaging changes    -> build only (catches a broken .app before release day)
+on:
+  push:
+    tags: ["v*"]
+    branches: [main]
+    paths:
+      - "packaging/**"
+      - "main.py"
+      - "requirements.txt"
+      - ".github/workflows/release.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: AniGUI.app (Apple silicon)
+    runs-on: macos-14
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Read version
+        id: v
+        run: |
+          version=$(python -c "import re; print(re.search(r'__version__ = \"([^\"]+)\"', open('core/__init__.py').read()).group(1))")
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "${GITHUB_REF_NAME#v}" != "$version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match core/__init__.py version $version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Install build tools
+        run: pip install -r requirements.txt "pyinstaller>=6.22" Pillow
+
+      - name: Draw icon
+        run: python packaging/make_icon.py
+
+      - name: Build AniGUI.app
+        env:
+          ANIGUI_VERSION: ${{ steps.v.outputs.version }}
+        run: pyinstaller --noconfirm --clean --log-level WARN --distpath dist --workpath build packaging/AniGUI.spec
+
+      - name: Check the bundle
+        run: |
+          APP=dist/AniGUI.app
+          "$APP/Contents/MacOS/AniGUI" --self-test
+          codesign --verify --deep --strict "$APP" && echo "signature: ok (ad-hoc)"
+          echo "arch: $(lipo -archs "$APP/Contents/MacOS/AniGUI")"
+          echo "version: $(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$APP/Contents/Info.plist")"
+          du -sh "$APP"
+
+      - name: Zip
+        id: zip
+        run: |
+          name="AniGUI-${{ steps.v.outputs.version }}-macOS-AppleSilicon.zip"
+          ditto -c -k --keepParent dist/AniGUI.app "$name"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          ls -lh "$name"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.zip.outputs.name }}
+          path: ${{ steps.zip.outputs.name }}
+          retention-days: 14
+
+      - name: Publish GitHub Release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sed "s/{{VERSION}}/${{ steps.v.outputs.version }}/g" packaging/RELEASE_NOTES.md > notes.md
+          gh release create "$GITHUB_REF_NAME" "${{ steps.zip.outputs.name }}" \
+            --title "AniGUI $GITHUB_REF_NAME" --notes-file notes.md
