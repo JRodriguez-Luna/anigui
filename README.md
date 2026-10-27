@@ -71,7 +71,7 @@ brew install curl-impersonate        # only if searches report "Blocked by Cloud
 ### Download (Apple silicon)
 
 1. Install the requirements above (`ani-cli`, `fzf`, and IINA or mpv).
-2. Download the latest **AniGUI-…-macOS-AppleSilicon.zip** from [**Releases**](https://github.com/JRodriguez-Luna/anigui/releases/latest), unzip it, and drag **AniGUI.app** into **Applications**.
+2. Download the latest **AniGUI-…-macOS-AppleSilicon.dmg** from [**Releases**](https://github.com/JRodriguez-Luna/anigui/releases/latest), open it, and drag **AniGUI** onto the **Applications** folder.
 3. **First launch:** AniGUI isn't notarized by Apple, so macOS blocks it the first time. Open it once, then go to **System Settings → Privacy & Security** and click **Open Anyway**. Or run:
    ```sh
    xattr -dr com.apple.quarantine /Applications/AniGUI.app
@@ -201,7 +201,7 @@ The 71 tests run fully offline, using:
 - a **fake mpv** that speaks the JSON IPC protocol over a real Unix socket,
 - **real widgets** rendered offscreen, driven through click-to-play, search, My List and auto-next.
 
-GitHub Actions runs the suite on macOS and Ubuntu on every push, against a pinned ani-cli version. Pushing a version tag builds `AniGUI.app` on an Apple-silicon runner, self-tests it and publishes it as a GitHub Release:
+GitHub Actions runs the suite on macOS and Ubuntu on every push, against a pinned ani-cli version. Pushing a version tag builds `AniGUI.app` on an Apple-silicon runner, self-tests it, packs it into a drag-to-install `.dmg` and publishes it as a GitHub Release:
 
 ```sh
 # bump __version__ in core/__init__.py first
