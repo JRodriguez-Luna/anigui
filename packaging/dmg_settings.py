@@ -12,9 +12,8 @@ appname = os.path.basename(application)
 
 format = "ULFO"                 # LZFSE-compressed, opens on macOS 10.11+
 filesystem = "HFS+"
-files = [application]
+files = [application]  # no hide_extensions: its Finder flag breaks the strict signature check
 symlinks = {"Applications": "/Applications"}
-hide_extensions = [appname]
 
 icon = defines.get("volicon")  # noqa: F821  (volume icon in Finder's sidebar)
 background = defines.get("background")  # noqa: F821

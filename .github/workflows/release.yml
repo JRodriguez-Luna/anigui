@@ -88,7 +88,7 @@ jobs:
           check "AniGUI.app present" 'test -d "$MNT/AniGUI.app"'
           check "Applications link" '[ "$(readlink "$MNT/Applications")" = "/Applications" ]'
           check "window layout (.DS_Store)" 'test -f "$MNT/.DS_Store"'
-          check "background image" 'ls "$MNT"/.background/* >/dev/null 2>&1'
+          check "background image" 'ls "$MNT"/.background.tiff "$MNT"/.background/* >/dev/null 2>&1 || test -f "$MNT/.background.tiff"'
           check "app signature" 'codesign --verify --deep --strict "$MNT/AniGUI.app" >/tmp/cs.txt 2>&1'
           check "app self-test" '"$MNT/AniGUI.app/Contents/MacOS/AniGUI" --self-test >/tmp/st.txt 2>&1'
           [ "$fails" -gt 0 ] && echo "::notice title=details::verify: $(tail -c 300 /tmp/verify.txt | tr '\n' ' ') | attach: $(tail -c 300 /tmp/attach.txt | tr '\n' ' ') | codesign: $(tail -c 400 /tmp/cs.txt | tr '\n' ' ') | self-test: $(tail -c 400 /tmp/st.txt | tr '\n' ' ')"
