@@ -23,9 +23,9 @@ jobs:
     env:
       QT_QPA_PLATFORM: offscreen
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
           cache: pip
@@ -75,18 +75,25 @@ jobs:
 
       - name: Check the installer
         run: |
+          set +e
           DMG="${{ steps.dmg.outputs.name }}"
-          hdiutil verify "$DMG"
+          fails=0
+          check() {  # name, command; each result becomes a visible annotation
+            if eval "$2"; then echo "::notice title=dmg::PASS $1"; else echo "::error title=dmg::FAIL $1"; fails=$((fails+1)); fi
+          }
+          check "hdiutil verify" 'hdiutil verify "$DMG" >/tmp/verify.txt 2>&1'
           MNT=$(mktemp -d)
-          hdiutil attach "$DMG" -readonly -nobrowse -mountpoint "$MNT" >/dev/null
-          ls -la "$MNT"
-          test -d "$MNT/AniGUI.app"
-          test "$(readlink "$MNT/Applications")" = "/Applications"
-          test -f "$MNT/.DS_Store"
-          test -f "$MNT/.background/dmg-background.tiff" || ls -R "$MNT/.background"
-          codesign --verify --deep --strict "$MNT/AniGUI.app" && echo "signature inside dmg: ok"
-          "$MNT/AniGUI.app/Contents/MacOS/AniGUI" --self-test
-          hdiutil detach "$MNT"
+          check "mounts" 'hdiutil attach "$DMG" -readonly -nobrowse -mountpoint "$MNT" >/tmp/attach.txt 2>&1'
+          echo "::notice title=dmg contents::$(ls -A "$MNT" 2>&1 | tr '\n' ' ') | .background: $(ls -A "$MNT/.background" 2>&1 | tr '\n' ' ')"
+          check "AniGUI.app present" 'test -d "$MNT/AniGUI.app"'
+          check "Applications link" '[ "$(readlink "$MNT/Applications")" = "/Applications" ]'
+          check "window layout (.DS_Store)" 'test -f "$MNT/.DS_Store"'
+          check "background image" 'ls "$MNT"/.background/* >/dev/null 2>&1'
+          check "app signature" 'codesign --verify --deep --strict "$MNT/AniGUI.app" >/tmp/cs.txt 2>&1'
+          check "app self-test" '"$MNT/AniGUI.app/Contents/MacOS/AniGUI" --self-test >/tmp/st.txt 2>&1'
+          [ "$fails" -gt 0 ] && echo "::notice title=details::verify: $(tail -c 300 /tmp/verify.txt | tr '\n' ' ') | attach: $(tail -c 300 /tmp/attach.txt | tr '\n' ' ') | codesign: $(tail -c 400 /tmp/cs.txt | tr '\n' ' ') | self-test: $(tail -c 400 /tmp/st.txt | tr '\n' ' ')"
+          hdiutil detach "$MNT" >/dev/null 2>&1
+          exit $fails
 
       - uses: actions/upload-artifact@v4
         with:
