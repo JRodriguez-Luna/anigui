@@ -1,6 +1,7 @@
 name: release
 
 # Tag push (v1.2.3)   -> build AniGUI.app and publish a GitHub Release with the .dmg
+#                        (also when the release + tag are created on github.com)
 # Packaging changes    -> build only (catches a broken .app before release day)
 on:
   push:
@@ -107,5 +108,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           sed "s/{{VERSION}}/${{ steps.v.outputs.version }}/g" packaging/RELEASE_NOTES.md > notes.md
-          gh release create "$GITHUB_REF_NAME" "${{ steps.dmg.outputs.name }}" \
-            --title "AniGUI $GITHUB_REF_NAME" --notes-file notes.md
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            # Release was created on github.com (which made the tag): attach the .dmg and fill in the notes
+            gh release upload "$GITHUB_REF_NAME" "${{ steps.dmg.outputs.name }}" --clobber
+            gh release edit "$GITHUB_REF_NAME" --title "AniGUI $GITHUB_REF_NAME" --notes-file notes.md
+          else
+            gh release create "$GITHUB_REF_NAME" "${{ steps.dmg.outputs.name }}" \
+              --title "AniGUI $GITHUB_REF_NAME" --notes-file notes.md
+          fi

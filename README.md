@@ -211,6 +211,8 @@ GitHub Actions runs the suite on macOS and Ubuntu on every push, against a pinne
 git tag v1.0.1 && git push origin v1.0.1
 ```
 
+Or create the release on github.com with a new `v…` tag; the workflow attaches the `.dmg` and fills in the notes.
+
 Handy tools:
 
 ```sh
