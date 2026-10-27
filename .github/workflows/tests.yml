@@ -1,0 +1,46 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    env:
+      QT_QPA_PLATFORM: offscreen
+      # ani-cli 5.1.6, the version AniGUI's parser is verified against
+      ANI_CLI_COMMIT: 0301d67d5768d332b049821a30082ad43d9a215a
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Qt runtime libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3
+
+      - name: Install ani-cli (pinned)
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSL "https://raw.githubusercontent.com/pystardust/ani-cli/$ANI_CLI_COMMIT/ani-cli" -o "$HOME/.local/bin/ani-cli"
+          chmod +x "$HOME/.local/bin/ani-cli"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tests (offline; fake site, fake mpv, real ani-cli)
+        run: pytest -q

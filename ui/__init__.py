@@ -1,0 +1,1 @@
+"""AniGUI interface (PySide6)."""

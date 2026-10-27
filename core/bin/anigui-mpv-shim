@@ -1,0 +1,11 @@
+#!/bin/sh
+# Stand-in "mpv" for ani-cli. ani-cli calls a player whose path contains "mpv"
+# with: --referrer=... [--audio-file=...] [--sub-file=...] [ani-skip flags]
+#       --force-media-title=... <video_url>
+# Instead of playing, write every argument NUL-separated to $ANIGUI_CAPTURE.
+[ -n "$ANIGUI_CAPTURE" ] || { echo "ANIGUI_CAPTURE not set" >&2; exit 2; }
+: >"$ANIGUI_CAPTURE" || exit 3
+for arg in "$@"; do
+    printf '%s\0' "$arg" >>"$ANIGUI_CAPTURE"
+done
+exit 0
