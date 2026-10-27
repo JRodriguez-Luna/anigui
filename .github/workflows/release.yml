@@ -19,7 +19,7 @@ permissions:
 jobs:
   build:
     name: AniGUI.app (Apple silicon)
-    runs-on: macos-14
+    runs-on: macos-latest   # Apple silicon (arm64)
     env:
       QT_QPA_PLATFORM: offscreen
     steps:
