@@ -125,7 +125,8 @@ class FakeClient:
 
 
 @pytest.mark.parametrize("result, online, state", [
-    (FetchResult(0, 200, "<title>HiAnime - Watch</title>"), True, "ok"),
+    (FetchResult(0, 200, fake_site._search_page()), True, "ok"),
+    (FetchResult(0, 200, "<title>HiAnime</title> hianime.at is blocked in your region"), True, "blocked"),
     (FetchResult(6, None, ""), True, "blocked"),                         # DNS blocked
     (FetchResult(56, None, ""), True, "blocked"),                        # connection reset
     (FetchResult(0, 200, "<html>This site is blocked by your ISP</html>"), True, "blocked"),
@@ -311,5 +312,50 @@ def test_search_blocked_offers_connection_check(tmp_path):
     win.search.setupRequested.connect(win.open_setup)
     win.search.empty.linkActivated.emit("#setup")
     assert opened
+    win.close()
+    ctx.shutdown()
+
+
+def test_check_network_runs_a_real_search():
+    urls = []
+
+    class Recorder(FakeClient):
+        def fetch(self, url, referer=None):
+            urls.append(url)
+            return super().fetch(url, referer)
+
+    setup.check_network(Recorder(FetchResult(0, 200, fake_site._search_page())), control=lambda: True)
+    assert urls == ["https://hianime.at/search?keyword=one+piece"]
+
+
+def test_dub_falls_back_to_sub(tmp_path):
+    from ui.main_window import MainWindow
+
+    ctx = ui_fakes.fake_context(tmp_path, with_history=False)
+    ctx.set_pref("dub", True)
+    bridge = ctx.bridge
+    original = bridge.resolve
+
+    def resolve(req):
+        if req.dub:  # hianime has no dub for this one
+            bridge._n += 1
+            rid = f"nodub{bridge._n}"
+            bridge.requests.append(req)
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(20, lambda: bridge.failed.emit(rid, "No sources found for dub!"))
+            return rid
+        return original(req)
+
+    bridge.resolve = resolve
+    win = MainWindow(ctx)
+    lantern = ui_fakes.slug("The Lantern Keeper", 1)
+    ctx.store.upsert_show(lantern, "The Lantern Keeper")
+    win.open_item(ctx.store.get_show(lantern))
+    assert pump(lambda: win.detail.grid.model_.items)
+    win.detail.play("2")
+    assert pump(lambda: ctx.player.launched)
+    assert [r.dub for r in bridge.requests] == [True, False]
+    assert pump(lambda: "playing subbed" in win.toast.text())
+    assert ctx.pref("dub", False) is True  # the preference itself is untouched
     win.close()
     ctx.shutdown()

@@ -65,7 +65,7 @@ class MainWindow(QMainWindow):
             side.addWidget(btn)
         side.addStretch(1)
         side.addWidget(self._playback_settings())
-        self.setup_btn = QPushButton("⚙   Setup & connection", objectName="NavButton", cursor=Qt.CursorShape.PointingHandCursor)
+        self.setup_btn = QPushButton("⚙   Setup && connection", objectName="NavButton", cursor=Qt.CursorShape.PointingHandCursor)
         self.setup_btn.clicked.connect(self.open_setup)
         side.addSpacing(6)
         side.addWidget(self.setup_btn)

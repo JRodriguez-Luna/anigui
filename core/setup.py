@@ -25,7 +25,7 @@ from typing import Callable
 
 from . import http, paths
 from .env import find_player
-from .hianime import BASE_URL, NETWORK_EXIT_CODES, HianimeClient
+from .hianime import NETWORK_EXIT_CODES, SEARCH_URL, HianimeClient, parse_search
 
 # The ani-cli build AniGUI is tested against (CI runs the suite on this exact file).
 ANI_CLI_PIN_VERSION = "5.1.6"
@@ -36,6 +36,7 @@ ANI_CLI_RAW = "https://raw.githubusercontent.com/pystardust/ani-cli/{ref}/ani-cl
 IINA_RELEASES = "https://api.github.com/repos/iina/iina/releases/latest"
 WARP_URL = "https://one.one.one.one/"
 CONTROL_URL = "https://www.apple.com/library/test/success.html"
+PROBE_QUERY = "one+piece"   # always has results; a block page never parses as results
 
 _VERSION_LINE = re.compile(r'^version_number="([^"]+)"', re.MULTILINE)
 
@@ -185,18 +186,20 @@ class NetworkStatus:
 def check_network(client: HianimeClient | None = None,
                   control: Callable[[], bool] | None = None) -> NetworkStatus:
     client = client or HianimeClient()
-    r = client.fetch(BASE_URL + "/")
+    # A real search, counted: an internet provider's "this site is blocked" page can
+    # mention hianime, but it never contains search results.
+    r = client.fetch(SEARCH_URL.format(PROBE_QUERY))
     body = r.body[:20000].lower()
     if "just a moment" in body:
         return NetworkStatus("cloudflare", "hianime answered with Cloudflare's bot check. Searches may fail until "
                                            "you install curl-impersonate (brew install curl-impersonate).")
-    if r.curl_exit == 0 and r.status and 200 <= r.status < 400 and "hianime" in body:
+    if r.curl_exit == 0 and r.status and 200 <= r.status < 300 and parse_search(r.body):
         return NetworkStatus("ok", "hianime is reachable.")
 
     online = (control or _internet_ok)()
     if not online:
         return NetworkStatus("offline", "You seem to be offline. Check your internet connection.")
-    if r.curl_exit in NETWORK_EXIT_CODES or r.status in (None, 403, 451) or "hianime" not in body:
+    if r.curl_exit in NETWORK_EXIT_CODES or r.status in (None, 403, 451) or r.curl_exit == 0:
         return NetworkStatus("blocked", "hianime is blocked on this network. Some internet providers block it; "
                                         "a VPN such as Cloudflare WARP gets around that.")
     return NetworkStatus("blocked", f"hianime didn't respond normally (HTTP {r.status}).")

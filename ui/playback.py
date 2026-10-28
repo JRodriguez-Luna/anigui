@@ -49,6 +49,8 @@ class ResolveJob:
     retried: bool = False
     cancelled: bool = False
     request_id: str | None = None
+    dub: bool | None = None          # None = follow the Sub/Dub preference
+    fell_back_to_sub: bool = False
 
     def cancel(self) -> None:
         self.cancelled = True
@@ -81,7 +83,8 @@ class StreamResolver(QObject):
         job.on_status("Finding stream…")
         self.ctx.runner.submit(
             self.ctx.catalog.play_request, job.anime_id, job.episode, title=job.title,
-            dub=self.ctx.pref("dub", False), quality=str(self.ctx.pref("quality", "best")),
+            dub=self.ctx.pref("dub", False) if job.dub is None else job.dub,
+            quality=str(self.ctx.pref("quality", "best")),
             skip_intro=self.ctx.pref("skip_intro", False),
             on_done=lambda req, j=job: self._resolve(j, req),
             on_error=lambda msg, j=job: self._fail(j, msg),
@@ -111,8 +114,15 @@ class StreamResolver(QObject):
 
     def _on_failed(self, request_id: str, message: str) -> None:
         job = self._jobs.pop(request_id, None)
-        if job is not None:
-            self._fail(job, message)
+        if job is None or job.cancelled:
+            return
+        if "no sources found for dub" in message.lower() and not job.fell_back_to_sub:
+            # Not every episode has a dub; play it subbed instead of failing.
+            job.dub, job.fell_back_to_sub, job.request_id = False, True, None
+            job.on_status("No dub for this episode, trying sub…")
+            self._locate(job)
+            return
+        self._fail(job, message)
 
     @staticmethod
     def _fail(job: ResolveJob, message: str) -> None:
@@ -415,7 +425,9 @@ class PlaybackController(QObject):
         if not self.ctx.store.get_progress(job.anime_id, job.episode):
             self.ctx.store.record_progress(job.anime_id, job.episode, 0.0)
         self.started.emit(job.anime_id, job.episode, kind)
-        if start:
+        if job.fell_back_to_sub:
+            self.notice.emit(f"Episode {job.episode} has no dub on hianime yet, so it's playing subbed.", False)
+        elif start:
             mins, secs = divmod(int(start), 60)
             self.notice.emit(f"Resuming episode {job.episode} at {mins}:{secs:02d}", False)
 

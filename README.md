@@ -243,6 +243,7 @@ QT_QPA_PLATFORM=offscreen QT_SCALE_FACTOR=2 python tools/ui_preview.py docs/scre
 | ani-cli installed with `brew install ani-cli` doesn't work | That's an older release. Let AniGUI's Setup install its own copy, or use ani-cli's [official tap](#requirements). |
 | "Blocked by Cloudflare" | `brew install curl-impersonate`; AniGUI and ani-cli pick it up automatically. |
 | "Playing without progress tracking" | Quit IINA and play again (it only accepts tracking for windows AniGUI opens), or choose **mpv** under Playback. |
+| "Has no dub on hianime yet, so it's playing subbed" | That episode only has subtitles on hianime; AniGUI falls back to Sub automatically. |
 | "This show isn't on hianime yet" | The title differs too much between AniList and hianime; use Search with another title. |
 | Something else | Check `~/Library/Logs/AniGUI/anigui.log`, then open an issue with the log. |
 
