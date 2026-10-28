@@ -70,7 +70,7 @@ def draw(scale: int) -> QImage:
     p.drawText(QRectF(0, 62, W, 22), Qt.AlignmentFlag.AlignHCenter, "Drag AniGUI onto the Applications folder")
     p.setPen(QColor("#7C7A8C"))
     p.drawText(QRectF(0, H - 46, W, 20), Qt.AlignmentFlag.AlignHCenter,
-               "Needs ani-cli, fzf and IINA or mpv from Homebrew. See the README.")
+               "On first launch, AniGUI sets up everything else it needs.")
     p.end()
     return img
 

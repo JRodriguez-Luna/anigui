@@ -44,9 +44,12 @@ def find_curl() -> str:
 
 def find_player(preferred: str | None = None) -> tuple[str, str] | None:
     """Return (kind, path). `preferred` is "iina", "mpv", or None/"auto" for IINA then mpv."""
+    home_apps = os.path.join(os.path.expanduser("~"), "Applications")
     found = {
-        "iina": which("iina") or which("/Applications/IINA.app/Contents/MacOS/iina-cli"),
-        "mpv": which("mpv") or which("/Applications/mpv.app/Contents/MacOS/mpv"),
+        "iina": which("iina") or which("/Applications/IINA.app/Contents/MacOS/iina-cli")
+        or which(os.path.join(home_apps, "IINA.app/Contents/MacOS/iina-cli")),
+        "mpv": which("mpv") or which("/Applications/mpv.app/Contents/MacOS/mpv")
+        or which(os.path.join(home_apps, "mpv.app/Contents/MacOS/mpv")),
     }
     if preferred in found:
         return (preferred, found[preferred]) if found[preferred] else None

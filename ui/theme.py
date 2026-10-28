@@ -132,6 +132,20 @@ QScrollBar::add-line, QScrollBar::sub-line {{ width: 0; height: 0; }}
 QScrollBar::add-page, QScrollBar::sub-page {{ background: transparent; }}
 QListView {{ background: transparent; border: none; }}
 
+/* Setup assistant and message boxes */
+QDialog, QMessageBox {{ background: {BG}; }}
+#DialogTitle {{ font-size: 24px; font-weight: 800; }}
+#SetupRow {{ background: {SURFACE}; border: 1px solid {BORDER}; border-radius: 12px; }}
+#SetupTitle {{ font-size: 15px; font-weight: 700; }}
+#SetupDot {{ font-size: 16px; font-weight: 900; color: {FAINT}; }}
+#SetupDot[state="ok"] {{ color: {GOOD}; }}
+#SetupDot[state="needed"] {{ color: {ACCENT}; }}
+#SetupDot[state="warn"] {{ color: #F5B83D; }}
+QRadioButton {{ color: {TEXT}; spacing: 8px; font-weight: 600; }}
+QRadioButton::indicator {{ width: 16px; height: 16px; border-radius: 9px; border: 1px solid {FAINT}; background: {SURFACE}; }}
+QRadioButton::indicator:checked {{ border: 1px solid {ACCENT}; background: qradialgradient(cx:0.5, cy:0.5, radius:0.5, fx:0.5, fy:0.5, stop:0 #FFFFFF, stop:0.32 #FFFFFF, stop:0.38 {ACCENT}, stop:1 {ACCENT}); }}
+QMessageBox QLabel {{ color: {TEXT}; }}
+
 #Toast {{
     background: {SURFACE_3}; color: {TEXT}; border: 1px solid #3A3A4C; border-radius: 10px;
     padding: 11px 18px; font-weight: 600;

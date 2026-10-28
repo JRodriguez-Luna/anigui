@@ -35,7 +35,9 @@
 - **Real watch tracking** over mpv's IPC socket: your position saves as you watch, episodes count as watched past 90%, and Resume picks up exactly where you stopped.
 - **Auto-play next:** the next episode is fetched in the background and starts in the same player window after a short countdown.
 - **Picks up your terminal history:** shows you watched with `ani-cli` appear in Continue Watching, and outdated show IDs are repaired automatically.
-- **A real Mac app:** builds into `AniGUI.app` with its own icon, so it lives in Applications and the Dock.
+- **Sets itself up:** on first launch AniGUI installs ani-cli and IINA for you (no Homebrew or Terminal needed), checks that the streaming site is reachable, and helps you pick a VPN if your network blocks it.
+- **Keeps itself current:** tells you when a new ani-cli or AniGUI version is out, and updates ani-cli with one click.
+- **A real Mac app:** a drag-to-install `.dmg` with its own icon, so it lives in Applications and the Dock.
 
 <table>
   <tr>
@@ -50,41 +52,46 @@
 
 ## Requirements
 
-- macOS 13 or newer (Apple silicon or Intel)
-- [Homebrew](https://brew.sh)
-- Python 3.12 or newer (tested on 3.13 and 3.15): `brew install python`
-- ani-cli and a player:
+- macOS 13 or newer. The download is for Apple silicon (M1 and newer); Intel Macs can [build from source](#build-from-source).
 
-```sh
-brew install ani-cli fzf             # fzf is required by ani-cli
-brew install --cask iina             # or: brew install mpv
-```
+That's it. On first launch, AniGUI's **Setup assistant** installs everything else:
 
-Optional: [ani-skip](https://github.com/synacktraa/ani-skip) enables "Skip intros" (mpv), and
+| What | How AniGUI gets it |
+|---|---|
+| [ani-cli](https://github.com/pystardust/ani-cli) | Downloads the `ani-cli` script from its official GitHub repo, pinned to the version AniGUI is tested with and checked against a checksum, and keeps its own copy. If you already have a supported ani-cli in Terminal, AniGUI uses that instead. |
+| A video player | Uses IINA or mpv if you have one; otherwise installs [IINA](https://iina.io) from its official GitHub release. |
+| A working connection | Checks that hianime is reachable. Some internet providers block it; if yours does, AniGUI suggests [Cloudflare WARP](https://one.one.one.one/) (free) or your own VPN. |
 
-```sh
-brew install curl-impersonate        # only if searches report "Blocked by Cloudflare"
-```
+Optional: [ani-skip](https://github.com/synacktraa/ani-skip) enables "Skip intros" (mpv). If searches report "Blocked by Cloudflare", install `curl-impersonate` (`brew install curl-impersonate`).
+
+> **Want ani-cli in Terminal too?** Use ani-cli's official Homebrew tap. A plain `brew install ani-cli` gets an older release that AniGUI doesn't support.
+> ```sh
+> brew tap pystardust/ani-cli https://github.com/pystardust/ani-cli.git
+> brew trust pystardust/ani-cli
+> brew install ani-cli
+> ```
 
 ## Install
 
 ### Download (Apple silicon)
 
-1. Install the requirements above (`ani-cli`, `fzf`, and IINA or mpv).
-2. Download the latest **AniGUI-…-macOS-AppleSilicon.dmg** from [**Releases**](https://github.com/JRodriguez-Luna/anigui/releases/latest), open it, and drag **AniGUI** onto the **Applications** folder.
+1. Download the latest **AniGUI-…-macOS-AppleSilicon.dmg** from [**Releases**](https://github.com/JRodriguez-Luna/anigui/releases/latest), open it, and drag **AniGUI** onto the **Applications** folder.
 
    > **Your browser may block the download.** Chrome in particular flags new apps that aren't signed by an Apple-registered developer as "dangerous". AniGUI is open source and built by GitHub Actions straight from this repo, but it isn't notarized (that needs a paid Apple account). To keep the file, open `chrome://downloads` and choose **Keep** (it may be under the **⋮** menu), or download it with **Safari**. If you'd rather not, [build it yourself](#build-from-source).
 
-3. **First launch:** AniGUI isn't notarized by Apple, so macOS blocks it the first time. Open it once, then go to **System Settings → Privacy & Security** and click **Open Anyway**. Or run:
+2. **First launch:** AniGUI isn't notarized by Apple, so macOS blocks it the first time. Open it once, then go to **System Settings → Privacy & Security** and click **Open Anyway**. Or run:
    ```sh
    xattr -dr com.apple.quarantine /Applications/AniGUI.app
    ```
+3. **Setup assistant:** click **Set up everything**. AniGUI installs ani-cli and IINA (about 30 MB) and tests the connection. If hianime is blocked on your network, pick **Cloudflare WARP**, **your own VPN**, or **continue without one**, then press **Test again**. You can reopen it any time from **⚙ Setup & connection** in the sidebar.
+
+   <img src="docs/screenshots/setup.png" width="520" alt="AniGUI Setup assistant">
 
 To update, download the new release and replace the app. Your library and progress are stored separately and carry over.
 
 ### Build from source
 
-Works on Apple silicon and Intel.
+Works on Apple silicon and Intel. Needs Python 3.12 or newer (`brew install python`); the Setup assistant handles ani-cli and the player.
 
 ```sh
 git clone https://github.com/JRodriguez-Luna/anigui.git
@@ -179,11 +186,14 @@ anigui/
 │   ├── covers.py              on-disk image cache
 │   ├── mpv_ipc.py             mpv JSON IPC client
 │   ├── player.py              launches IINA / mpv
+│   ├── setup.py               installs ani-cli + IINA, checks the connection
+│   ├── updates.py             once-a-day checks for new ani-cli / AniGUI versions
 │   └── tasks.py               thread pool → UI-thread callbacks
 ├── ui/                        PySide6 interface
 │   ├── main_window.py         sidebar, navigation, settings, startup checks
 │   ├── home_page.py · search_page.py · library_page.py · detail_page.py
 │   ├── playback.py            resolve → play → track → auto-next
+│   ├── setup_dialog.py        the Setup assistant
 │   ├── cards.py · hero.py · widgets.py · images.py · theme.py
 ├── packaging/                 icon generator, PyInstaller spec
 ├── tests/                     offline test suite + fakes
@@ -228,13 +238,15 @@ QT_QPA_PLATFORM=offscreen QT_SCALE_FACTOR=2 python tools/ui_preview.py docs/scre
 |---|---|
 | Chrome says the download is dangerous | AniGUI isn't notarized by Apple, so new downloads get flagged. Open `chrome://downloads` → **Keep**, use Safari, or build from source. |
 | "AniGUI can't be opened" on first launch | **System Settings → Privacy & Security → Open Anyway**, or `xattr -dr com.apple.quarantine /Applications/AniGUI.app`. |
-| A banner says playback needs tools | Install what it lists: `brew install ani-cli fzf` and IINA or mpv. |
+| "Can't reach hianime from your network" | Your internet provider blocks it. Turn on a VPN such as [Cloudflare WARP](https://one.one.one.one/) (free), then open **⚙ Setup & connection** → **Test again**. |
+| A banner says AniGUI needs setup | Click **Open Setup** → **Set up everything**. |
+| ani-cli installed with `brew install ani-cli` doesn't work | That's an older release. Let AniGUI's Setup install its own copy, or use ani-cli's [official tap](#requirements). |
 | "Blocked by Cloudflare" | `brew install curl-impersonate`; AniGUI and ani-cli pick it up automatically. |
 | "Playing without progress tracking" | Quit IINA and play again (it only accepts tracking for windows AniGUI opens), or choose **mpv** under Playback. |
 | "This show isn't on hianime yet" | The title differs too much between AniList and hianime; use Search with another title. |
 | Something else | Check `~/Library/Logs/AniGUI/anigui.log`, then open an issue with the log. |
 
-AniGUI is tested against ani-cli **5.1.6**. `python tools/step1_test.py --doctor` warns if your version differs.
+AniGUI is tested against ani-cli **5.1.6** and installs exactly that version. When a newer ani-cli comes out, AniGUI offers to update it (and warns if the new version is beyond what it's tested with).
 
 ## Disclaimer
 

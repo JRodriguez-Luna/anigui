@@ -19,7 +19,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .env import child_env, find_curl, find_player, which
-from .hianime import normalize_query
+from . import paths
+from .hianime import UNREACHABLE_MESSAGE, normalize_query
 
 SUPPORTED_VERSIONS = ("5.1",)  # major.minor prefixes this parser was verified against
 DEFAULT_TIMEOUT = 60.0
@@ -55,9 +56,13 @@ class StreamInfo:
 # -- Discovery ------------------------------------------------------------------
 
 def find_ani_cli() -> str:
+    """AniGUI's own copy (installed by Setup) first, then any ani-cli on PATH."""
+    managed = paths.bin_dir() / "ani-cli"
+    if managed.is_file() and os.access(managed, os.X_OK):
+        return str(managed)
     path = which("ani-cli")
     if not path:
-        raise AniCliError("ani-cli not found. Install it with: brew install ani-cli")
+        raise AniCliError("ani-cli isn't installed. Open Setup in AniGUI to install it.")
     return path
 
 
@@ -120,9 +125,8 @@ def doctor() -> list[tuple[str, bool, str]]:
     except FileNotFoundError as exc:
         rows.append(("curl", False, str(exc)))
 
-    rows.append(("fzf (required by ani-cli)", bool(which("fzf")), which("fzf") or "brew install fzf"))
     player = find_player()
-    rows.append(("player", bool(player), f"{player[0]} at {player[1]}" if player else "brew install --cask iina  (or: brew install mpv)"))
+    rows.append(("player", bool(player), f"{player[0]} at {player[1]}" if player else "Open Setup in AniGUI to install IINA"))
     rows.append(("ani-skip (optional)", bool(which("ani-skip")), which("ani-skip") or "not installed; skip-intro disabled"))
     return rows
 
@@ -155,6 +159,9 @@ def build_command(
         ANIGUI_CAPTURE=capture_path,
         ANI_CLI_LOG="0",
         ANI_CLI_EXACT="0",
+        # Headless runs never open ani-cli's menu, so any existing command satisfies
+        # its menu dependency check; this removes the need to install fzf.
+        ANI_CLI_MENU="true",
         ANI_CLI_PLAYER_FLAGS="",
         ANI_CLI_SKIP_INTRO="0",
     )
@@ -197,8 +204,18 @@ def error_message(stdout: str, stderr: str, code: int | None = None) -> str:
         lines = [ln.strip() for ln in clean_output(stream).splitlines() if ln.strip()]
         lines = [ln for ln in lines if not ln.startswith("tput:")]
         if lines:
-            return lines[-1]
+            return friendly(lines[-1])
     return f"ani-cli exited with code {code}" if code is not None else "ani-cli failed"
+
+
+def friendly(message: str) -> str:
+    """Turn ani-cli's network errors into something a person can act on."""
+    low = message.lower()
+    if "connection error" in low or "no http response" in low or "could not fetch" in low:
+        return UNREACHABLE_MESSAGE
+    if "blocked by cloudflare" in low:
+        return "hianime answered with Cloudflare's bot check. Install curl-impersonate (brew install curl-impersonate) and try again."
+    return message
 
 
 # -- Synchronous resolve (used by tests and the terminal tool) -----------------

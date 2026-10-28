@@ -14,6 +14,7 @@ DEBOUNCE_MS = 350
 
 class SearchPage(QWidget):
     openItem = Signal(object)  # SearchResult
+    setupRequested = Signal()
 
     def __init__(self, ctx: AppContext, parent=None) -> None:
         super().__init__(parent)
@@ -29,6 +30,8 @@ class SearchPage(QWidget):
         self.grid = CardGrid(ctx.images)
         self.grid.cardActivated.connect(lambda card: self.openItem.emit(card.payload))
         self.empty = empty_state("Find anything on hianime: titles in English or Japanese both work.")
+        self.empty.setTextInteractionFlags(Qt.TextInteractionFlag.LinksAccessibleByMouse)
+        self.empty.linkActivated.connect(lambda _link: self.setupRequested.emit())
         self.results = QWidget()
         self.stack = QStackedLayout(self.results)
         self.stack.addWidget(self.empty)
@@ -89,5 +92,8 @@ class SearchPage(QWidget):
     def _error(self, message: str) -> None:
         self._last_query = ""  # allow retrying the same text
         self.status.setText("")
-        self.empty.setText(f"Search failed: {message}")
+        if "VPN" in message:
+            self.empty.setText(f"{message}<br><br><a href='#setup' style='color:#FF8559'>Check the connection</a>")
+        else:
+            self.empty.setText(f"Search failed: {message}")
         self.stack.setCurrentWidget(self.empty)

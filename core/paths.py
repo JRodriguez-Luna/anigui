@@ -22,6 +22,13 @@ def data_dir() -> Path:
     return path
 
 
+def bin_dir() -> Path:
+    """AniGUI's own copy of ani-cli lives here."""
+    path = data_dir() / "bin"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def cache_dir() -> Path:
     path = _root("cache")
     path.mkdir(parents=True, exist_ok=True)

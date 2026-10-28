@@ -6,12 +6,13 @@ name: release
 on:
   push:
     tags: ["v*"]
-    branches: [main]
+    branches: [main, next]
     paths:
       - "packaging/**"
       - "main.py"
       - "requirements.txt"
       - ".github/workflows/release.yml"
+      - "core/setup.py"
   workflow_dispatch:
 
 permissions:
@@ -95,6 +96,42 @@ jobs:
           [ "$fails" -gt 0 ] && echo "::notice title=details::verify: $(tail -c 300 /tmp/verify.txt | tr '\n' ' ') | attach: $(tail -c 300 /tmp/attach.txt | tr '\n' ' ') | codesign: $(tail -c 400 /tmp/cs.txt | tr '\n' ' ') | self-test: $(tail -c 400 /tmp/st.txt | tr '\n' ' ')"
           hdiutil detach "$MNT" >/dev/null 2>&1
           exit $fails
+
+      - name: Setup assistant on a real Mac
+        # Runs the same install code AniGUI's Setup button uses: pinned ani-cli (checksum
+        # verified) into AniGUI's folder, IINA into /Applications, then the connection test.
+        run: |
+          python - <<'PY'
+          import os
+          os.environ["ANIGUI_HOME"] = os.path.expanduser("~/anigui-ci")
+          from core import ani_cli, setup, updates
+          fails = 0
+          def report(ok, msg):
+              global fails
+              fails += 0 if ok else 1
+              print(f"::{'notice' if ok else 'error'} title=setup::{'PASS' if ok else 'FAIL'} {msg}")
+          try:
+              setup.install_ani_cli()
+              path = ani_cli.find_ani_cli()
+              version = ani_cli.ani_cli_version(path)
+              report(version == setup.ANI_CLI_PIN_VERSION and path == str(setup.managed_ani_cli()),
+                     f"ani-cli {version} installed at {path}")
+          except Exception as exc:
+              report(False, f"ani-cli install: {exc}")
+          try:
+              app = setup.install_iina(progress=print)
+              found = setup.find_player("iina")
+              report(bool(found) and (app / "Contents" / "MacOS" / "iina-cli").exists(), f"IINA installed at {app}; found {found}")
+          except Exception as exc:
+              report(False, f"IINA install: {exc}")
+          status = setup.current_status()
+          report(status.ready, f"Setup status ready={status.ready} ({status.ani_cli_version}, {status.player})")
+          net = setup.check_network()
+          print(f"::notice title=setup::network from GitHub's Mac: {net.state} ({net.message})")
+          upd = updates.check_ani_cli(setup.ANI_CLI_PIN_VERSION)
+          print(f"::notice title=setup::ani-cli update check: {'none' if upd is None else upd.latest}")
+          raise SystemExit(fails)
+          PY
 
       - uses: actions/upload-artifact@v7
         with:

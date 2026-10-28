@@ -49,6 +49,29 @@ class CloudflareBlocked(HianimeError):
     """Cloudflare served a challenge page instead of results."""
 
 
+class SiteUnreachable(HianimeError):
+    """No usable answer from hianime at all: DNS failure, refused or reset connection,
+    timeout, TLS failure, or an ISP block page. Usually fixed by a VPN."""
+
+
+UNREACHABLE_MESSAGE = (
+    "Can't reach hianime from your network. Some internet providers block it. "
+    "Turn on a VPN such as Cloudflare WARP, then try again."
+)
+
+# curl exit codes that mean "never got a real answer from the site"
+# 6 resolve host, 7 connect, 28 timeout, 35 TLS handshake, 52 empty reply,
+# 56 receive failure (often a reset), 60 certificate problem (block-page interception)
+NETWORK_EXIT_CODES = {6, 7, 28, 35, 52, 56, 60}
+
+
+@dataclass(frozen=True)
+class FetchResult:
+    curl_exit: int
+    status: int | None
+    body: str
+
+
 @dataclass(frozen=True)
 class SearchResult:
     index: int          # 1-based, matches `ani-cli -S <index>`
@@ -77,7 +100,8 @@ class HianimeClient:
 
     # -- HTTP -----------------------------------------------------------------
 
-    def _get(self, url: str, referer: str | None = None) -> str:
+    def fetch(self, url: str, referer: str | None = None) -> FetchResult:
+        """Raw request: never raises for network trouble; callers classify the result."""
         cmd = [self.curl, "-sL", "-A", USER_AGENT, "--max-time", str(int(self.timeout))]
         if is_macos():
             cmd += ["--ciphers", _CIPHERS, "--tls13-ciphers", _TLS13_CIPHERS]
@@ -85,22 +109,27 @@ class HianimeClient:
         if referer:
             cmd += ["-e", referer]
         try:
-            proc = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=self.timeout + 5
-            )
-        except subprocess.TimeoutExpired as exc:
-            raise HianimeError(f"Timed out fetching {url}") from exc
-
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=self.timeout + 5)
+        except subprocess.TimeoutExpired:
+            return FetchResult(28, None, "")
         body, _, code = proc.stdout.rpartition(" ")
-        if proc.returncode != 0:
-            detail = f"HTTP {code}" if code.isdigit() else "no HTTP response"
-            raise HianimeError(f"Could not fetch {url} ({detail}; curl exit {proc.returncode})")
-        if "just a moment" in body[:4000].lower():
+        status = int(code) if code.isdigit() and code != "000" else None
+        return FetchResult(proc.returncode, status, body)
+
+    def _get(self, url: str, referer: str | None = None) -> str:
+        r = self.fetch(url, referer)
+        if r.curl_exit in NETWORK_EXIT_CODES or (r.curl_exit != 0 and r.status is None):
+            raise SiteUnreachable(UNREACHABLE_MESSAGE)
+        if r.curl_exit != 0:
+            raise HianimeError(f"Could not fetch {url} (HTTP {r.status}; curl exit {r.curl_exit})")
+        if "just a moment" in r.body[:4000].lower():
             hint = " Install curl-impersonate: brew install curl-impersonate" if self.curl.endswith("curl") else ""
             raise CloudflareBlocked("Blocked by Cloudflare." + hint)
-        if not code.startswith("2"):
-            raise HianimeError(f"HTTP {code} from {url}")
-        return body
+        if r.status in (403, 451) or (r.status and r.status >= 500 and "hianime" not in r.body.lower()):
+            raise SiteUnreachable(UNREACHABLE_MESSAGE)
+        if not (r.status and 200 <= r.status < 300):
+            raise HianimeError(f"HTTP {r.status} from {url}")
+        return r.body
 
     # -- API ------------------------------------------------------------------
 
