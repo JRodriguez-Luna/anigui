@@ -40,6 +40,9 @@ while i < len(args):
     i += 1
 with open(os.path.join(site, "requests.log"), "a") as log:
     log.write(" ".join(args) + "\n")
+blocked = [h for h in os.environ.get("FAKE_BLOCKED_HOSTS", "").split(",") if h]
+if url and any(h in url for h in blocked):
+    sys.exit(35)  # what an ISP's TLS/SNI block looks like to curl
 entry = manifest.get(url) or manifest.get(url.lower())  # real search is case-insensitive
 if entry is None:
     sys.stdout.write("not found" + write_out.replace("%{http_code}", "404"))
@@ -146,6 +149,8 @@ def build(root: Path, cloudflare: bool = False) -> dict[str, str]:
             master = f"https://cdn.example/hls/{ep_id}/{kind}/master.m3u8"
             serve(f"{EMBED_HOST}/mal/52991/ep/{ep_id}/{kind}", _embed_page(master, f"https://cdn.example/subs/{ep_id}-en.vtt"))
             serve(master, _master_playlist())
+            for q in ("1080", "720", "480"):
+                serve(master.replace("master.m3u8", f"{q}/index.m3u8"), "#EXTM3U\n#EXT-X-ENDLIST\n")
 
     (site / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
 

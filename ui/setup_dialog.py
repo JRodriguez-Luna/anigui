@@ -149,7 +149,7 @@ class SetupDialog(QDialog):
         self.check_connection()
 
     def check_connection(self) -> None:
-        self.net.set_state("busy", "Testing the connection…")
+        self.net.set_state("busy", "Testing search and the video servers (takes a few seconds)…")
         self.ctx.runner.submit(setup.check_network, on_done=self._on_network,
                                on_error=lambda msg: self.net.set_state("warn", msg, "Test again"),
                                group="setup-network")

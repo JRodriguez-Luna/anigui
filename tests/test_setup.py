@@ -134,7 +134,7 @@ class FakeClient:
     (FetchResult(6, None, ""), False, "offline"),
 ])
 def test_check_network(result, online, state):
-    status = setup.check_network(FakeClient(result), control=lambda: online)
+    status = setup.check_network(FakeClient(result), control=lambda: online, stream_probe=lambda c, r: None)
     assert status.state == state
     if state == "blocked":
         assert "VPN" in status.message
@@ -324,7 +324,8 @@ def test_check_network_runs_a_real_search():
             urls.append(url)
             return super().fetch(url, referer)
 
-    setup.check_network(Recorder(FetchResult(0, 200, fake_site._search_page())), control=lambda: True)
+    setup.check_network(Recorder(FetchResult(0, 200, fake_site._search_page())), control=lambda: True,
+                        stream_probe=lambda c, r: None)
     assert urls == ["https://hianime.at/search?keyword=one+piece"]
 
 
@@ -359,3 +360,72 @@ def test_dub_falls_back_to_sub(tmp_path):
     assert ctx.pref("dub", False) is True  # the preference itself is untouched
     win.close()
     ctx.shutdown()
+
+
+# -- Blocked video servers (search works, playback doesn't) --------------------------------
+
+def test_error_message_names_the_blocked_server():
+    stderr = ("Connection error: could not fetch https://zokoanime.video/stream/mal/21/1/sub "
+              "(no HTTP response; curl exit 35)\nNo sources found for sub!\n")
+    msg = ani_cli.error_message("", stderr, 1)
+    assert "zokoanime.video" in msg and "VPN" in msg
+    assert "No sources" not in msg
+    # a genuine missing dub (no connection error) is left alone, so the sub fallback still applies
+    assert ani_cli.error_message("", "No sources found for dub!\n", 1) == "No sources found for dub!"
+
+
+def test_check_network_reports_stream_block():
+    ok_search = FakeClient(FetchResult(0, 200, fake_site._search_page()))
+    blocked = setup.check_network(ok_search, control=lambda: True,
+                                  stream_probe=lambda c, r: "Can't reach zokoanime.video (hianime's video server)… VPN")
+    assert blocked.state == "blocked" and "zokoanime.video" in blocked.message
+    skipped = setup.check_network(ok_search, control=lambda: True, stream_probe=lambda c, r: setup.SKIPPED)
+    assert skipped.ok and "once ani-cli is installed" in skipped.message
+    full = setup.check_network(ok_search, control=lambda: True, stream_probe=lambda c, r: None)
+    assert full.ok and "video servers are reachable" in full.message
+
+
+@pytest.fixture
+def fake_net(tmp_path, monkeypatch):
+    for key, value in fake_site.build(tmp_path).items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("ANIGUI_HOME", str(tmp_path / "anigui"))
+    monkeypatch.setenv("ANI_CLI_HIST_DIR", str(tmp_path / "hist"))
+    (tmp_path / "home").mkdir()
+    # fake_site serves "frieren"; point the probe at it
+    monkeypatch.setattr(setup, "PROBE_QUERY", "frieren")
+    return tmp_path
+
+
+@pytest.mark.skipif(not shutil.which("ani-cli"), reason="ani-cli not installed")
+def test_stream_check_end_to_end(fake_net):
+    client = HianimeClient()
+    results = client.search("frieren")
+    assert setup.stream_check(client, results) is None
+    status = setup.check_network(client, control=lambda: True)
+    assert status.ok and "video servers are reachable" in status.message
+
+
+@pytest.mark.skipif(not shutil.which("ani-cli"), reason="ani-cli not installed")
+def test_stream_check_finds_blocked_embed_server(fake_net, monkeypatch):
+    monkeypatch.setenv("FAKE_BLOCKED_HOSTS", "embed.example")
+    client = HianimeClient()
+    status = setup.check_network(client, control=lambda: True)
+    assert status.state == "blocked"
+    assert "embed.example" in status.message and "VPN" in status.message
+
+
+@pytest.mark.skipif(not shutil.which("ani-cli"), reason="ani-cli not installed")
+def test_stream_check_finds_blocked_cdn(fake_net, monkeypatch):
+    monkeypatch.setenv("FAKE_BLOCKED_HOSTS", "cdn.example/hls")
+    client = HianimeClient()
+    status = setup.check_network(client, control=lambda: True)
+    assert status.state == "blocked" and "cdn.example" in status.message
+
+
+@pytest.mark.skipif(not shutil.which("ani-cli"), reason="ani-cli not installed")
+def test_playback_error_names_blocked_server(fake_net, monkeypatch):
+    monkeypatch.setenv("FAKE_BLOCKED_HOSTS", "embed.example")
+    with pytest.raises(ani_cli.AniCliError, match="embed.example"):
+        ani_cli.resolve_stream(ani_cli.ResolveRequest(query="frieren", index=1, episode="1"))

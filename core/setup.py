@@ -184,7 +184,12 @@ class NetworkStatus:
 
 
 def check_network(client: HianimeClient | None = None,
-                  control: Callable[[], bool] | None = None) -> NetworkStatus:
+                  control: Callable[[], bool] | None = None,
+                  stream_probe: Callable[[HianimeClient, list], str | None] | None = None) -> NetworkStatus:
+    """Search first; then resolve a real episode and load its stream.
+
+    Blocks can hit any hop: hianime itself, its video (embed) server, or the video CDN.
+    """
     client = client or HianimeClient()
     # A real search, counted: an internet provider's "this site is blocked" page can
     # mention hianime, but it never contains search results.
@@ -193,16 +198,59 @@ def check_network(client: HianimeClient | None = None,
     if "just a moment" in body:
         return NetworkStatus("cloudflare", "hianime answered with Cloudflare's bot check. Searches may fail until "
                                            "you install curl-impersonate (brew install curl-impersonate).")
-    if r.curl_exit == 0 and r.status and 200 <= r.status < 300 and parse_search(r.body):
-        return NetworkStatus("ok", "hianime is reachable.")
+    results = parse_search(r.body) if r.curl_exit == 0 and r.status and 200 <= r.status < 300 else []
+    if not results:
+        online = (control or _internet_ok)()
+        if not online:
+            return NetworkStatus("offline", "You seem to be offline. Check your internet connection.")
+        if r.curl_exit in NETWORK_EXIT_CODES or r.status in (None, 403, 451) or r.curl_exit == 0:
+            return NetworkStatus("blocked", "hianime is blocked on this network. Some internet providers block it; "
+                                            "a VPN such as Cloudflare WARP gets around that.")
+        return NetworkStatus("blocked", f"hianime didn't respond normally (HTTP {r.status}).")
 
-    online = (control or _internet_ok)()
-    if not online:
-        return NetworkStatus("offline", "You seem to be offline. Check your internet connection.")
-    if r.curl_exit in NETWORK_EXIT_CODES or r.status in (None, 403, 451) or r.curl_exit == 0:
-        return NetworkStatus("blocked", "hianime is blocked on this network. Some internet providers block it; "
-                                        "a VPN such as Cloudflare WARP gets around that.")
-    return NetworkStatus("blocked", f"hianime didn't respond normally (HTTP {r.status}).")
+    problem = (stream_probe or stream_check)(client, results)
+    if problem == SKIPPED:
+        return NetworkStatus("ok", "Search works. Video playback is tested once ani-cli is installed.")
+    if problem:
+        return NetworkStatus("blocked", problem)
+    return NetworkStatus("ok", "hianime and its video servers are reachable.")
+
+
+SKIPPED = "skipped"
+
+
+def stream_check(client: HianimeClient, results: list) -> str | None:
+    """Resolve the first episode of a search result with ani-cli and load its playlist.
+
+    Returns None when everything loads, SKIPPED when it can't be tested (no ani-cli,
+    no episodes), or a message naming the blocked server.
+    """
+    from .ani_cli import AniCliError, ResolveRequest, blocked_message, find_ani_cli, resolve_stream
+
+    try:
+        find_ani_cli()
+    except AniCliError:
+        return SKIPPED
+    first = results[0]
+    try:
+        episodes = client.episodes(first.anime_id)
+    except Exception:  # noqa: BLE001 - search worked, so don't call this a block
+        return SKIPPED
+    if not episodes:
+        return SKIPPED
+    try:
+        info = resolve_stream(ResolveRequest(PROBE_QUERY.replace("+", " "), first.index, episodes[0].number),
+                              timeout=45)
+    except AniCliError as exc:
+        message = str(exc)
+        return message if "VPN" in message else SKIPPED
+    playlist = client.fetch(info.url, info.referrer)
+    # Only "no answer at all" (or a refusal) counts as a block; any other HTTP reply
+    # means the server is reachable, which is what this check is about.
+    if playlist.curl_exit in NETWORK_EXIT_CODES or playlist.status in (403, 451) or (
+            playlist.curl_exit != 0 and playlist.status is None):
+        return blocked_message(info.url).replace("hianime's video server", "the video stream server")
+    return None
 
 
 def _internet_ok() -> bool:

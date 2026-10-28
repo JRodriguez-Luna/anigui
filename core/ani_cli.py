@@ -16,6 +16,7 @@ import re
 import subprocess
 import tempfile
 from dataclasses import dataclass, field
+from urllib.parse import urlparse
 from pathlib import Path
 
 from .env import child_env, find_curl, find_player, which
@@ -199,7 +200,24 @@ def clean_output(text: str) -> str:
     return _ANSI.sub("", text)
 
 
+_FETCH_FAILED = re.compile(r"could not fetch (https?://\S+)", re.IGNORECASE)
+
+
+def blocked_message(url: str) -> str:
+    """Message for a server ani-cli couldn't reach. hianime's video servers live on other domains."""
+    host = urlparse(url).hostname or ""
+    if host and "hianime" not in host:
+        return (f"Can't reach {host} (hianime's video server) from your network. Some internet providers "
+                "block it. Turn on a VPN such as Cloudflare WARP, then try again.")
+    return UNREACHABLE_MESSAGE
+
+
 def error_message(stdout: str, stderr: str, code: int | None = None) -> str:
+    # ani-cli prints "Connection error: could not fetch <url>" and then a generic
+    # "No sources found"; the connection error is the real cause, so look for it first.
+    m = _FETCH_FAILED.search(clean_output(stderr + "\n" + stdout))
+    if m and "no http response" in (stderr + stdout).lower():
+        return blocked_message(m.group(1).rstrip(").,"))
     for stream in (stderr, stdout):
         lines = [ln.strip() for ln in clean_output(stream).splitlines() if ln.strip()]
         lines = [ln for ln in lines if not ln.startswith("tput:")]
