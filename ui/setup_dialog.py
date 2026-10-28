@@ -167,7 +167,11 @@ class SetupDialog(QDialog):
         else:
             self.ani_cli.set_state("needed", "Not installed. AniGUI downloads it from ani-cli's official GitHub.",
                                    "Install")
-        if status.player:
+        wanted = str(self.ctx.pref("player", "auto"))
+        if status.player and not status.iina and wanted == "iina":
+            self.player.set_state("needed", "Playback is set to IINA, but only mpv is installed. Episodes open in "
+                                            "mpv until you install IINA.", "Install IINA")
+        elif status.player:
             kind, _path = status.player
             self.player.set_state("ok", f"{'IINA' if kind == 'iina' else 'mpv'} is installed.")
         else:
@@ -220,7 +224,8 @@ class SetupDialog(QDialog):
         self._queue = []
         if self.status and not (self.status.ani_cli_path and self.status.ani_cli_supported):
             self._queue.append("ani-cli")
-        if self.status and not self.status.player:
+        if self.status and (not self.status.player or (
+                not self.status.iina and self.ctx.pref("player", "auto") == "iina")):
             self._queue.append("player")
         self._queue.append("network")
         self.everything.setEnabled(False)

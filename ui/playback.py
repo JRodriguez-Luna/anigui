@@ -21,6 +21,7 @@ from PySide6.QtCore import QObject, QTimer, Signal
 from core.ani_cli import StreamInfo
 from core.catalog import CatalogError
 from core.mpv_ipc import MpvIpc
+from core.player import PLAYER_NAMES
 
 from .context import AppContext
 
@@ -425,7 +426,12 @@ class PlaybackController(QObject):
         if not self.ctx.store.get_progress(job.anime_id, job.episode):
             self.ctx.store.record_progress(job.anime_id, job.episode, 0.0)
         self.started.emit(job.anime_id, job.episode, kind)
-        if job.fell_back_to_sub:
+        wanted = str(self.ctx.pref("player", "auto"))
+        if wanted in PLAYER_NAMES and kind != wanted:
+            self.notice.emit(f"{PLAYER_NAMES[wanted]} isn't installed, so this opened in {PLAYER_NAMES[kind]}. "
+                             f"Open Setup to install {PLAYER_NAMES[wanted]}." if wanted == "iina" else
+                             f"{PLAYER_NAMES[wanted]} isn't installed, so this opened in {PLAYER_NAMES[kind]}.", False)
+        elif job.fell_back_to_sub:
             self.notice.emit(f"Episode {job.episode} has no dub on hianime yet, so it's playing subbed.", False)
         elif start:
             mins, secs = divmod(int(start), 60)

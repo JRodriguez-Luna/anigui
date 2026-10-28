@@ -9,11 +9,8 @@ import tempfile
 from .ani_cli import StreamInfo
 from .env import child_env, find_player
 
-INSTALL_HINT = {
-    "iina": "IINA isn't installed: brew install --cask iina",
-    "mpv": "mpv isn't installed: brew install mpv",
-    None: "No player found. Install IINA (brew install --cask iina) or mpv (brew install mpv)",
-}
+INSTALL_HINT = "No video player found. Open Setup in AniGUI to install IINA."
+PLAYER_NAMES = {"iina": "IINA", "mpv": "mpv"}
 
 
 class PlayerError(RuntimeError):
@@ -74,11 +71,14 @@ class Player:
 
     def launch(self, info: StreamInfo, title: str | None = None, *, start: float | None = None,
                preferred: str | None = None, track: bool = True) -> str:
-        """Start playback detached from AniGUI. Returns the player kind ("iina" or "mpv")."""
+        """Start playback detached from AniGUI. Returns the player kind ("iina" or "mpv").
+
+        If the chosen player isn't installed, the other one is used.
+        """
         pref = None if preferred in (None, "", "auto") else preferred
-        found = find_player(pref)
+        found = find_player(pref) or find_player(None)
         if not found:
-            raise PlayerError(INSTALL_HINT.get(pref, INSTALL_HINT[None]))
+            raise PlayerError(INSTALL_HINT)
         kind, path = found
         ipc = self.ipc_path if track else None
         if ipc and os.path.exists(ipc):

@@ -226,14 +226,15 @@ def fake_setup(monkeypatch, home):
         return setup.SetupStatus(
             ani_cli_path="/x/ani-cli" if state["ani_cli"] else None, ani_cli_version=state["ani_cli"],
             ani_cli_managed=bool(state["ani_cli"]), ani_cli_supported=bool(state["ani_cli"]),
-            player=("iina", "/Applications/IINA.app") if state["player"] else None)
+            player=(state["player"], f"/Applications/{state['player']}") if state["player"] else None,
+            iina=state["player"] == "iina")
 
     def install_ani(*_a, **_k):
         state["ani_cli"] = "5.1.6"
         return "5.1.6"
 
     def install_iina(*_a, **_k):
-        state["player"] = True
+        state["player"] = "iina"
         return Path("/Applications/IINA.app")
 
     monkeypatch.setattr(setup, "current_status", status)
@@ -429,3 +430,43 @@ def test_playback_error_names_blocked_server(fake_net, monkeypatch):
     monkeypatch.setenv("FAKE_BLOCKED_HOSTS", "embed.example")
     with pytest.raises(ani_cli.AniCliError, match="embed.example"):
         ani_cli.resolve_stream(ani_cli.ResolveRequest(query="frieren", index=1, episode="1"))
+
+
+def test_setup_offers_iina_when_chosen_but_only_mpv_installed(fake_setup, tmp_path):
+    from ui.setup_dialog import SetupDialog
+
+    fake_setup.update(ani_cli="5.1.6", player="mpv", net="ok")
+    ctx = ui_fakes.fake_context(tmp_path, with_history=False)
+    ctx.set_pref("player", "iina")
+    dlg = SetupDialog(ctx)
+    dlg.show()
+    assert pump(lambda: dlg.status is not None)
+    assert dlg.player.button.isVisible() and dlg.player.button.text() == "Install IINA"
+    assert "only mpv" in dlg.player.detail.text()
+    assert pump(lambda: dlg.player.button.isEnabled())
+    dlg.player.button.click()
+    assert pump(lambda: dlg.status.iina)
+    assert "IINA" in dlg.player.detail.text() and not dlg.player.button.isVisible()
+
+    ctx.set_pref("player", "auto")  # Auto with mpv only: nothing to do
+    fake_setup["player"] = "mpv"
+    dlg2 = SetupDialog(ctx)
+    assert pump(lambda: dlg2.status is not None)
+    assert not dlg2.player.button.isVisible()
+
+
+def test_player_falls_back_when_chosen_one_is_missing(monkeypatch):
+    from core import player as player_mod
+    from core.ani_cli import StreamInfo
+
+    launched = []
+    monkeypatch.setattr(player_mod, "find_player",
+                        lambda pref=None: None if pref == "iina" else ("mpv", "/opt/homebrew/bin/mpv"))
+    monkeypatch.setattr(player_mod.subprocess, "Popen", lambda cmd, **_k: launched.append(cmd))
+    info = StreamInfo(url="https://cdn.example/a.m3u8", referrer=None, title="T")
+    assert player_mod.Player("/tmp/x.sock").launch(info, "T", preferred="iina", track=False) == "mpv"
+    assert launched[0][0] == "/opt/homebrew/bin/mpv"
+
+    monkeypatch.setattr(player_mod, "find_player", lambda pref=None: None)
+    with pytest.raises(player_mod.PlayerError, match="Open Setup"):
+        player_mod.Player().launch(info, "T", preferred="iina")

@@ -269,6 +269,7 @@ class SetupStatus:
     ani_cli_managed: bool
     ani_cli_supported: bool
     player: tuple[str, str] | None
+    iina: bool = False
 
     @property
     def ready(self) -> bool:
@@ -285,4 +286,5 @@ def current_status() -> SetupStatus:
     except AniCliError:
         pass
     managed = bool(path) and Path(path) == managed_ani_cli()
-    return SetupStatus(path, version, managed, bool(version and is_supported(version)), find_player())
+    return SetupStatus(path, version, managed, bool(version and is_supported(version)), find_player(),
+                       bool(find_player("iina")))
