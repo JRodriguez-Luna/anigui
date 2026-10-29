@@ -7,7 +7,7 @@ from typing import Any
 
 from PySide6.QtCore import (
     QAbstractListModel, QEasingCurve, QModelIndex, QPersistentModelIndex, QPropertyAnimation,
-    QRectF, QSize, Qt, Signal,
+    QPoint, QRectF, QSize, Qt, Signal,
 )
 from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
@@ -179,6 +179,7 @@ class CardView(QListView):
     """Shared setup for rows and grids. Emits the Card that was clicked."""
 
     cardActivated = Signal(object)
+    cardMenuRequested = Signal(object, QPoint)   # Card, global position (right-click)
 
     def __init__(self, images: ImageLoader, parent=None) -> None:
         super().__init__(parent)
@@ -207,6 +208,11 @@ class CardView(QListView):
         if card and not card.is_skeleton:
             self.cardActivated.emit(card)
 
+    def contextMenuEvent(self, event) -> None:
+        card = self.indexAt(event.pos()).data(CARD_ROLE)
+        if card and not card.is_skeleton:
+            self.cardMenuRequested.emit(card, event.globalPos())
+
     @property
     def cards(self) -> CardModel:
         return self.model_
@@ -216,6 +222,7 @@ class CardRow(QWidget):
     """Section title plus a single horizontally scrolling line of cards."""
 
     cardActivated = Signal(object)
+    cardMenuRequested = Signal(object, QPoint)
     SPACING = 14
 
     def __init__(self, title: str, images: ImageLoader, parent=None) -> None:
@@ -230,6 +237,7 @@ class CardRow(QWidget):
         header.setSpacing(10)
         header.addWidget(self.title)
         header.addWidget(self.count)
+        self.header = header
         header.addStretch(1)
         header.addWidget(self.left)
         header.addWidget(self.right)
@@ -242,6 +250,7 @@ class CardRow(QWidget):
         self.view.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.view.setFixedHeight(CardDelegate.H + CardDelegate.TEXT_H + self.SPACING + 2)
         self.view.cardActivated.connect(self.cardActivated)
+        self.view.cardMenuRequested.connect(self.cardMenuRequested)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -263,6 +272,13 @@ class CardRow(QWidget):
         self.setVisible(bool(cards) or not hide_when_empty)
         self.view.horizontalScrollBar().setValue(0)
         self._update_arrows()
+
+    def add_action(self, text: str, tooltip: str = "") -> QPushButton:
+        """A small text button next to the section title (e.g. "Clear")."""
+        button = QPushButton(text, objectName="RowAction", cursor=Qt.CursorShape.PointingHandCursor)
+        button.setToolTip(tooltip)
+        self.header.insertWidget(2, button, 0, Qt.AlignmentFlag.AlignVCenter)
+        return button
 
     def set_loading(self) -> None:
         self.view.cards.set_loading()

@@ -89,6 +89,10 @@ QPushButton#Glass {{ background: rgba(255,255,255,0.14); border: none; }}
 QPushButton#Glass:hover {{ background: rgba(255,255,255,0.22); }}
 QPushButton#Toggle {{ padding: 8px 14px; font-size: 13px; }}
 QPushButton#Toggle:checked {{ background: {TEXT}; color: {BG}; border-color: {TEXT}; }}
+QPushButton#RowAction {{
+    background: transparent; border: none; color: {FAINT}; font-size: 13px; font-weight: 600; padding: 2px 6px;
+}}
+QPushButton#RowAction:hover {{ color: {TEXT}; }}
 QPushButton#Arrow {{
     background: {SURFACE}; border: 1px solid {BORDER}; border-radius: 15px;
     min-width: 30px; max-width: 30px; min-height: 30px; max-height: 30px;

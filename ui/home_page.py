@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QScrollArea, QVBoxLayout, QWidget
+from PySide6.QtCore import QPoint, Qt, QTimer, Signal
+from PySide6.QtWidgets import QMenu, QMessageBox, QScrollArea, QVBoxLayout, QWidget
 
 from core.anilist import current_season
 from core.store import ContinueItem, Show
@@ -34,6 +34,7 @@ def show_card(show: Show) -> Card:
 class HomePage(QScrollArea):
     openItem = Signal(object)   # Media | Show
     playItem = Signal(object)   # Media (open details and start playing)
+    historyChanged = Signal()
 
     def __init__(self, ctx: AppContext, parent=None) -> None:
         super().__init__(parent)
@@ -50,6 +51,9 @@ class HomePage(QScrollArea):
 
         season, year = current_season()
         self.continue_row = CardRow("Continue Watching", ctx.images)
+        self.clear_btn = self.continue_row.add_action("Clear", "Clear your watch history")
+        self.clear_btn.clicked.connect(self.confirm_clear_history)
+        self.continue_row.cardMenuRequested.connect(self._continue_menu)
         self.trending_row = CardRow("Trending Now", ctx.images)
         self.season_row = CardRow(f"{season.title()} {year}", ctx.images)
         self.library_row = CardRow("My List", ctx.images)
@@ -92,6 +96,47 @@ class HomePage(QScrollArea):
         self.continue_row.set_cards([continue_card(i) for i in items])
         self.library_row.set_cards([show_card(s) for s in self.ctx.store.library()])
         self._lookup_missing_covers(items)
+
+    # -- history ------------------------------------------------------------------------
+
+    def _continue_menu(self, card: Card, pos: QPoint) -> None:
+        menu = QMenu(self)
+        show = card.payload
+        menu.addAction("Remove from Continue Watching").triggered.connect(lambda: self.remove_from_history(show))
+        menu.addAction("Clear All Watch History…").triggered.connect(
+            lambda: QTimer.singleShot(0, self.confirm_clear_history))  # after the menu has closed
+        menu.exec(pos)
+
+    def remove_from_history(self, show: Show) -> None:
+        self.ctx.store.forget_show_progress(show.anime_id)
+        self.refresh_local()
+        self.historyChanged.emit()
+        self._toast(f"Removed {show.title} from Continue Watching")
+
+    def confirm_clear_history(self) -> None:
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle("Clear watch history")
+        box.setText("<b>Clear your watch history?</b>")
+        box.setInformativeText("This empties Continue Watching and removes every resume point and watched mark. "
+                               "My List stays as it is. This can't be undone.")
+        clear = box.addButton("Clear History", QMessageBox.ButtonRole.DestructiveRole)
+        box.addButton(QMessageBox.StandardButton.Cancel)
+        box.setDefaultButton(QMessageBox.StandardButton.Cancel)
+        box.exec()
+        if box.clickedButton() is clear:
+            self.clear_history()
+
+    def clear_history(self) -> None:
+        self.ctx.store.clear_history()
+        self.refresh_local()
+        self.historyChanged.emit()
+        self._toast("Watch history cleared")
+
+    def _toast(self, text: str) -> None:
+        window = self.window()
+        if hasattr(window, "toast"):
+            window.toast.show_message(text)
 
     def _on_trending(self, items) -> None:
         self.trending_row.set_cards([media_card(m) for m in items])

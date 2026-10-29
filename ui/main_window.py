@@ -97,6 +97,7 @@ class MainWindow(QMainWindow):
         for page in (self.home, self.search, self.library):
             page.openItem.connect(self.open_item)
         self.home.playItem.connect(lambda media: self.open_item(media, autoplay=True))
+        self.home.historyChanged.connect(self.detail.refresh_if_showing)
         self.search.setupRequested.connect(self.open_setup)
         self.detail.backRequested.connect(self.back)
         self.detail.libraryChanged.connect(self._local_changed)

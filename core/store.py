@@ -16,7 +16,7 @@ from typing import Any
 
 from . import paths
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 COMPLETE_RATIO = 0.90  # past 90% counts as watched (credits)
 
 _SCHEMA = """
@@ -42,6 +42,11 @@ CREATE TABLE IF NOT EXISTS progress (
     PRIMARY KEY (anime_id, episode)
 );
 CREATE INDEX IF NOT EXISTS progress_recent ON progress(updated_at DESC);
+CREATE TABLE IF NOT EXISTS history_hidden (
+    anime_id TEXT NOT NULL,
+    episode  TEXT NOT NULL,
+    PRIMARY KEY (anime_id, episode)
+);
 CREATE TABLE IF NOT EXISTS cache (
     key        TEXT PRIMARY KEY,
     value      TEXT NOT NULL,
@@ -121,8 +126,8 @@ class Store:
         version = conn.execute("PRAGMA user_version").fetchone()[0]
         if version > SCHEMA_VERSION:
             raise RuntimeError(f"Database {self.path} is from a newer AniGUI (schema {version})")
-        if version < 1:
-            conn.executescript(_SCHEMA)
+        if version < SCHEMA_VERSION:
+            conn.executescript(_SCHEMA)  # every table is IF NOT EXISTS, so this also upgrades v1
             conn.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
 
     # -- shows ---------------------------------------------------------------------
@@ -268,9 +273,26 @@ class Store:
         ).fetchall()
         return [ContinueItem(_show(r), _progress(r)) for r in rows]
 
-    def forget_show_progress(self, anime_id: str) -> None:
+    def forget_show_progress(self, anime_id: str, history: str | Path | None = None) -> None:
+        """Remove a show from Continue Watching and drop its episode progress."""
+        hidden = [(a, e) for e, a, _t in self._ani_cli_entries(history) if a == anime_id]
         with self._tx() as c:
             c.execute("DELETE FROM progress WHERE anime_id = ?", (anime_id,))
+            c.executemany("INSERT OR IGNORE INTO history_hidden VALUES (?, ?)", hidden)
+
+    def clear_history(self, history: str | Path | None = None) -> int:
+        """Forget all watch progress (Continue Watching, resume points, watched marks).
+
+        My List is kept. ani-cli's own history file is left alone, but what it lists
+        right now is remembered as cleared so the next import doesn't bring it back.
+        Returns how many shows were cleared.
+        """
+        hidden = [(a, e) for e, a, _t in self._ani_cli_entries(history)]
+        with self._tx() as c:
+            shows = c.execute("SELECT COUNT(DISTINCT anime_id) FROM progress").fetchone()[0]
+            c.execute("DELETE FROM progress")
+            c.executemany("INSERT OR IGNORE INTO history_hidden VALUES (?, ?)", hidden)
+        return shows
 
     # -- ani-cli history -----------------------------------------------------------
 
@@ -289,12 +311,13 @@ class Store:
         lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
         imported = 0
         with self._tx() as c:
+            hidden = {tuple(r) for r in c.execute("SELECT anime_id, episode FROM history_hidden")}
             for i, line in enumerate(lines):
-                parts = line.split("\t")
-                if len(parts) != 3 or "-" not in parts[1]:
+                entry = _history_entry(line)
+                if not entry:
                     continue
-                episode, anime_id, title = (p.strip() for p in parts)
-                if not (episode and anime_id and title):
+                episode, anime_id, title = entry
+                if (anime_id, episode) in hidden:  # cleared in AniGUI
                     continue
                 # The file has no dates. ani-cli appends new shows at the end, so later
                 # lines get later timestamps; that keeps Continue Watching in a sane order.
@@ -310,6 +333,14 @@ class Store:
                 )
                 imported += cur.rowcount
         return imported
+
+    def _ani_cli_entries(self, path: str | Path | None) -> list[tuple[str, str, str]]:
+        path = Path(path) if path else paths.ani_cli_history_file()
+        try:
+            lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            return []
+        return [e for e in map(_history_entry, lines) if e]
 
     # -- TTL cache -----------------------------------------------------------------
 
@@ -354,6 +385,15 @@ class _Tx:
 
     def __exit__(self, exc_type, *_: object) -> None:
         self.conn.execute("ROLLBACK" if exc_type else "COMMIT")
+
+
+def _history_entry(line: str) -> tuple[str, str, str] | None:
+    """(episode, anime_id, title) from an ani-cli history line, or None if unusable."""
+    parts = line.split("\t")
+    if len(parts) != 3 or "-" not in parts[1]:
+        return None
+    episode, anime_id, title = (p.strip() for p in parts)
+    return (episode, anime_id, title) if episode and anime_id and title else None
 
 
 def _show(row: sqlite3.Row) -> Show:
