@@ -137,6 +137,14 @@ jobs:
           report(status.ready, f"Setup status ready={status.ready} ({status.ani_cli_version}, {status.player})")
           net = setup.check_network()
           print(f"::notice title=setup::network from GitHub's Mac: {net.state} ({net.message})")
+          # Live services the v1.2 features depend on (real data, so a notice rather than a failure)
+          from core import aniskip
+          from core.anilist import AniListClient
+          segs = aniskip.skip_times(52991, "1")   # Frieren episode 1 on MyAnimeList
+          print(f"::notice title=aniskip::Frieren ep 1 skip times: {[(s.kind, s.start, s.end) for s in segs]}")
+          airing = AniListClient().airing([154587, 21])   # Frieren, One Piece
+          print(f"::notice title=anilist::airing: {[(m.display_title, m.status, m.next_episode) for m in airing.values()]}")
+          report(bool(airing), "AniList airing lookup answered")
           upd = updates.check_ani_cli(setup.ANI_CLI_PIN_VERSION)
           print(f"::notice title=setup::ani-cli update check: {'none' if upd is None else upd.latest}")
           raise SystemExit(fails)
