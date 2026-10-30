@@ -337,7 +337,10 @@ class Store:
         with self._tx() as c:
             row = c.execute("SELECT latest, seen FROM episode_watch WHERE anime_id = ?", (anime_id,)).fetchone()
             if row is None:
-                c.execute("INSERT INTO episode_watch VALUES (?, ?, ?, ?, ?)", (anime_id, latest, latest, latest, now))
+                # Only for saved shows; one that's still being saved is picked up next time
+                c.execute("""INSERT INTO episode_watch SELECT ?, ?, ?, ?, ?
+                             WHERE EXISTS (SELECT 1 FROM shows WHERE anime_id = ?)""",
+                          (anime_id, latest, latest, latest, now, anime_id))
                 return False
             newer = episode_key(latest) > episode_key(row["latest"])
             new_latest = latest if newer else row["latest"]

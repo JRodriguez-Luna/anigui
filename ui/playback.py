@@ -240,6 +240,8 @@ class Session(QObject):
         n = self.now
         if name == "time-pos" and isinstance(value, (int, float)) and not self.loading:
             n.position = float(value)
+            if n.skips is None:
+                self._lookup_skips()  # in case the duration arrived while the file was still loading
             if self._maybe_skip(n.position):
                 return
             if time.monotonic() - n.last_save >= SAVE_EVERY_S:

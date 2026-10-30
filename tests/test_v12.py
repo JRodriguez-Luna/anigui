@@ -156,6 +156,19 @@ def test_skips_intro_once_and_ending(win, monkeypatch):
     assert mpv.named("seek")[1][1:] == ["1420.00", "absolute"]
 
 
+def test_skip_lookup_without_duration(win, monkeypatch):
+    """Auto-next: mpv may report the duration before AniGUI sees file-loaded. Skips still load."""
+    monkeypatch.setattr(win.ctx.catalog, "mal_id", lambda aid, title: 7)
+    monkeypatch.setattr(aniskip, "skip_times", lambda mal, ep, duration, cache=None: [aniskip.Segment("intro", 10.0, 100.0)])
+    win.ctx.set_pref("skip_intro", True)
+    mpv = start_playing(win, LANTERN, "The Lantern Keeper", "4")
+    mpv.set_prop("time-pos", 1.0)                          # no duration reported at all
+    assert pump(lambda: win.playback.session.now.skips)
+    mpv.set_prop("time-pos", 12.0)
+    assert pump(lambda: mpv.named("seek"))
+    assert mpv.named("seek")[0][1:] == ["100.00", "absolute"]
+
+
 def test_no_skipping_when_turned_off(win, monkeypatch):
     monkeypatch.setattr(win.ctx.catalog, "mal_id", lambda aid, title: pytest.fail("no lookup when off"))
     win.ctx.set_pref("skip_intro", False)
@@ -270,6 +283,12 @@ def test_two_new_episodes_and_scope(followed):
     assert [(n.show.anime_id, n.count) for n in fresh] == [("dandadan-2", 2)]
     from ui.alerts import describe
     assert describe(fresh[0]) == "2 new · up to EP 5"
+
+
+def test_set_latest_for_unsaved_show_is_skipped(tmp_path):
+    store = Store(tmp_path / "t.db")
+    assert store.set_latest("not-saved-1", "3", seen=True) is False
+    assert store.watched_latest("not-saved-1") is None
 
 
 def test_expected_episode():
