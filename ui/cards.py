@@ -169,7 +169,8 @@ class CardDelegate(QStyledItemDelegate):
         w = p.fontMetrics().horizontalAdvance(text) + 14
         pill = QRectF(poster.left() + 8, poster.top() + 8, w, 20)
         p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(QColor(10, 10, 15, 190))
+        # "NEW…" badges use the accent color so new episodes stand out
+        p.setBrush(QColor(theme.ACCENT) if text.startswith("NEW") else QColor(10, 10, 15, 190))
         p.drawRoundedRect(pill, 10, 10)
         p.setPen(QColor("#FFFFFF"))
         p.drawText(pill, Qt.AlignmentFlag.AlignCenter, text)

@@ -24,6 +24,7 @@ TTL_TRENDING = 6 * 3600
 TTL_SEASON = 12 * 3600
 TTL_SEARCH = 7 * 24 * 3600
 TTL_MEDIA = 24 * 3600
+TTL_AIRING = 30 * 60
 MAX_RETRY_WAIT = 60.0
 
 _FIELDS = """
@@ -57,6 +58,13 @@ Q_SEARCH = _FIELDS + """
 query ($search: String, $perPage: Int) {
   Page(page: 1, perPage: $perPage) {
     media(type: ANIME, search: $search, isAdult: false) { ...f }
+  }
+}"""
+
+Q_AIRING = _FIELDS + """
+query ($ids: [Int], $perPage: Int) {
+  Page(page: 1, perPage: $perPage) {
+    media(id_in: $ids, type: ANIME) { ...f }
   }
 }"""
 
@@ -204,6 +212,18 @@ class AniListClient:
     def media(self, anilist_id: int) -> Media | None:
         data = self._query(Q_MEDIA, {"id": anilist_id}, TTL_MEDIA, allow_not_found=True)
         return Media.from_json(data["Media"]) if data and data.get("Media") else None
+
+    def airing(self, anilist_ids: list[int]) -> dict[int, Media]:
+        """Fresh status and next-episode info for several shows (cached briefly)."""
+        ids = sorted({int(i) for i in anilist_ids if i})
+        found: dict[int, Media] = {}
+        for start in range(0, len(ids), 50):
+            chunk = ids[start:start + 50]
+            data = self._query(Q_AIRING, {"ids": chunk, "perPage": len(chunk)}, TTL_AIRING)
+            for m in data["Page"]["media"]:
+                media = Media.from_json(m)
+                found[media.anilist_id] = media
+        return found
 
     # -- transport -------------------------------------------------------------------
 

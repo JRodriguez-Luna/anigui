@@ -18,6 +18,7 @@ from typing import Callable
 
 from PySide6.QtCore import QObject, QTimer, Signal
 
+from core import aniskip
 from core.ani_cli import StreamInfo
 from core.catalog import CatalogError
 from core.mpv_ipc import MpvIpc
@@ -86,7 +87,6 @@ class StreamResolver(QObject):
             self.ctx.catalog.play_request, job.anime_id, job.episode, title=job.title,
             dub=self.ctx.pref("dub", False) if job.dub is None else job.dub,
             quality=str(self.ctx.pref("quality", "best")),
-            skip_intro=self.ctx.pref("skip_intro", False),
             on_done=lambda req, j=job: self._resolve(j, req),
             on_error=lambda msg, j=job: self._fail(j, msg),
         )
@@ -142,6 +142,8 @@ class _Now:
     duration: float | None = None
     last_save: float = 0.0
     pending_tracks: list[tuple[str, str]] = field(default_factory=list)
+    skips: list[aniskip.Segment] | None = None   # None until looked up
+    skipped: set[str] = field(default_factory=set)
 
 
 class Session(QObject):
@@ -238,11 +240,14 @@ class Session(QObject):
         n = self.now
         if name == "time-pos" and isinstance(value, (int, float)) and not self.loading:
             n.position = float(value)
+            if self._maybe_skip(n.position):
+                return
             if time.monotonic() - n.last_save >= SAVE_EVERY_S:
                 self.save()
             self._maybe_prefetch()
         elif name == "duration" and isinstance(value, (int, float)) and value > 0 and not self.loading:
             n.duration = float(value)
+            self._lookup_skips()
         elif name == "pause" and value is True:
             self.save()
 
@@ -265,6 +270,44 @@ class Session(QObject):
                 self.save()
         elif name == "shutdown":
             self._on_closed()
+
+    # -- skipping (AniSkip times, applied through the control socket) -------------------
+
+    SKIP_PREFS = {"intro": "skip_intro", "ending": "skip_ending", "recap": "skip_recap"}
+    SKIP_TEXT = {"intro": "Skipped intro", "ending": "Skipped ending", "recap": "Skipped recap"}
+
+    def _skip_kinds(self) -> set[str]:
+        return {kind for kind, key in self.SKIP_PREFS.items() if self.ctx.pref(key)}
+
+    def _lookup_skips(self) -> None:
+        n = self.now
+        if n.skips is not None or not self._skip_kinds():
+            return
+        n.skips = []  # looking it up
+
+        def find(aid=n.anime_id, title=n.title, ep=n.episode, duration=n.duration):
+            mal = self.ctx.catalog.mal_id(aid, title)
+            return aniskip.skip_times(mal, ep, duration, cache=self.ctx.store) if mal else []
+
+        def done(segments, aid=n.anime_id, ep=n.episode):
+            if (self.now.anime_id, self.now.episode) == (aid, ep):
+                self.now.skips = segments
+
+        self.ctx.runner.submit(find, on_done=done)
+
+    def _maybe_skip(self, position: float) -> bool:
+        n = self.now
+        if not n.skips:
+            return False
+        kinds = self._skip_kinds()
+        for seg in n.skips:
+            if seg.kind in kinds and seg.kind not in n.skipped and seg.contains(position):
+                n.skipped.add(seg.kind)  # once per episode, so seeking back into it is allowed
+                target = seg.end if not n.duration else min(seg.end, n.duration)
+                self.ipc.command("seek", f"{target:.2f}", "absolute")
+                self.ipc.command("show-text", self.SKIP_TEXT[seg.kind], 2000)
+                return True
+        return False
 
     # -- auto-next ----------------------------------------------------------------------
 
@@ -453,7 +496,7 @@ class PlaybackController(QObject):
     def _untracked(self, kind: str) -> None:
         if kind == "iina":
             self.notice.emit("Playing without progress tracking: IINA didn't open mpv's control channel. "
-                             "Quit IINA and try again, or choose mpv under Playback.", True)
+                             "Quit IINA and try again, or choose mpv in Settings → Playback.", True)
         else:
             self.notice.emit("Playing without progress tracking: couldn't connect to the player.", True)
 

@@ -136,6 +136,27 @@ QScrollBar::add-line, QScrollBar::sub-line {{ width: 0; height: 0; }}
 QScrollBar::add-page, QScrollBar::sub-page {{ background: transparent; }}
 QListView {{ background: transparent; border: none; }}
 
+/* Settings */
+#SettingsNav {{
+    background: {SIDEBAR}; border: none; border-right: 1px solid {BORDER}; padding: 18px 10px;
+    font-size: 14px; font-weight: 600;
+}}
+#SettingsNav::item {{ color: {MUTED}; padding: 9px 12px; border-radius: {RADIUS}px; margin-bottom: 2px; }}
+#SettingsNav::item:hover {{ background: {SURFACE}; color: {TEXT}; }}
+#SettingsNav::item:selected {{ background: {SURFACE_2}; color: {TEXT}; }}
+#SettingsPage, #SettingsScroll {{ background: {BG}; }}
+#SettingsGroup {{ background: {SURFACE}; border: 1px solid {BORDER}; border-radius: 12px; }}
+#SettingsDivider {{ color: {BORDER}; background: {BORDER}; max-height: 1px; border: none; margin: 0 16px; }}
+#SettingTitle {{ font-size: 14px; font-weight: 700; }}
+#SettingsNote {{ color: {FAINT}; font-size: 12px; padding: 0 4px; }}
+
+/* What's New */
+#ReleaseBox {{ background: {SURFACE}; border: 1px solid {BORDER}; border-radius: 12px; }}
+#ReleaseBox[highlight="true"] {{ border: 1px solid #6B3420; }}
+#ReleaseVersion {{ font-size: 16px; font-weight: 800; }}
+#ReleaseTag {{ background: {ACCENT}; color: white; border-radius: 8px; padding: 1px 8px; font-size: 11px; font-weight: 800; }}
+#ReleaseItem {{ color: #C9C9D6; font-size: 13px; }}
+
 /* Setup assistant and message boxes */
 QDialog, QMessageBox {{ background: {BG}; }}
 #DialogTitle {{ font-size: 24px; font-weight: 800; }}

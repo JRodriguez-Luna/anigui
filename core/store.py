@@ -47,6 +47,13 @@ CREATE TABLE IF NOT EXISTS history_hidden (
     episode  TEXT NOT NULL,
     PRIMARY KEY (anime_id, episode)
 );
+CREATE TABLE IF NOT EXISTS episode_watch (
+    anime_id   TEXT PRIMARY KEY REFERENCES shows(anime_id) ON DELETE CASCADE,
+    latest     TEXT NOT NULL,     -- newest episode hianime lists
+    seen       TEXT NOT NULL,     -- newest episode the user has seen listed (opened the show)
+    notified   TEXT NOT NULL,     -- newest episode a notification went out for
+    checked_at REAL NOT NULL
+);
 CREATE TABLE IF NOT EXISTS cache (
     key        TEXT PRIMARY KEY,
     value      TEXT NOT NULL,
@@ -84,6 +91,24 @@ class Progress:
         if not self.duration:
             return 0.0
         return max(0.0, min(1.0, self.position / self.duration))
+
+
+@dataclass(frozen=True)
+class NewEpisodes:
+    show: Show
+    latest: str      # newest episode out
+    seen: str        # newest one the user already knew about
+
+    @property
+    def count(self) -> int:
+        return max(1, int(episode_key(self.latest) - episode_key(self.seen)))
+
+
+def episode_key(number: str | None) -> float:
+    try:
+        return float(number) if number is not None else -1.0
+    except ValueError:
+        return -1.0
 
 
 @dataclass(frozen=True)
@@ -126,8 +151,10 @@ class Store:
         version = conn.execute("PRAGMA user_version").fetchone()[0]
         if version > SCHEMA_VERSION:
             raise RuntimeError(f"Database {self.path} is from a newer AniGUI (schema {version})")
+        # Every table is CREATE IF NOT EXISTS, so running the schema also adds tables
+        # that are new since this database was made.
+        conn.executescript(_SCHEMA)
         if version < SCHEMA_VERSION:
-            conn.executescript(_SCHEMA)  # every table is IF NOT EXISTS, so this also upgrades v1
             conn.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
 
     # -- shows ---------------------------------------------------------------------
@@ -188,6 +215,7 @@ class Store:
                    FROM progress WHERE anime_id = ?""",
                 (new_id, old_id),
             )
+            c.execute("UPDATE OR IGNORE episode_watch SET anime_id = ? WHERE anime_id = ?", (new_id, old_id))
             c.execute("DELETE FROM shows WHERE anime_id = ?", (old_id,))  # cascades old progress
 
     def find_by_anilist(self, anilist_id: int) -> Show | None:
@@ -293,6 +321,56 @@ class Store:
             c.execute("DELETE FROM progress")
             c.executemany("INSERT OR IGNORE INTO history_hidden VALUES (?, ?)", hidden)
         return shows
+
+    # -- new episodes -----------------------------------------------------------------
+
+    def watched_latest(self, anime_id: str) -> str | None:
+        row = self._conn().execute("SELECT latest FROM episode_watch WHERE anime_id = ?", (anime_id,)).fetchone()
+        return row["latest"] if row else None
+
+    def set_latest(self, anime_id: str, latest: str, *, seen: bool = False) -> bool:
+        """Record the newest episode out. The first time, nothing counts as new.
+
+        Returns True if this is a newer episode than before.
+        """
+        now = time.time()
+        with self._tx() as c:
+            row = c.execute("SELECT latest, seen FROM episode_watch WHERE anime_id = ?", (anime_id,)).fetchone()
+            if row is None:
+                c.execute("INSERT INTO episode_watch VALUES (?, ?, ?, ?, ?)", (anime_id, latest, latest, latest, now))
+                return False
+            newer = episode_key(latest) > episode_key(row["latest"])
+            new_latest = latest if newer else row["latest"]
+            c.execute("UPDATE episode_watch SET latest = ?, seen = ?, checked_at = ? WHERE anime_id = ?",
+                      (new_latest, new_latest if seen else row["seen"], now, anime_id))
+            return newer
+
+    def mark_episodes_seen(self, anime_id: str) -> bool:
+        """The user opened the show: its new episodes aren't new anymore. True if anything changed."""
+        with self._tx() as c:
+            cur = c.execute("UPDATE episode_watch SET seen = latest, notified = latest "
+                            "WHERE anime_id = ? AND seen != latest", (anime_id,))
+            return cur.rowcount > 0
+
+    def new_episodes(self) -> list[NewEpisodes]:
+        rows = self._conn().execute(
+            """SELECT w.latest AS w_latest, w.seen AS w_seen, w.checked_at AS w_checked, s.*
+               FROM episode_watch w JOIN shows s ON s.anime_id = w.anime_id""").fetchall()
+        items = [NewEpisodes(_show(r), r["w_latest"], r["w_seen"]) for r in rows
+                 if episode_key(r["w_latest"]) > episode_key(r["w_seen"])]
+        return sorted(items, key=lambda i: i.show.title.lower())
+
+    def take_unnotified(self) -> list[NewEpisodes]:
+        """New episodes nobody was notified about yet; marks them notified."""
+        with self._tx() as c:
+            rows = c.execute(
+                """SELECT w.latest AS w_latest, w.seen AS w_seen, w.notified AS w_notified, s.*
+                   FROM episode_watch w JOIN shows s ON s.anime_id = w.anime_id""").fetchall()
+            fresh = [r for r in rows if episode_key(r["w_latest"]) > episode_key(r["w_notified"])
+                     and episode_key(r["w_latest"]) > episode_key(r["w_seen"])]
+            for r in fresh:
+                c.execute("UPDATE episode_watch SET notified = latest WHERE anime_id = ?", (r["anime_id"],))
+        return [NewEpisodes(_show(r), r["w_latest"], r["w_seen"]) for r in fresh]
 
     # -- ani-cli history -----------------------------------------------------------
 

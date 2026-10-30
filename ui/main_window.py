@@ -3,24 +3,26 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, QTimer, QUrl
-from PySide6.QtGui import QDesktopServices, QKeySequence, QShortcut
+from PySide6.QtGui import QAction, QDesktopServices, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
-    QMessageBox, QButtonGroup, QCheckBox, QComboBox, QHBoxLayout, QLabel, QMainWindow, QPushButton, QStackedWidget,
+    QMessageBox, QButtonGroup, QHBoxLayout, QLabel, QMainWindow, QPushButton, QStackedWidget,
     QVBoxLayout, QWidget,
 )
 
 from core.anilist import Media
 from core import __version__
 from core import setup, updates
-from core.env import which
 
+from .alerts import AlertsController, describe
 from .context import AppContext
 from .detail_page import DetailPage
 from .home_page import HomePage
 from .library_page import LibraryPage
 from .playback import PlaybackController
 from .search_page import SearchPage
+from .settings_dialog import SettingsDialog
 from .setup_dialog import SetupDialog
+from .whats_new import WhatsNewDialog
 from .widgets import Toast
 
 
@@ -34,6 +36,7 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(980, 640)
 
         self.playback = PlaybackController(ctx, self)
+        self.alerts = AlertsController(ctx, self)
         self.home = HomePage(ctx)
         self.search = SearchPage(ctx)
         self.library = LibraryPage(ctx)
@@ -64,11 +67,11 @@ class MainWindow(QMainWindow):
             self.nav_buttons[page] = btn
             side.addWidget(btn)
         side.addStretch(1)
-        side.addWidget(self._playback_settings())
-        self.setup_btn = QPushButton("⚙   Setup && connection", objectName="NavButton", cursor=Qt.CursorShape.PointingHandCursor)
-        self.setup_btn.clicked.connect(self.open_setup)
-        side.addSpacing(6)
-        side.addWidget(self.setup_btn)
+        self.settings_btn = QPushButton("⚙   Settings", objectName="NavButton", cursor=Qt.CursorShape.PointingHandCursor)
+        self.settings_btn.setToolTip(QKeySequence(QKeySequence.StandardKey.Preferences).toString(
+            QKeySequence.SequenceFormat.NativeText) or "Settings")
+        self.settings_btn.clicked.connect(lambda: self.open_settings())
+        side.addWidget(self.settings_btn)
         side.addSpacing(10)
         self.footer = QLabel("", objectName="SidebarFooter", wordWrap=True)
         side.addWidget(self.footer)
@@ -111,7 +114,15 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence.StandardKey.Back, self, activated=self.back)
         QShortcut(QKeySequence("Esc"), self, activated=lambda: self.stack.currentWidget() is self.detail and self.back())
 
+        self.alerts.changed.connect(self.home.refresh_local)
+        self.alerts.found.connect(self._on_new_episodes)
+        self.alerts.notifier.clicked.connect(self._show_from_notification)
+        ctx.events.changed.connect(lambda key, _v: key == "alerts" and self.home.refresh_local())
+
         self.nav_buttons[self.home].setChecked(True)
+        self._build_menus()
+        self._settings: SettingsDialog | None = None
+        self._ani_cli_version: str | None = None
 
     # -- navigation ---------------------------------------------------------------------
 
@@ -150,38 +161,77 @@ class MainWindow(QMainWindow):
         if self.stack.currentWidget() is self.library:
             self.library.refresh()
 
-    # -- settings -----------------------------------------------------------------------
+    # -- menus and settings -------------------------------------------------------------
 
-    def _playback_settings(self) -> QWidget:
-        box = QWidget()
-        col = QVBoxLayout(box)
-        col.setContentsMargins(4, 0, 4, 0)
-        col.setSpacing(8)
-        col.addWidget(QLabel("PLAYBACK", objectName="SidebarHeading"))
+    def _build_menus(self) -> None:
+        """macOS moves Settings, What's New and Check for Updates into the AniGUI menu."""
+        bar = self.menuBar()
+        app_menu = bar.addMenu("AniGUI")
+        whats_new = QAction("What's New", self, menuRole=QAction.MenuRole.ApplicationSpecificRole)
+        whats_new.triggered.connect(lambda: self.show_whats_new())
+        updates_action = QAction("Check for Updates…", self, menuRole=QAction.MenuRole.ApplicationSpecificRole)
+        updates_action.triggered.connect(self.check_updates_now)
+        settings = QAction("Settings…", self, menuRole=QAction.MenuRole.PreferencesRole,
+                           shortcut=QKeySequence(QKeySequence.StandardKey.Preferences))
+        if settings.shortcut().isEmpty():
+            settings.setShortcut(QKeySequence("Ctrl+,"))
+        settings.triggered.connect(lambda: self.open_settings())
+        for action in (whats_new, updates_action, settings):
+            app_menu.addAction(action)
+        self.settings_action = settings
 
-        self.player_choice = QComboBox(cursor=Qt.CursorShape.PointingHandCursor)
-        for label, value in (("Auto (IINA, then mpv)", "auto"), ("IINA", "iina"), ("mpv", "mpv")):
-            self.player_choice.addItem(label, value)
-        self.player_choice.setCurrentIndex(max(0, self.player_choice.findData(str(self.ctx.pref("player", "auto")))))
-        self.player_choice.currentIndexChanged.connect(
-            lambda _i: self.ctx.set_pref("player", self.player_choice.currentData()))
-        self.player_choice.setToolTip("Which player opens episodes")
-        col.addWidget(self.player_choice)
+        history = bar.addMenu("History")
+        clear = history.addAction("Clear Watch History…")
+        clear.triggered.connect(self.home.confirm_clear_history)
 
-        self.autoplay = QCheckBox("Auto-play next episode", cursor=Qt.CursorShape.PointingHandCursor)
-        self.autoplay.setChecked(self.ctx.pref("autoplay", True))
-        self.autoplay.toggled.connect(lambda on: self.ctx.set_pref("autoplay", on))
-        col.addWidget(self.autoplay)
+    def open_settings(self, section: str | None = None) -> SettingsDialog:
+        if self._settings is None:
+            dlg = SettingsDialog(self.ctx, self)
+            dlg.clearHistoryRequested.connect(self.home.confirm_clear_history)
+            dlg.setupRequested.connect(self.open_setup)
+            dlg.checkUpdatesRequested.connect(self.check_updates_now)
+            dlg.whatsNewRequested.connect(lambda: self.show_whats_new())
+            dlg.checkEpisodesRequested.connect(lambda: self.alerts.check_now(manual=True))
+            self.alerts.status.connect(dlg.set_episodes_status)
+            self._settings = dlg
+        self._settings.set_versions(self._ani_cli_version)
+        if section:
+            self._settings.show_section(section)
+        self._settings.show()
+        self._settings.raise_()
+        self._settings.activateWindow()
+        return self._settings
 
-        self.skip_intro = QCheckBox("Skip intros", cursor=Qt.CursorShape.PointingHandCursor)
-        has_skip = bool(which("ani-skip"))
-        self.skip_intro.setEnabled(has_skip)
-        self.skip_intro.setChecked(has_skip and self.ctx.pref("skip_intro", False))
-        self.skip_intro.setToolTip("Uses ani-skip; works with mpv when a player window first opens"
-                                   if has_skip else "Install ani-skip to enable: brew install ani-skip")
-        self.skip_intro.toggled.connect(lambda on: self.ctx.set_pref("skip_intro", on))
-        col.addWidget(self.skip_intro)
-        return box
+    def show_whats_new(self, since: str | None = None) -> WhatsNewDialog:
+        dialog = WhatsNewDialog(self, since)
+        dialog.open()
+        self._whats_new = dialog
+        return dialog
+
+    def _maybe_show_whats_new(self) -> WhatsNewDialog | None:
+        """Once per new version. Fresh installs get Setup instead; the version is just recorded."""
+        last = str(self.ctx.pref("last_version", "") or "")
+        self.ctx.set_pref("last_version", __version__)
+        if last == __version__:
+            return None
+        if not last and not self.ctx.pref("setup_done", False):
+            return None  # first launch ever
+        # No record but Setup was done: updated from 1.1.x, which didn't record versions
+        return self.show_whats_new(last or "1.1.0")
+
+    # -- new episodes ---------------------------------------------------------------------
+
+    def _on_new_episodes(self, items) -> None:
+        if len(items) == 1:
+            self.toast.show_message(f"New: {items[0].show.title} · {describe(items[0])}")
+        else:
+            self.toast.show_message(f"New episodes for {len(items)} shows. They're at the top of Home.")
+
+    def _show_from_notification(self) -> None:
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+        self.go(self.home)
 
     def closeEvent(self, event) -> None:
         self.playback.shutdown()  # save the current position before quitting
@@ -192,13 +242,20 @@ class MainWindow(QMainWindow):
     def start(self) -> None:
         self.home.load_remote()
         self.home.refresh_local()
-        self.ctx.runner.submit(self.ctx.store.import_ani_cli_history,
-                               on_done=lambda n: n and self.home.refresh_local())
+        self.alerts.start()
+        if self.ctx.pref("import_history"):
+            self.ctx.runner.submit(self.ctx.store.import_ani_cli_history,
+                                   on_done=lambda n: n and self.home.refresh_local())
         self.ctx.runner.submit(setup.current_status, on_done=self._on_status)
 
+    def _set_versions(self, ani_cli: str | None) -> None:
+        self._ani_cli_version = ani_cli
+        self.footer.setText(f"AniGUI {__version__}" + (f"  ·  ani-cli {ani_cli}" if ani_cli else ""))
+        if self._settings:
+            self._settings.set_versions(ani_cli)
+
     def _on_status(self, status: setup.SetupStatus) -> None:
-        version = status.ani_cli_version
-        self.footer.setText(f"AniGUI {__version__}" + (f"  ·  ani-cli {version}" if version else ""))
+        self._set_versions(status.ani_cli_version)
         if not status.ready:
             self.banner.setText("AniGUI needs a quick setup before it can play episodes. "
                                 "<a href='#setup' style='color:#FF8559'>Open Setup</a>")
@@ -206,7 +263,11 @@ class MainWindow(QMainWindow):
         else:
             self.banner.hide()
         if not status.ready or not self.ctx.pref("setup_done", False):
+            if not self.ctx.pref("setup_done", False):
+                self.ctx.set_pref("last_version", __version__)  # first launch: nothing is "new"
             QTimer.singleShot(400, self.open_setup)  # first launch, or something's missing
+        elif (whats_new := self._maybe_show_whats_new()) is not None:
+            whats_new.finished.connect(lambda _r: self._check_updates(status))  # after the user reads it
         else:
             self._check_updates(status)
 
@@ -217,8 +278,7 @@ class MainWindow(QMainWindow):
         self._setup_dialog = dialog
 
     def _after_setup(self, status: setup.SetupStatus) -> None:
-        version = status.ani_cli_version
-        self.footer.setText(f"AniGUI {__version__}" + (f"  ·  ani-cli {version}" if version else ""))
+        self._set_versions(status.ani_cli_version)
         self.banner.setVisible(not status.ready)
         if status.ready:
             self._check_updates(status)
@@ -226,10 +286,35 @@ class MainWindow(QMainWindow):
     # -- updates ------------------------------------------------------------------------
 
     def _check_updates(self, status: setup.SetupStatus) -> None:
+        if not self.ctx.pref("check_updates"):
+            return
         if status.ani_cli_managed:
             self.ctx.runner.submit(updates.check_ani_cli, status.ani_cli_version, self.ctx.store,
                                    on_done=self._offer_ani_cli_update)
         self.ctx.runner.submit(updates.check_anigui, self.ctx.store, on_done=self._offer_app_update)
+
+    def check_updates_now(self) -> None:
+        """Menu / Settings: check both right away, and say so when nothing's new."""
+        self.toast.show_message("Checking for updates…")
+
+        def run():
+            status = setup.current_status()
+            ani = (updates.check_ani_cli(status.ani_cli_version, self.ctx.store, force=True)
+                   if status.ani_cli_managed and status.ani_cli_version else None)
+            return ani, updates.check_anigui(self.ctx.store, force=True)
+
+        def done(result):
+            ani, app = result
+            if app:
+                self._offer_app_update(app, manual=True)
+            if ani:
+                self._offer_ani_cli_update(ani, manual=True)
+            if not (ani or app):
+                self.toast.show_message(f"You're up to date (AniGUI {__version__}"
+                                        + (f", ani-cli {self._ani_cli_version})" if self._ani_cli_version else ")"))
+
+        self.ctx.runner.submit(run, on_done=done,
+                               on_error=lambda msg: self.toast.show_message(f"Couldn't check for updates: {msg}", error=True))
 
     def _ask(self, title: str, text: str, primary: str) -> str:
         box = QMessageBox(self)
@@ -244,8 +329,8 @@ class MainWindow(QMainWindow):
         clicked = box.clickedButton()
         return "yes" if clicked is yes else ("skip" if clicked is skip else "later")
 
-    def _offer_ani_cli_update(self, update) -> None:
-        if not update or self.ctx.pref("skip_ani_cli", "") == update.latest:
+    def _offer_ani_cli_update(self, update, manual: bool = False) -> None:
+        if not update or (not manual and self.ctx.pref("skip_ani_cli", "") == update.latest):
             return
         note = "" if update.compatible else (
             "<br><br>This is a bigger update than AniGUI has been tested with; "
@@ -258,11 +343,11 @@ class MainWindow(QMainWindow):
         elif answer == "yes":
             self.ctx.runner.submit(setup.install_ani_cli, update.script,
                                    on_done=lambda v: (self.toast.show_message(f"ani-cli updated to {v}"),
-                                                      self.footer.setText(f"AniGUI {__version__}  ·  ani-cli {v}")),
+                                                      self._set_versions(v)),
                                    on_error=lambda msg: self.toast.show_message(f"ani-cli update failed: {msg}", error=True))
 
-    def _offer_app_update(self, update) -> None:
-        if not update or self.ctx.pref("skip_anigui", "") == update.latest:
+    def _offer_app_update(self, update, manual: bool = False) -> None:
+        if not update or (not manual and self.ctx.pref("skip_anigui", "") == update.latest):
             return
         answer = self._ask(f"AniGUI {update.latest} is available",
                            f"You have {update.current}. Download the new version from GitHub, then replace "

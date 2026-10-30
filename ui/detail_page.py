@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 
 from core.anilist import Media
 from core.hianime import Episode
+from core.store import episode_key
 
 from . import theme
 from .context import AppContext
@@ -248,6 +249,7 @@ class DetailPage(QScrollArea):
         self.quality.setCurrentIndex(max(0, self.quality.findData(saved)))
         self.quality.currentIndexChanged.connect(lambda _i: ctx.set_pref("quality", self.quality.currentData()))
         self.quality.setToolTip("Stream quality (falls back to best if unavailable)")
+        ctx.events.changed.connect(self._pref_changed)
 
         actions = QHBoxLayout()
         actions.setSpacing(10)
@@ -411,6 +413,13 @@ class DetailPage(QScrollArea):
             self.libraryChanged.emit()  # Home's Continue Watching should show the new id
         self.episodes = episodes
         self._set_status("")
+        if episodes:  # opening a show clears its "new episodes" badge
+            had_new = any(n.show.anime_id == anime_id for n in self.ctx.store.new_episodes())
+            newest = max(episodes, key=lambda e: episode_key(e.number)).number
+            self.ctx.store.set_latest(anime_id, newest, seen=True)
+            self.ctx.store.mark_episodes_seen(anime_id)
+            if had_new:
+                self.libraryChanged.emit()
         if not episodes:
             self._show_message("No episodes listed yet.")
             return
@@ -524,6 +533,17 @@ class DetailPage(QScrollArea):
             self.ctx.store.mark_watched(self.anime_id, episode, action == "watched")
         self._refresh_episode_states()
         self.libraryChanged.emit()
+
+    def _pref_changed(self, key: str, _value) -> None:
+        """Keep the Sub/Dub and quality controls in step with Settings."""
+        if key == "dub":
+            btn = self.dub_btn if self.ctx.pref("dub") else self.sub_btn
+            if not btn.isChecked():
+                btn.setChecked(True)
+        elif key == "quality":
+            i = max(0, self.quality.findData(str(self.ctx.pref("quality"))))
+            if i != self.quality.currentIndex():
+                self.quality.setCurrentIndex(i)
 
     def refresh_if_showing(self) -> None:
         self._refresh_episode_states()

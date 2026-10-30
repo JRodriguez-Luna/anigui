@@ -236,6 +236,14 @@ class Catalog:
             self.store.cache_delete(key)
             raise CatalogError(f"ani-cli picked “{stream_title}” instead of {expected}")
 
+    def mal_id(self, anime_id: str, title: str) -> int | None:
+        """MyAnimeList id (for AniSkip) via the show's AniList match."""
+        try:
+            media = self.enrich(anime_id, title)
+        except Exception:  # noqa: BLE001 - AniList down: just no skip times
+            return None
+        return media.mal_id if media else None
+
     def cover_for(self, anime_id: str, title: str) -> str | None:
         """Poster URL for a saved show, looking it up on AniList (and saving it) if missing."""
         show = self.store.get_show(anime_id)

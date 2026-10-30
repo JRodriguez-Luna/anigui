@@ -183,8 +183,39 @@ def test_install_iina(tmp_path, monkeypatch):
 
 
 def test_install_iina_without_dmg_asset():
-    with pytest.raises(setup.SetupError, match="no .dmg"):
-        setup.install_iina(fetch=lambda url: json.dumps({"assets": []}).encode(), run=None)
+    def fetch(url):
+        if url == setup.IINA_RELEASES:
+            return json.dumps({"assets": []}).encode()
+        if url == setup.IINA_RELEASES_WEB:
+            return b'<a href="/iina/iina/releases/tag/v1.4.0">v1.4.0</a>'
+        return b'<a href="/iina/iina/archive/refs/tags/v1.4.0.zip">Source code</a>'
+    with pytest.raises(setup.SetupError, match="no .dmg.*iina.io"):
+        setup.install_iina(fetch=fetch, run=None)
+
+
+def test_latest_iina_falls_back_to_web_pages_when_rate_limited():
+    fetched = []
+
+    def fetch(url):
+        fetched.append(url)
+        if url == setup.IINA_RELEASES:
+            raise setup.SetupError("Download failed (HTTP 403): " + url)
+        if url == setup.IINA_RELEASES_WEB:
+            return (b'<include-fragment src="https://github.com/iina/iina/releases/expanded_assets/v1.4.0">'
+                    b'</include-fragment>')
+        assert url == setup.IINA_ASSETS_WEB.format(tag="v1.4.0")
+        return (b'<a href="/iina/iina/releases/download/v1.4.0/IINA.v1.4.0.dmg" rel="nofollow">IINA.v1.4.0.dmg</a>'
+                b'<a href="/iina/iina/archive/refs/tags/v1.4.0.zip">Source code</a>')
+
+    assert setup.latest_iina(fetch) == ("v1.4.0", "https://github.com/iina/iina/releases/download/v1.4.0/IINA.v1.4.0.dmg")
+    assert fetched == [setup.IINA_RELEASES, setup.IINA_RELEASES_WEB, setup.IINA_ASSETS_WEB.format(tag="v1.4.0")]
+
+
+def test_latest_iina_both_routes_down_points_to_website():
+    def fetch(url):
+        raise setup.SetupError(f"Couldn't download {url}: offline.")
+    with pytest.raises(setup.SetupError, match="iina.io"):
+        setup.latest_iina(fetch)
 
 
 # -- Updates -------------------------------------------------------------------------------

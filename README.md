@@ -34,6 +34,9 @@
 - **One click to play** in [IINA](https://iina.io) or [mpv](https://mpv.io).
 - **Real watch tracking** over mpv's IPC socket: your position saves as you watch, episodes count as watched past 90%, and Resume picks up exactly where you stopped.
 - **Auto-play next:** the next episode is fetched in the background and starts in the same player window after a short countdown.
+- **Skips intros, endings and recaps** using [AniSkip](https://aniskip.com)'s community timings, in IINA or mpv, with nothing extra to install.
+- **New episode alerts:** when a show in My List gets a new episode, it shows up at the top of Home with a NEW badge, plus a Mac notification.
+- **Your history, your call:** clear all of it, or remove one show from Continue Watching with a right-click.
 - **Picks up your terminal history:** shows you watched with `ani-cli` appear in Continue Watching, and outdated show IDs are repaired automatically.
 - **Sets itself up:** on first launch AniGUI installs ani-cli and IINA for you (no Homebrew or Terminal needed), checks that the streaming site is reachable, and helps you pick a VPN if your network blocks it.
 - **Keeps itself current:** tells you when a new ani-cli or AniGUI version is out, and updates ani-cli with one click.
@@ -62,7 +65,7 @@ That's it. On first launch, AniGUI's **Setup assistant** installs everything els
 | A video player | Uses IINA or mpv if you have one; otherwise installs [IINA](https://iina.io) from its official GitHub release. |
 | A working connection | Checks that hianime is reachable. Some internet providers block it; if yours does, AniGUI suggests [Cloudflare WARP](https://one.one.one.one/) (free) or your own VPN. |
 
-Optional: [ani-skip](https://github.com/synacktraa/ani-skip) enables "Skip intros" (mpv). If searches report "Blocked by Cloudflare", install `curl-impersonate` (`brew install curl-impersonate`).
+If searches report "Blocked by Cloudflare", install `curl-impersonate` (`brew install curl-impersonate`).
 
 > **Want ani-cli in Terminal too?** Use ani-cli's official Homebrew tap. A plain `brew install ani-cli` gets an older release that AniGUI doesn't support.
 > ```sh
@@ -83,7 +86,7 @@ Optional: [ani-skip](https://github.com/synacktraa/ani-skip) enables "Skip intro
    ```sh
    xattr -dr com.apple.quarantine /Applications/AniGUI.app
    ```
-3. **Setup assistant:** click **Set up everything**. AniGUI installs ani-cli and IINA (about 30 MB) and tests the connection. If hianime is blocked on your network, pick **Cloudflare WARP**, **your own VPN**, or **continue without one**, then press **Test again**. You can reopen it any time from **⚙ Setup & connection** in the sidebar.
+3. **Setup assistant:** click **Set up everything**. AniGUI installs ani-cli and IINA (about 30 MB) and tests the connection. If hianime is blocked on your network, pick **Cloudflare WARP**, **your own VPN**, or **continue without one**, then press **Test again**. You can reopen it any time from **Settings → Connection**.
 
    <img src="docs/screenshots/setup.png" width="520" alt="AniGUI Setup assistant">
 
@@ -127,10 +130,12 @@ Or double-click **`AniGUI.command`**, which does the same and keeps the setup fo
 |---|---|
 | **Play** | Click any episode, or the big Play / Resume button on a show page. |
 | **Mark episodes** | Right-click an episode: mark watched, unwatched, or everything up to it. |
-| **Playback settings** | Bottom of the sidebar: player (Auto, IINA or mpv), auto-play next, skip intros. |
-| **Sub / Dub / quality** | On every show page; remembered between launches. |
+| **Settings** (<kbd>⌘,</kbd>) | Player, sub or dub, quality, auto-play, skipping, new-episode alerts, history, connection and updates. |
+| **Sub / Dub / quality** | Also on every show page; remembered between launches. |
+| **Clear history** | **Clear** next to Continue Watching, right-click a show there, or **History → Clear Watch History**. My List is kept. |
+| **What's New** | Opens once after each update; anytime from the **AniGUI** menu. |
 
-**Keyboard shortcuts:** <kbd>⌘1</kbd> Home · <kbd>⌘2</kbd> Search · <kbd>⌘3</kbd> My List · <kbd>⌘F</kbd> jump to search · <kbd>⌘[</kbd> or <kbd>Esc</kbd> back
+**Keyboard shortcuts:** <kbd>⌘,</kbd> Settings · <kbd>⌘1</kbd> Home · <kbd>⌘2</kbd> Search · <kbd>⌘3</kbd> My List · <kbd>⌘F</kbd> jump to search · <kbd>⌘[</kbd> or <kbd>Esc</kbd> back
 
 **Where your data lives**
 
@@ -165,7 +170,7 @@ flowchart LR
     UI <--> DB
 ```
 
-- **ani-cli stays in charge of streams.** It does the hard, fast-changing part: decrypting embeds and picking stream URLs. AniGUI runs it headless and sets `ANI_CLI_PLAYER` to a tiny shim script that ani-cli treats as mpv. Instead of playing, the shim records the exact arguments ani-cli would have passed (stream URL, Referer header, subtitles, audio track, ani-skip flags), and `--exit-after-play` ends ani-cli before its interactive menu.
+- **ani-cli stays in charge of streams.** It does the hard, fast-changing part: decrypting embeds and picking stream URLs. AniGUI runs it headless and sets `ANI_CLI_PLAYER` to a tiny shim script that ani-cli treats as mpv. Instead of playing, the shim records the exact arguments ani-cli would have passed (stream URL, Referer header, subtitles, audio track), and `--exit-after-play` ends ani-cli before its interactive menu.
 - **Search and episode lists are ported to Python** (`core/hianime.py`) so the UI stays fast. They use the same curl binary and TLS settings as ani-cli, so both get identical results, and the result order matches what `ani-cli -S <n>` selects.
 - **AniList supplies the visuals.** `core/catalog.py` links hianime titles and AniList entries with a season-aware title matcher ("Season 2" never matches Season 1), and manual links always win. Before playing, it looks up the show's current position in search results (cached for 15 minutes), then confirms the title ani-cli returns, so a shifted search order can't play the wrong show.
 - **Nothing blocks the UI.** Network and database work runs on a `QThreadPool` (`core/tasks.py`). Results return to the UI thread through signals, and "latest wins" groups drop stale results when you type or click quickly.
@@ -188,11 +193,15 @@ anigui/
 │   ├── player.py              launches IINA / mpv
 │   ├── setup.py               installs ani-cli + IINA, checks the connection
 │   ├── updates.py             once-a-day checks for new ani-cli / AniGUI versions
+│   ├── aniskip.py             intro / ending / recap times from AniSkip
+│   ├── alerts.py              new-episode checks (AniList airing + hianime)
+│   ├── changelog.py           release notes for the What's New window
 │   └── tasks.py               thread pool → UI-thread callbacks
 ├── ui/                        PySide6 interface
-│   ├── main_window.py         sidebar, navigation, settings, startup checks
+│   ├── main_window.py         sidebar, menus, navigation, startup checks
+│   ├── settings_dialog.py · whats_new.py · alerts.py
 │   ├── home_page.py · search_page.py · library_page.py · detail_page.py
-│   ├── playback.py            resolve → play → track → auto-next
+│   ├── playback.py            resolve → play → track → skip → auto-next
 │   ├── setup_dialog.py        the Setup assistant
 │   ├── cards.py · hero.py · widgets.py · images.py · theme.py
 ├── packaging/                 icon generator, PyInstaller spec
@@ -242,7 +251,7 @@ QT_QPA_PLATFORM=offscreen QT_SCALE_FACTOR=2 python tools/ui_preview.py docs/scre
 | A banner says AniGUI needs setup | Click **Open Setup** → **Set up everything**. |
 | ani-cli installed with `brew install ani-cli` doesn't work | That's an older release. Let AniGUI's Setup install its own copy, or use ani-cli's [official tap](#requirements). |
 | "Blocked by Cloudflare" | `brew install curl-impersonate`; AniGUI and ani-cli pick it up automatically. |
-| "Playing without progress tracking" | Quit IINA and play again (it only accepts tracking for windows AniGUI opens), or choose **mpv** under Playback. |
+| "Playing without progress tracking" | Quit IINA and play again (it only accepts tracking for windows AniGUI opens), or choose **mpv** in **Settings → Playback**. |
 | "Has no dub on hianime yet, so it's playing subbed" | That episode only has subtitles on hianime; AniGUI falls back to Sub automatically. |
 | "This show isn't on hianime yet" | The title differs too much between AniList and hianime; use Search with another title. |
 | Something else | Check `~/Library/Logs/AniGUI/anigui.log`, then open an issue with the log. |

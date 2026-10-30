@@ -128,7 +128,6 @@ def doctor() -> list[tuple[str, bool, str]]:
 
     player = find_player()
     rows.append(("player", bool(player), f"{player[0]} at {player[1]}" if player else "Open Setup in AniGUI to install IINA"))
-    rows.append(("ani-skip (optional)", bool(which("ani-skip")), which("ani-skip") or "not installed; skip-intro disabled"))
     return rows
 
 

@@ -6,7 +6,7 @@ from PySide6.QtCore import QPoint, Qt, QTimer, Signal
 from PySide6.QtWidgets import QMenu, QMessageBox, QScrollArea, QVBoxLayout, QWidget
 
 from core.anilist import current_season
-from core.store import ContinueItem, Show
+from core.store import ContinueItem, NewEpisodes, Show
 
 from .cards import Card, CardRow, media_card
 from .context import AppContext
@@ -27,8 +27,17 @@ def continue_card(item: ContinueItem) -> Card:
                 cover=item.show.poster, progress=progress, badge=f"EP {last.episode}", payload=item.show)
 
 
-def show_card(show: Show) -> Card:
-    return Card(key=f"show:{show.anime_id}", title=show.title, cover=show.poster, payload=show)
+def show_card(show: Show, new: NewEpisodes | None = None) -> Card:
+    return Card(key=f"show:{show.anime_id}", title=show.title, cover=show.poster, payload=show,
+                badge=f"NEW · EP {new.latest}" if new else None,
+                subtitle=("New episode" if new.count == 1 else f"{new.count} new episodes") if new else "")
+
+
+def new_card(item: NewEpisodes) -> Card:
+    from .alerts import describe
+
+    return Card(key=f"show:{item.show.anime_id}", title=item.show.title, subtitle=describe(item),
+                cover=item.show.poster, badge=f"NEW · EP {item.latest}", payload=item.show)
 
 
 class HomePage(QScrollArea):
@@ -50,6 +59,7 @@ class HomePage(QScrollArea):
         self.hero.playRequested.connect(self.playItem)
 
         season, year = current_season()
+        self.new_row = CardRow("New Episodes", ctx.images)
         self.continue_row = CardRow("Continue Watching", ctx.images)
         self.clear_btn = self.continue_row.add_action("Clear", "Clear your watch history")
         self.clear_btn.clicked.connect(self.confirm_clear_history)
@@ -57,7 +67,7 @@ class HomePage(QScrollArea):
         self.trending_row = CardRow("Trending Now", ctx.images)
         self.season_row = CardRow(f"{season.title()} {year}", ctx.images)
         self.library_row = CardRow("My List", ctx.images)
-        self.rows = [self.continue_row, self.trending_row, self.season_row, self.library_row]
+        self.rows = [self.new_row, self.continue_row, self.trending_row, self.season_row, self.library_row]
 
         rows = QVBoxLayout()
         rows.setContentsMargins(44, 0, 44, 40)
@@ -74,6 +84,7 @@ class HomePage(QScrollArea):
         col.addLayout(rows)
         self.setWidget(body)
 
+        self.new_row.setVisible(False)
         self.continue_row.setVisible(False)
         self.library_row.setVisible(False)
 
@@ -92,9 +103,12 @@ class HomePage(QScrollArea):
                                group="home-season")
 
     def refresh_local(self) -> None:
+        fresh = self.ctx.store.new_episodes() if self.ctx.pref("alerts") else []
+        new_by_id = {n.show.anime_id: n for n in fresh}
+        self.new_row.set_cards([new_card(n) for n in fresh])
         items = self.ctx.store.continue_watching(limit=20)
         self.continue_row.set_cards([continue_card(i) for i in items])
-        self.library_row.set_cards([show_card(s) for s in self.ctx.store.library()])
+        self.library_row.set_cards([show_card(s, new_by_id.get(s.anime_id)) for s in self.ctx.store.library()])
         self._lookup_missing_covers(items)
 
     # -- history ------------------------------------------------------------------------
@@ -158,5 +172,5 @@ class HomePage(QScrollArea):
             )
 
     def _set_cover(self, anime_id: str, url: str) -> None:
-        for row in (self.continue_row, self.library_row):
+        for row in (self.new_row, self.continue_row, self.library_row):
             row.model().update_card(f"show:{anime_id}", cover=url)

@@ -227,8 +227,20 @@ def test_mark_up_to_here(win):
     assert next(i for i in win.detail.grid.model_.items if i.number == "6").state == "new"
 
 
-def test_sidebar_settings_persist(win):
-    win.player_choice.setCurrentIndex(win.player_choice.findData("mpv"))
-    win.autoplay.setChecked(False)
+def test_settings_persist_and_sync(win):
+    dlg = win.open_settings("Playback")
+    player = dlg.controls["player"]
+    player.setCurrentIndex(player.findData("mpv"))
+    dlg.controls["autoplay"].setChecked(False)
     assert win.ctx.pref("player", "auto") == "mpv"
     assert win.ctx.pref("autoplay", True) is False
+
+    # Audio and quality are shared with the show page's Sub/Dub and quality controls
+    audio = dlg.controls["dub"]
+    audio.setCurrentIndex(audio.findData(True))
+    assert win.ctx.pref("dub") is True and win.detail.dub_btn.isChecked()
+    win.detail.sub_btn.setChecked(True)
+    assert win.ctx.pref("dub") is False and audio.currentData() is False
+    win.detail.quality.setCurrentIndex(win.detail.quality.findData("720"))
+    assert dlg.controls["quality"].currentData() == "720"
+    dlg.close()

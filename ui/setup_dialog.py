@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import html
+
 from PySide6.QtCore import QTimer, QUrl, Qt, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
@@ -30,6 +32,7 @@ class StepRow(QFrame):
         self.dot.setFixedWidth(26)
         self.title = QLabel(title, objectName="SetupTitle")
         self.detail = QLabel("Checking…", objectName="Muted", wordWrap=True)
+        self.detail.setOpenExternalLinks(True)
         self.button = QPushButton("", cursor=Qt.CursorShape.PointingHandCursor)
         self.button.setVisible(False)
 
@@ -249,6 +252,9 @@ class SetupDialog(QDialog):
         self.ctx.runner.submit(setup.current_status, on_done=self._on_status, group="setup-status")
 
     def _failed(self, row: StepRow, message: str, action: str) -> None:
+        if "iina.io" in message:
+            message = html.escape(message).replace(
+                "iina.io", f"<a href='{setup.IINA_SITE}' style='color:#FF8559'>iina.io</a>")
         row.set_state("needed", message, action)
         self._queue = []
         self.everything.setEnabled(True)

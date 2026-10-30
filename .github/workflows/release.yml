@@ -100,6 +100,9 @@ jobs:
       - name: Setup assistant on a real Mac
         # Runs the same install code AniGUI's Setup button uses: pinned ani-cli (checksum
         # verified) into AniGUI's folder, IINA into /Applications, then the connection test.
+        # The token only lifts GitHub's anonymous API limit, which shared runners often hit.
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           python - <<'PY'
           import os
@@ -118,6 +121,12 @@ jobs:
                      f"ani-cli {version} installed at {path}")
           except Exception as exc:
               report(False, f"ani-cli install: {exc}")
+          try:
+              # The fallback users get when GitHub's API rate-limits them: must keep working
+              tag, dmg = setup.latest_iina_web()
+              report(dmg.endswith(".dmg") and tag in dmg, f"IINA via GitHub web pages: {tag} {dmg}")
+          except Exception as exc:
+              report(False, f"IINA web fallback: {exc}")
           try:
               app = setup.install_iina(progress=print)
               found = setup.find_player("iina")
@@ -144,7 +153,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          sed "s/{{VERSION}}/${{ steps.v.outputs.version }}/g" packaging/RELEASE_NOTES.md > notes.md
+          # What's new (from core/changelog.py, the same text as the in-app window), then install steps
+          python -c "from core import changelog; r = changelog.RELEASES[0]; print('## What\'s new\n'); [print(f'- **{c.title}:** {c.text}') for c in r.changes]; print()" > notes.md
+          sed "s/{{VERSION}}/${{ steps.v.outputs.version }}/g" packaging/RELEASE_NOTES.md >> notes.md
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             # Release was created on github.com (which made the tag): attach the .dmg and fill in the notes
             gh release upload "$GITHUB_REF_NAME" "${{ steps.dmg.outputs.name }}" --clobber

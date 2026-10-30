@@ -34,6 +34,9 @@ ANI_CLI_PIN_SHA256 = "585ecc18d36104053d55ebabde905af207ca12cca19c43d3457920925f
 ANI_CLI_RAW = "https://raw.githubusercontent.com/pystardust/ani-cli/{ref}/ani-cli"
 
 IINA_RELEASES = "https://api.github.com/repos/iina/iina/releases/latest"
+IINA_RELEASES_WEB = "https://github.com/iina/iina/releases/latest"
+IINA_ASSETS_WEB = "https://github.com/iina/iina/releases/expanded_assets/{tag}"
+IINA_SITE = "https://iina.io/"
 WARP_URL = "https://one.one.one.one/"
 CONTROL_URL = "https://www.apple.com/library/test/success.html"
 PROBE_QUERY = "one+piece"   # always has results; a block page never parses as results
@@ -50,6 +53,9 @@ class SetupError(RuntimeError):
 
 def _fetch(url: str) -> bytes:
     headers = {"Accept": "application/vnd.github+json"} if "api.github.com" in url else {}
+    token = os.environ.get("GITHUB_TOKEN")
+    if token and "api.github.com" in url:  # CI: shared runners hit the anonymous rate limit
+        headers["Authorization"] = f"Bearer {token}"
     try:
         resp = http.request(url, headers=headers, timeout=60)
     except OSError as exc:
@@ -134,13 +140,9 @@ def applications_dir() -> Path:
 def install_iina(*, fetch: Fetch = _fetch, run=subprocess.run, progress: Progress = lambda _m: None) -> Path:
     """Download the latest IINA release and copy IINA.app into Applications."""
     progress("Finding the latest IINA…")
-    release = json.loads(fetch(IINA_RELEASES))
-    dmg_url = next((a["browser_download_url"] for a in release.get("assets", [])
-                    if a.get("name", "").endswith(".dmg")), None)
-    if not dmg_url:
-        raise SetupError("IINA's latest release has no .dmg to install.")
+    tag, dmg_url = latest_iina(fetch)
 
-    progress(f"Downloading IINA {release.get('tag_name', '')}…".replace("  ", " "))
+    progress(f"Downloading IINA {tag}…".replace("  ", " "))
     work = Path(tempfile.mkdtemp(prefix="anigui-iina-"))
     mount = work / "mnt"
     mount.mkdir()
@@ -169,6 +171,43 @@ def install_iina(*, fetch: Fetch = _fetch, run=subprocess.run, progress: Progres
         return dest
     finally:
         shutil.rmtree(work, ignore_errors=True)
+
+
+_TAG_IN_PAGE = re.compile(r"/iina/iina/releases/(?:expanded_assets|tag)/([\w.\-]+)")
+_DMG_IN_PAGE = re.compile(r'href="(/iina/iina/releases/download/[^"]+\.dmg)"')
+
+
+def latest_iina(fetch: Fetch = _fetch) -> tuple[str, str]:
+    """(tag, .dmg URL) of IINA's latest release.
+
+    GitHub's API first. It allows 60 anonymous requests an hour per address, so if
+    it refuses, read the same release from GitHub's web pages instead.
+    """
+    try:
+        release = json.loads(fetch(IINA_RELEASES))
+        dmg = next((a["browser_download_url"] for a in release.get("assets", [])
+                    if a.get("name", "").endswith(".dmg")), None)
+        if dmg:
+            return str(release.get("tag_name", "")), dmg
+    except (SetupError, ValueError, KeyError):
+        pass
+    return latest_iina_web(fetch)
+
+
+def latest_iina_web(fetch: Fetch = _fetch) -> tuple[str, str]:
+    try:
+        page = fetch(IINA_RELEASES_WEB).decode("utf-8", "replace")      # redirects to the newest tag
+        m = _TAG_IN_PAGE.search(page)
+        if not m:
+            raise SetupError("Couldn't find IINA's latest release.")
+        tag = m.group(1)
+        assets = fetch(IINA_ASSETS_WEB.format(tag=tag)).decode("utf-8", "replace")
+    except SetupError as exc:
+        raise SetupError(f"{exc} You can also download IINA yourself from iina.io.") from exc
+    dmg = _DMG_IN_PAGE.search(assets)
+    if not dmg:
+        raise SetupError("IINA's latest release has no .dmg to install. You can download it from iina.io.")
+    return tag, "https://github.com" + dmg.group(1)
 
 
 # -- Network ----------------------------------------------------------------------------
