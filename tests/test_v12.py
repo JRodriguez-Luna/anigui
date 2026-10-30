@@ -408,3 +408,76 @@ def test_whats_new_from_menu(win):
     action.trigger()
     assert win._whats_new.isVisible() and len(win._whats_new.release_boxes) >= 3
     win._whats_new.accept()
+
+
+# -- Terminal history is a choice ------------------------------------------------------------
+
+@pytest.fixture
+def terminal_history(tmp_path, monkeypatch):
+    from core import paths, setup
+    hist = tmp_path / "ani-hsts"
+    hist.write_text("9\tdemon-slayer-1\tDemon Slayer\n29\tfrieren-2\tFrieren\n", encoding="utf-8")
+    monkeypatch.setattr(paths, "ani_cli_history_file", lambda: hist)
+    monkeypatch.setattr(setup, "current_status", lambda: setup.SetupStatus("/x", "5.1.6", True, True, ("iina", "/x"), True))
+    monkeypatch.setattr(setup, "check_network", lambda *a, **k: setup.NetworkStatus("ok", "fine"))
+    return hist
+
+
+def test_brand_new_user_is_asked_before_importing(tmp_path, terminal_history):
+    from ui.main_window import MainWindow
+    from ui.setup_dialog import SetupDialog
+
+    ctx = ui_fakes.fake_context(tmp_path / "new", with_history=False)
+    win = MainWindow(ctx)
+    win.start()
+    assert pump(lambda: getattr(win, "_setup_dialog", None) is not None, 3)
+    assert ctx.store.continue_watching() == []                     # nothing imported behind their back
+    dlg: SetupDialog = win._setup_dialog
+    assert dlg.terminal.isVisible() and dlg.terminal.button.text() == "Import"
+    assert "2 shows" in dlg.terminal.detail.text()
+    assert pump(lambda: dlg.terminal.button.isEnabled())
+    dlg.terminal.button.click()
+    assert pump(lambda: len(ctx.store.continue_watching()) == 2)
+    assert ctx.pref("import_history") is True and not dlg.terminal.button.isVisible()
+    win.close()
+    ctx.shutdown()
+
+
+def test_existing_users_keep_importing(tmp_path, terminal_history):
+    from ui.main_window import MainWindow
+
+    ctx = ui_fakes.fake_context(tmp_path / "old", with_history=False)
+    ctx.set_pref("setup_done", True)                   # a 1.1 user; import_history was never stored
+    ctx.set_pref("last_version", "1.2.0")
+    win = MainWindow(ctx)
+    win.start()
+    assert pump(lambda: len(ctx.store.continue_watching()) == 2)
+    assert ctx.pref("import_history") is True
+    win.close()
+    ctx.shutdown()
+
+
+def test_turning_on_in_settings_imports(tmp_path, terminal_history):
+    from ui.main_window import MainWindow
+
+    ctx = ui_fakes.fake_context(tmp_path / "s", with_history=False)
+    win = MainWindow(ctx)
+    dlg = win.open_settings("History")
+    dlg.controls["import_history"].setChecked(True)
+    assert pump(lambda: win.home.continue_row.model().rowCount() == 2)
+    win.close()
+    ctx.shutdown()
+
+
+def test_whats_new_after_setup_when_update_needed_setup(win, monkeypatch):
+    checks = []
+    monkeypatch.setattr(win, "_check_updates", lambda status: checks.append(status))
+    win.ctx.set_pref("setup_done", True)
+    win.ctx.set_pref("last_version", "1.1.0")
+    monkeypatch.setattr(win, "open_setup", lambda: None)
+    win._on_status(_status(ready=False))                  # e.g. ani-cli went missing: Setup first
+    assert getattr(win, "_whats_new", None) is None
+    win._after_setup(_status())                           # Setup finished
+    assert win._whats_new.isVisible() and checks == []
+    win._whats_new.accept()
+    assert pump(lambda: checks)

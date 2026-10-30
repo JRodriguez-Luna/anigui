@@ -35,6 +35,9 @@ RELEASES: tuple[Release, ...] = (
                                      "with a NEW badge, and you get a Mac notification."),
         Change("Clear watch history", "Use Clear next to Continue Watching, right-click a show to remove just "
                                       "that one, or History → Clear Watch History. My List stays."),
+        Change("Terminal history is your choice", "Shows you watched with ani-cli in Terminal are only added to "
+                                                  "Continue Watching if you say so: in Setup, or Settings → History. "
+                                                  "(If you've used AniGUI before, nothing changes.)"),
         Change("What's New", "This window. It shows up once after each update, and anytime from the AniGUI menu."),
         Change("Fixes", "If the player you picked isn't installed, AniGUI uses the other one instead of failing. "
                         "Setup offers to install IINA when you've picked it, and still finds IINA when GitHub "

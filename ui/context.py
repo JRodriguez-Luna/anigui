@@ -27,7 +27,7 @@ DEFAULTS: dict[str, Any] = {
     "alerts": True,              # look for new episodes
     "alerts_scope": "library",   # library | library+continue
     "notify": True,              # Mac notifications for new episodes
-    "import_history": True,      # bring in shows watched with ani-cli in Terminal
+    "import_history": False,     # bring in shows watched with ani-cli in Terminal (asked in Setup)
     "check_updates": True,
 }
 

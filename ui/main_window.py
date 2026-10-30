@@ -117,7 +117,7 @@ class MainWindow(QMainWindow):
         self.alerts.changed.connect(self.home.refresh_local)
         self.alerts.found.connect(self._on_new_episodes)
         self.alerts.notifier.clicked.connect(self._show_from_notification)
-        ctx.events.changed.connect(lambda key, _v: key == "alerts" and self.home.refresh_local())
+        ctx.events.changed.connect(self._pref_changed)
 
         self.nav_buttons[self.home].setChecked(True)
         self._build_menus()
@@ -219,6 +219,12 @@ class MainWindow(QMainWindow):
         # No record but Setup was done: updated from 1.1.x, which didn't record versions
         return self.show_whats_new(last or "1.1.0")
 
+    def _pref_changed(self, key: str, _value) -> None:
+        if key == "alerts":
+            self.home.refresh_local()
+        elif key == "import_history":
+            self._import_terminal_history()
+
     # -- new episodes ---------------------------------------------------------------------
 
     def _on_new_episodes(self, items) -> None:
@@ -243,10 +249,15 @@ class MainWindow(QMainWindow):
         self.home.load_remote()
         self.home.refresh_local()
         self.alerts.start()
+        if self.ctx.settings.value("import_history") is None and self.ctx.pref("setup_done", False):
+            self.ctx.set_pref("import_history", True)  # 1.0/1.1 imported automatically; keep that
+        self._import_terminal_history()
+        self.ctx.runner.submit(setup.current_status, on_done=self._on_status)
+
+    def _import_terminal_history(self) -> None:
         if self.ctx.pref("import_history"):
             self.ctx.runner.submit(self.ctx.store.import_ani_cli_history,
-                                   on_done=lambda n: n and self.home.refresh_local())
-        self.ctx.runner.submit(setup.current_status, on_done=self._on_status)
+                                   on_done=lambda n: n and self._local_changed())
 
     def _set_versions(self, ani_cli: str | None) -> None:
         self._ani_cli_version = ani_cli
@@ -280,7 +291,13 @@ class MainWindow(QMainWindow):
     def _after_setup(self, status: setup.SetupStatus) -> None:
         self._set_versions(status.ani_cli_version)
         self.banner.setVisible(not status.ready)
-        if status.ready:
+        if not status.ready:
+            return
+        # An update that needed Setup first (e.g. ani-cli was missing) still gets What's New
+        whats_new = self._maybe_show_whats_new()
+        if whats_new is not None:
+            whats_new.finished.connect(lambda _r: self._check_updates(status))
+        else:
             self._check_updates(status)
 
     # -- updates ------------------------------------------------------------------------

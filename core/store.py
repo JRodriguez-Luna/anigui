@@ -415,6 +415,10 @@ class Store:
                 imported += cur.rowcount
         return imported
 
+    def ani_cli_history_shows(self, path: str | Path | None = None) -> int:
+        """How many shows ani-cli's Terminal history lists (that AniGUI can use)."""
+        return len({anime_id for _e, anime_id, _t in self._ani_cli_entries(path)})
+
     def _ani_cli_entries(self, path: str | Path | None) -> list[tuple[str, str, str]]:
         path = Path(path) if path else paths.ani_cli_history_file()
         try:

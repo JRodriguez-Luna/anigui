@@ -117,6 +117,12 @@ class SetupDialog(QDialog):
         self.net.body.addWidget(self.vpn_box)
         self.vpn_box.setVisible(False)
 
+        # Optional: shows watched with ani-cli in Terminal (only shown when there are some)
+        self.terminal = StepRow("Terminal history (optional)")
+        self.terminal.button.clicked.connect(self.import_terminal_history)
+        self.terminal.setVisible(False)
+        self._terminal_count = 0
+
         self.everything = QPushButton("Set up everything", objectName="Primary", cursor=Qt.CursorShape.PointingHandCursor)
         self.everything.clicked.connect(self.set_up_everything)
         self.done_btn = QPushButton("Done", cursor=Qt.CursorShape.PointingHandCursor)
@@ -136,6 +142,7 @@ class SetupDialog(QDialog):
         col.addWidget(self.ani_cli)
         col.addWidget(self.player)
         col.addWidget(self.net)
+        col.addWidget(self.terminal)
         col.addSpacing(6)
         col.addLayout(buttons)
 
@@ -144,6 +151,7 @@ class SetupDialog(QDialog):
     # -- checks -----------------------------------------------------------------------
 
     def refresh(self) -> None:
+        self._check_terminal_history()
         self.ani_cli.set_state("busy", "Checking…")
         self.player.set_state("busy", "Checking…")
         self.ctx.runner.submit(setup.current_status, on_done=self._on_status,
@@ -208,6 +216,27 @@ class SetupDialog(QDialog):
             "own": "Connect your VPN, then press Test again.",
             "none": "You can still browse; searches and playback may fail on this network.",
         }.get(choice, "Pick an option, connect, then press Test again."))
+
+    def _check_terminal_history(self) -> None:
+        count = self.ctx.store.ani_cli_history_shows()
+        self._terminal_count = count
+        if not count:
+            self.terminal.setVisible(False)
+            return
+        self.terminal.setVisible(True)
+        shows = f"{count} show{'s' if count != 1 else ''}"
+        if self.ctx.pref("import_history"):
+            self.terminal.set_state("ok", f"Your {shows} from ani-cli in Terminal show up in Continue Watching.")
+        else:
+            self.terminal.set_state("optional", f"You've watched {shows} with ani-cli in Terminal. Add them to "
+                                              "Continue Watching? You can change this later in Settings.", "Import")
+
+    def import_terminal_history(self) -> None:
+        self.terminal.set_state("busy", "Importing…")
+        self.ctx.set_pref("import_history", True)  # main window imports on this change
+        self.ctx.runner.submit(self.ctx.store.import_ani_cli_history,
+                               on_done=lambda _n: self._check_terminal_history(),
+                               on_error=lambda msg: self.terminal.set_state("needed", msg, "Try again"))
 
     # -- installs ---------------------------------------------------------------------
 
