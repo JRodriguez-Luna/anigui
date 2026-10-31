@@ -156,6 +156,10 @@ QComboBox#FilterCombo:disabled {{ color: {FAINT}; background: {SURFACE}; }}
 #StatNote {{ color: {FAINT}; font-size: 11px; }}
 #PanelTitle {{ font-size: 15px; font-weight: 700; }}
 
+/* Update progress */
+QProgressBar#UpdateBar {{ background: {SURFACE_2}; border: none; border-radius: 4px; max-height: 8px; min-height: 8px; }}
+QProgressBar#UpdateBar::chunk {{ background: {ACCENT}; border-radius: 4px; }}
+
 /* Settings */
 #SettingsNav {{
     background: {SIDEBAR}; border: none; border-right: 1px solid {BORDER}; padding: 18px 10px;

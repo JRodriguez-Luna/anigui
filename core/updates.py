@@ -31,6 +31,14 @@ class AppUpdate:
     latest: str
     url: str               # release page
     notes: str
+    dmg_url: str | None = None       # the installer, for Update Now
+    sha256: str | None = None        # from GitHub's asset digest, if it has one
+    sha256_url: str | None = None    # or the .sha256 file published next to the .dmg
+
+    @property
+    def installable(self) -> bool:
+        """Update Now needs the .dmg and a checksum to verify it against."""
+        return bool(self.dmg_url and (self.sha256 or self.sha256_url))
 
 
 def check_ani_cli(installed: str | None, store=None, fetch: Fetch = _fetch,
@@ -67,4 +75,11 @@ def check_anigui(store=None, fetch: Fetch = _fetch, force: bool = False,
         return None
     if parse_version(tag) <= parse_version(current):
         return None
-    return AppUpdate(current, tag, release.get("html_url", ""), release.get("body") or "")
+    assets = release.get("assets") or []
+    dmg = next((a for a in assets if str(a.get("name", "")).endswith(".dmg")), None)
+    digest = str((dmg or {}).get("digest") or "")
+    checksum = next((a for a in assets if dmg and a.get("name") == f"{dmg.get('name')}.sha256"), None)
+    return AppUpdate(current, tag, release.get("html_url", ""), release.get("body") or "",
+                     dmg_url=(dmg or {}).get("browser_download_url"),
+                     sha256=digest.removeprefix("sha256:") if digest.startswith("sha256:") else None,
+                     sha256_url=(checksum or {}).get("browser_download_url"))

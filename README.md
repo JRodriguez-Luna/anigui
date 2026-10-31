@@ -41,7 +41,7 @@
 - **Your history, your call:** clear all of it, or remove one show from Continue Watching with a right-click.
 - **Picks up your terminal history:** shows you watched with `ani-cli` appear in Continue Watching, and outdated show IDs are repaired automatically.
 - **Sets itself up:** on first launch AniGUI installs ani-cli and IINA for you (no Homebrew or Terminal needed), checks that the streaming site is reachable, and helps you pick a VPN if your network blocks it.
-- **Keeps itself current:** tells you when a new ani-cli or AniGUI version is out, and updates ani-cli with one click.
+- **Keeps itself current:** tells you when a new AniGUI or ani-cli version is out, and installs either with one click (AniGUI checks the download's checksum, swaps itself in and restarts).
 - **A real Mac app:** a drag-to-install `.dmg` with its own icon, so it lives in Applications and the Dock.
 
 <table>

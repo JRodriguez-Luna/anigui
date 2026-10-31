@@ -150,6 +150,41 @@ jobs:
           raise SystemExit(fails)
           PY
 
+      - name: Update Now on a real Mac
+        # The same code the Update Now button runs: download (file:// here), verify the
+        # checksum, mount, check the signature and version, swap, against a copy of the app.
+        run: |
+          DMG="${{ steps.dmg.outputs.name }}"
+          shasum -a 256 "$DMG" > "$DMG.sha256"
+          mkdir -p "$RUNNER_TEMP/Apps" && ditto dist/AniGUI.app "$RUNNER_TEMP/Apps/AniGUI.app"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString 0.0.1" "$RUNNER_TEMP/Apps/AniGUI.app/Contents/Info.plist"
+          python - <<PY
+          import pathlib
+          from core import self_update, updates
+          dmg = pathlib.Path("$DMG").resolve()
+          app = pathlib.Path("$RUNNER_TEMP/Apps/AniGUI.app")
+          upd = updates.AppUpdate("0.0.1", "${{ steps.v.outputs.version }}", "", "", dmg_url=dmg.as_uri(),
+                                  sha256_url=pathlib.Path(f"{dmg}.sha256").as_uri())
+          stages = []
+          def fetch(url):
+              return pathlib.Path(url.removeprefix("file://")).read_bytes()
+          self_update.download_and_install(upd, app, stage=stages.append, fetch=fetch)
+          version = self_update.bundle_version(app)
+          leftovers = [p.name for p in app.parent.iterdir() if p.name != "AniGUI.app"]
+          ok = version == "${{ steps.v.outputs.version }}" and not leftovers
+          print(f"::{'notice' if ok else 'error'} title=update::{'PASS' if ok else 'FAIL'} installed {version}, "
+                f"stages {stages}, leftovers {leftovers}")
+          bad = upd.__class__(**{**upd.__dict__, "sha256": "0" * 64})
+          try:
+              self_update.download_and_install(bad, app, fetch=fetch)
+              print("::error title=update::FAIL a wrong checksum was installed")
+              ok = False
+          except self_update.UpdateError as exc:
+              print(f"::notice title=update::PASS wrong checksum refused: {exc}")
+          raise SystemExit(0 if ok else 1)
+          PY
+          codesign --verify --deep --strict "$RUNNER_TEMP/Apps/AniGUI.app" && "$RUNNER_TEMP/Apps/AniGUI.app/Contents/MacOS/AniGUI" --self-test
+
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.dmg.outputs.name }}
@@ -166,9 +201,9 @@ jobs:
           sed "s/{{VERSION}}/${{ steps.v.outputs.version }}/g" packaging/RELEASE_NOTES.md >> notes.md
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             # Release was created on github.com (which made the tag): attach the .dmg and fill in the notes
-            gh release upload "$GITHUB_REF_NAME" "${{ steps.dmg.outputs.name }}" --clobber
+            gh release upload "$GITHUB_REF_NAME" "${{ steps.dmg.outputs.name }}" "${{ steps.dmg.outputs.name }}.sha256" --clobber
             gh release edit "$GITHUB_REF_NAME" --title "AniGUI $GITHUB_REF_NAME" --notes-file notes.md
           else
-            gh release create "$GITHUB_REF_NAME" "${{ steps.dmg.outputs.name }}" \
+            gh release create "$GITHUB_REF_NAME" "${{ steps.dmg.outputs.name }}" "${{ steps.dmg.outputs.name }}.sha256" \
               --title "AniGUI $GITHUB_REF_NAME" --notes-file notes.md
           fi

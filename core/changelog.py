@@ -32,6 +32,9 @@ RELEASES: tuple[Release, ...] = (
                                  "or rating. Works without typing too, so you can just browse."),
         Change("Your Stats", "A new page (⌘4) with time watched, episodes, your daily streak, the last 12 weeks, "
                              "top genres and most-watched shows."),
+        Change("One-click updates", "From now on, updating is one click: Update Now downloads the new version, "
+                                    "checks it, installs it and restarts AniGUI. (This update is the last one you "
+                                    "install by hand.)"),
         Change("Back between shows", "Open a show from another show's page, and Back takes you to the one you "
                                      "came from."),
     )),

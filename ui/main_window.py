@@ -5,13 +5,13 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, QTimer, QUrl
 from PySide6.QtGui import QAction, QDesktopServices, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
-    QMessageBox, QButtonGroup, QHBoxLayout, QLabel, QMainWindow, QPushButton, QStackedWidget,
+    QApplication, QMessageBox, QButtonGroup, QHBoxLayout, QLabel, QMainWindow, QPushButton, QStackedWidget,
     QVBoxLayout, QWidget,
 )
 
 from core.anilist import Media
 from core import __version__
-from core import setup, updates
+from core import self_update, setup, updates
 
 from .alerts import AlertsController, describe
 from .context import AppContext
@@ -22,6 +22,7 @@ from .playback import PlaybackController
 from .search_page import SearchPage
 from .settings_dialog import SettingsDialog
 from .stats_page import StatsPage
+from .update_dialog import UpdateDialog
 from .setup_dialog import SetupDialog
 from .whats_new import WhatsNewDialog
 from .widgets import Toast
@@ -385,12 +386,47 @@ class MainWindow(QMainWindow):
     def _offer_app_update(self, update, manual: bool = False) -> None:
         if not update or (not manual and self.ctx.pref("skip_anigui", "") == update.latest):
             return
-        answer = self._ask(f"AniGUI {update.latest} is available",
-                           f"You have {update.current}. Download the new version from GitHub, then replace "
-                           f"AniGUI in Applications. Your library and progress carry over.", "Download")
+        app = self_update.running_app()
+        can_install, _why = self_update.supported(app)
+        if can_install and update.installable:
+            answer = self._ask(f"AniGUI {update.latest} is available",
+                               f"You have {update.current}. AniGUI downloads the update, installs it and restarts. "
+                               f"Your library and progress stay as they are.", "Update Now")
+        else:
+            answer = self._ask(f"AniGUI {update.latest} is available",
+                               f"You have {update.current}. Download the new version from GitHub, then replace "
+                               f"AniGUI in Applications. Your library and progress carry over.", "Download")
         if answer == "skip":
             self.ctx.set_pref("skip_anigui", update.latest)
+        elif answer == "yes" and can_install and update.installable:
+            self.install_update(update, app)
         elif answer == "yes" and update.url:
+            QDesktopServices.openUrl(QUrl(update.url))
+
+    def install_update(self, update, app) -> UpdateDialog:
+        dialog = UpdateDialog(self.ctx, update, app, self)
+        dialog.installed.connect(self._restart_into)
+        dialog.failed.connect(lambda msg, u=update: self._update_failed(u, msg))
+        dialog.start()
+        self._update_dialog = dialog
+        return dialog
+
+    def _restart_into(self, app) -> None:
+        self.playback.shutdown()          # save the episode position first
+        self_update.relaunch(app)
+        QApplication.instance().quit()
+
+    def _update_failed(self, update, message: str) -> None:
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle("Update didn't finish")
+        box.setText("<b>The update didn't finish</b>")
+        box.setInformativeText(f"{message}<br><br>AniGUI is unchanged. You can download the new version from "
+                               "GitHub and drag it into Applications instead.")
+        page = box.addButton("Open Download Page", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton(QMessageBox.StandardButton.Close)
+        box.exec()
+        if box.clickedButton() is page and update.url:
             QDesktopServices.openUrl(QUrl(update.url))
 
     def resizeEvent(self, event) -> None:

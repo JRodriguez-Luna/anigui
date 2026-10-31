@@ -44,8 +44,8 @@ def self_test() -> int:
     problems = []
     try:
         from PySide6.QtNetwork import QLocalSocket  # noqa: F401
-        from core import alerts, ani_cli, aniskip, catalog, changelog, covers, mpv_ipc, player, setup, stats, store, updates  # noqa: F401
-        from ui import alerts as ui_alerts, main_window, search_page, settings_dialog, setup_dialog, stats_page, whats_new  # noqa: F401
+        from core import alerts, ani_cli, aniskip, catalog, changelog, covers, mpv_ipc, player, self_update, setup, stats, store, updates  # noqa: F401
+        from ui import alerts as ui_alerts, main_window, search_page, settings_dialog, setup_dialog, stats_page, update_dialog, whats_new  # noqa: F401
         import certifi
 
         if not Path(certifi.where()).is_file():
