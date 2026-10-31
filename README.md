@@ -37,7 +37,7 @@
 - **Skips intros, endings and recaps** using [AniSkip](https://aniskip.com)'s community timings, in IINA or mpv, with nothing extra to install.
 - **New episode alerts:** when a show in My List gets a new episode, it shows up at the top of Home with a NEW badge, plus a Mac notification.
 - **More like this:** every show page lists sequels, prequels and movies, plus shows other fans recommend.
-- **Airing calendar:** this week's episodes for the shows you follow (or everything airing), in your time zone, with what's already watchable.
+- **Airing calendar:** this week's episodes for the shows you follow, in your time zone, with what's already watchable, plus a Trending view of the hottest airing shows.
 - **Your Stats:** time watched, episodes, daily streak, a 12-week chart, top genres and most-watched shows.
 - **Your history, your call:** clear all of it, or remove one show from Continue Watching with a right-click.
 - **Picks up your terminal history:** shows you watched with `ani-cli` appear in Continue Watching, and outdated show IDs are repaired automatically.
@@ -200,7 +200,7 @@ anigui/
 │   ├── alerts.py              new-episode checks (AniList airing + hianime)
 │   ├── changelog.py           release notes for the What's New window
 │   ├── stats.py               watch statistics (exact log + estimates)
-│   ├── calendar.py            the airing calendar (AniList schedule + hianime availability)
+│   ├── calendar.py            the airing calendar (AniList schedule / trending + hianime availability)
 │   └── tasks.py               thread pool → UI-thread callbacks
 ├── ui/                        PySide6 interface
 │   ├── main_window.py         sidebar, menus, navigation, startup checks

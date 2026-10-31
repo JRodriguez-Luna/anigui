@@ -33,6 +33,8 @@ class EntryCard(QFrame):
         poster = PosterWidget(images, 40, 58)
         poster.set_cover(entry.media.cover, entry.media.cover_color)
         ep = QLabel(f"EP {entry.episode}", objectName="CalEp")
+        if entry.rank:
+            ep.setText(f"<span style='color:#FF8559'>#{entry.rank}</span>&nbsp; EP {entry.episode}")
         at = QLabel(time_text(entry.when), objectName="CalMeta")
         when = QVBoxLayout()
         when.setSpacing(1)
@@ -82,7 +84,7 @@ class CalendarPage(QScrollArea):
         title = QLabel("Calendar", objectName="SectionTitle")
         self.mine_btn = QPushButton("My shows", objectName="Toggle", checkable=True, checked=True,
                                     cursor=Qt.CursorShape.PointingHandCursor)
-        self.all_btn = QPushButton("All airing", objectName="Toggle", checkable=True,
+        self.all_btn = QPushButton("Trending", objectName="Toggle", checkable=True,
                                    cursor=Qt.CursorShape.PointingHandCursor)
         group = QButtonGroup(self)
         group.addButton(self.mine_btn)
@@ -192,15 +194,17 @@ class CalendarPage(QScrollArea):
                 card.clicked.connect(self._open)
                 card.menuRequested.connect(self._menu)
                 col.insertWidget(1 + k, card)
-        if week.count:
-            what = "from your shows" if self.mine else "airing"
-            self.status.setText(f"{week.count} episode{'s' if week.count != 1 else ''} {what} this week."
-                                if self.offset == 0 else f"{week.count} episode{'s' if week.count != 1 else ''} {what}.")
+        if week.count and not self.mine:
+            self.status.setText("The hottest airing shows right now, ranked by AniList activity this week (#1 is the "
+                                "most talked about). Right-click one to add it to My List.")
+        elif week.count:
+            self.status.setText(f"{week.count} episode{'s' if week.count != 1 else ''} from your shows"
+                                f"{' this week' if self.offset == 0 else ''}.")
         elif self.mine:
             self.status.setText("Nothing from My List airs this week. Add airing shows to My List, or switch to "
-                                "All airing to find some.")
+                                "Trending to find some.")
         else:
-            self.status.setText("No schedule for this week yet.")
+            self.status.setText("No trending shows air this week.")
 
     def _error(self, message: str) -> None:
         self.status.setText(f"Couldn't load the schedule: {message}")

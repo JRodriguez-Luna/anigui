@@ -9,13 +9,17 @@ record it fills in is the same one the new-episode alerts use).
 from __future__ import annotations
 
 import datetime as dt
+import math
 from dataclasses import dataclass
 
 from .alerts import followed
+from .anilist import Airing
 from .catalog import Catalog
 from .store import Store, episode_key
 
 MAX_MATCHES = 10         # unmatched followed shows linked to AniList per refresh
+TRENDING_COUNT = 30      # Trending: AniList's top airing shows by recent activity
+WEEK_S = 7 * 86400
 MAX_HIANIME_CHECKS = 12  # aired episodes of followed shows checked on hianime per refresh
 
 UPCOMING, AVAILABLE, AIRED, PENDING = "upcoming", "available", "aired", "pending"
@@ -29,6 +33,7 @@ class Entry:
     anime_id: str | None     # the hianime show, when AniGUI knows it
     in_library: bool
     state: str               # upcoming | available (on hianime) | pending (aired, not on hianime yet) | aired (unknown)
+    rank: int | None = None  # Trending position, 1 = hottest
 
     @property
     def title(self) -> str:
@@ -78,9 +83,13 @@ def build(store: Store, catalog: Catalog, *, mine: bool = True, scope: str = "li
                 ids.append(media.anilist_id)
     followed_ids = set(ids)
 
-    airings = catalog.anilist.schedule(start, end, ids if mine else None)
-    if not mine:  # most popular first within each day; followed shows always kept
-        airings = sorted(airings, key=lambda a: (a.media.anilist_id not in followed_ids, -(a.media.popularity or 0)))
+    if mine:
+        airings = catalog.anilist.schedule(start, end, ids)
+        ranks: dict[int, int] = {}
+    else:
+        trending = catalog.anilist.browse(status="RELEASING", sort="TRENDING_DESC", per_page=TRENDING_COUNT)
+        airings = weekly_airings(trending, start, end)
+        ranks = {m.anilist_id: i for i, m in enumerate(trending, start=1)}
 
     checks = 0
     days: list[list[Entry]] = [[] for _ in range(7)]
@@ -108,8 +117,27 @@ def build(store: Store, catalog: Catalog, *, mine: bool = True, scope: str = "li
                         latest = store.watched_latest(anime_id)
                 if latest is not None:
                     state = AVAILABLE if episode_key(latest) >= a.episode else PENDING
-        days[index].append(Entry(a.media, a.episode, when, anime_id, bool(show and show.in_library), state))
+        days[index].append(Entry(a.media, a.episode, when, anime_id, bool(show and show.in_library), state,
+                                 ranks.get(a.media.anilist_id)))
     for day in days:
-        if mine:
-            day.sort(key=lambda e: e.when)
+        day.sort(key=lambda e: (e.rank or 0, e.when))
     return Week(monday, days)
+
+
+def weekly_airings(shows, start: int, end: int) -> list[Airing]:
+    """Where each show's episode falls in [start, end), from its next airing time.
+
+    One trending request carries every show's next episode; weekly shows air at the
+    same time each week, so stepping by 7 days places this week's episode (or an
+    earlier or later week's). Shows with no known next episode are left out.
+    """
+    found = []
+    for m in shows:
+        if not m.next_airing_at or not m.next_episode:
+            continue
+        steps = math.ceil((start - m.next_airing_at) / WEEK_S)
+        at = m.next_airing_at + steps * WEEK_S
+        episode = m.next_episode + steps
+        if at < end and episode >= 1 and (not m.episodes or episode <= m.episodes):
+            found.append(Airing(m, episode, at))
+    return found

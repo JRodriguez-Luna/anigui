@@ -45,7 +45,7 @@ def self_test() -> int:
     try:
         from PySide6.QtNetwork import QLocalSocket  # noqa: F401
         from core import alerts, ani_cli, aniskip, calendar, catalog, changelog, covers, mpv_ipc, player, self_update, setup, stats, store, updates  # noqa: F401
-        from ui import alerts as ui_alerts, calendar_page, main_window, search_page, settings_dialog, setup_dialog, stats_page, update_dialog, whats_new  # noqa: F401
+        from ui import alerts as ui_alerts, calendar_page, icons, main_window, search_page, settings_dialog, setup_dialog, stats_page, update_dialog, whats_new  # noqa: F401
         import certifi
 
         if not Path(certifi.where()).is_file():

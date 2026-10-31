@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time as _time
 import os
 from pathlib import Path
 
@@ -91,6 +92,11 @@ def fake_anilist_transport(payload: bytes) -> http.Response:
             hits.append(m)
         if v["sort"] == ["SCORE_DESC"]:
             hits.sort(key=lambda m: -m["averageScore"])
+        if v["sort"] == ["TRENDING_DESC"]:  # airing shows: next episode spread over the coming week
+            now = int(_time.time())
+            for m in hits:
+                i = m["id"] - 500
+                m["nextAiringEpisode"] = {"episode": 5 + i, "airingAt": now + (i % 7) * 86400 + 3600}
         data = {"Page": {"media": hits}}
     elif "TRENDING_DESC" in q:
         media = [media_json(i) for i in range(len(SHOWS))]

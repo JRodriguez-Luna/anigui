@@ -25,6 +25,12 @@ class Release:
 
 
 RELEASES: tuple[Release, ...] = (
+    Release("1.4.1", "October 31, 2026", (
+        Change("Trending in the calendar", "All airing is now Trending: the 30 hottest airing shows right now, "
+                                           "ranked by AniList activity this week, each on its airing day with its "
+                                           "rank. It loads in one quick request, so it no longer fails."),
+        Change("Sidebar icons", "Stats and Calendar have icons now, and every sidebar icon has a cleaner look."),
+    )),
     Release("1.4.0", "October 31, 2026", (
         Change("Airing calendar", "A new Calendar page (⌘5) with this week's episodes, a column per day, in your "
                                   "time zone. WATCH NOW marks episodes that are already on hianime."),

@@ -85,12 +85,42 @@ def test_states_upcoming_and_pending(ctx, monkeypatch):
     assert star.state == cal.PENDING                                # ep 5 aired, hianime has 4
 
 
-def test_all_airing_and_scope(ctx):
+def test_trending_one_request_ranked_by_weekday(ctx, monkeypatch):
+    calls = []
+    real_browse = ctx.catalog.anilist.browse
+    monkeypatch.setattr(ctx.catalog.anilist, "schedule", lambda *a, **k: pytest.fail("no full schedule for Trending"))
+    monkeypatch.setattr(ctx.catalog.anilist, "browse", lambda **kw: calls.append(kw) or real_browse(**kw))
+    week = cal.build(ctx.store, ctx.catalog, mine=False)
+    assert calls == [{"status": "RELEASING", "sort": "TRENDING_DESC", "per_page": cal.TRENDING_COUNT}]
+    entries = [e for d in week.days for e in d]
+    assert entries and all(e.rank for e in entries)
+    for day in week.days:
+        assert [e.rank for e in day] == sorted(e.rank for e in day)     # hottest first in each day
+
+
+def test_weekly_airings_steps_by_week():
+    from core.anilist import Media
+    week0 = int(dt.datetime(2026, 10, 26).astimezone().timestamp())
+    end = week0 + cal.WEEK_S
+
+    def show(next_ep, at, episodes=None):
+        return Media(1, None, "T", "T", None, (), None, None, None, "", episodes, "RELEASING", "TV", (), None,
+                     None, None, next_ep, at)
+
+    thursday = week0 + 3 * 86400 + 5 * 3600
+    later = cal.weekly_airings([show(8, thursday + cal.WEEK_S)], week0, end)      # next ep is next week
+    assert [(a.episode, a.airing_at) for a in later] == [(7, thursday)]           # so ep 7 aired this Thursday
+    now = cal.weekly_airings([show(8, thursday)], week0, end)
+    assert [(a.episode, a.airing_at) for a in now] == [(8, thursday)]
+    ahead = cal.weekly_airings([show(8, thursday)], week0 + cal.WEEK_S, end + cal.WEEK_S)
+    assert [a.episode for a in ahead] == [9]
+    assert cal.weekly_airings([show(13, thursday, episodes=12)], week0 + cal.WEEK_S, end + cal.WEEK_S) == []
+    assert cal.weekly_airings([show(None, None)], week0, end) == []
+
+
+def test_scope_includes_continue_watching(ctx):
     monday = dt.date(2026, 10, 26)
     now = dt.datetime(2026, 10, 25).astimezone()
-    everything = cal.build(ctx.store, ctx.catalog, mine=False, monday=monday, now=now)
-    assert everything.count > 2
-    assert "Ashen Blade" in [e.title for d in everything.days for e in d]
     ctx.store.record_progress(ASHEN, "6", 100, 1400)                # Continue Watching
     with_continue = cal.build(ctx.store, ctx.catalog, scope="library+continue", monday=monday, now=now)
     assert "Ashen Blade" in [e.title for d in with_continue.days for e in d]
@@ -130,7 +160,7 @@ def test_calendar_page_shows_week_and_opens(win):
     assert pump(lambda: win.stack.currentWidget() is win.detail and win.detail.anime_id == STAR)
 
 
-def test_week_navigation_and_all_airing(win):
+def test_week_navigation_and_trending(win):
     page = win.calendar
     win.go(page)
     assert pump(lambda: page.week is not None)
@@ -141,7 +171,9 @@ def test_week_navigation_and_all_airing(win):
     page.today_btn.click()
     assert pump(lambda: page.week.monday == this_monday) and not page.today_btn.isVisible()
     page.all_btn.click()
-    assert pump(lambda: len(cards(page)) > 2 and not page.mine)
+    assert page.all_btn.text() == "Trending"
+    assert pump(lambda: len(cards(page)) > 2 and all(c.entry.rank for c in cards(page)))
+    assert "#" in cards(page)[0].findChild(type(page.status), "CalEp").text()
 
 
 def test_add_to_my_list_from_calendar(win):

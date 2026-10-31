@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QTimer, QUrl
+from PySide6.QtCore import QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import QAction, QDesktopServices, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication, QMessageBox, QButtonGroup, QHBoxLayout, QLabel, QMainWindow, QPushButton, QStackedWidget,
@@ -17,6 +17,7 @@ from .alerts import AlertsController, describe
 from .context import AppContext
 from .detail_page import DetailPage
 from .home_page import HomePage
+from .icons import nav_icon
 from .library_page import LibraryPage
 from .playback import PlaybackController
 from .search_page import SearchPage
@@ -63,10 +64,13 @@ class MainWindow(QMainWindow):
         side.setSpacing(4)
         brand = QLabel("Ani<span style='color:#FF6B3D'>GUI</span>", objectName="Brand")
         side.addWidget(brand)
-        for label, page, keys in (("⌂   Home", self.home, "Ctrl+1"), ("⌕   Search", self.search, "Ctrl+2"),
-                                  ("♡   My List", self.library, "Ctrl+3"), ("▤   Stats", self.stats, "Ctrl+4"),
-                                  ("▦   Calendar", self.calendar, "Ctrl+5")):
-            btn = QPushButton(label, objectName="NavButton", checkable=True, cursor=Qt.CursorShape.PointingHandCursor)
+        for label, icon, page, keys in (("Home", "home", self.home, "Ctrl+1"), ("Search", "search", self.search, "Ctrl+2"),
+                                        ("My List", "heart", self.library, "Ctrl+3"), ("Stats", "stats", self.stats, "Ctrl+4"),
+                                        ("Calendar", "calendar", self.calendar, "Ctrl+5")):
+            btn = QPushButton(f"  {label}", objectName="NavButton", checkable=True,
+                              cursor=Qt.CursorShape.PointingHandCursor)
+            btn.setIcon(nav_icon(icon))
+            btn.setIconSize(QSize(18, 18))
             btn.clicked.connect(lambda _c=False, p=page: self.go(p))
             btn.setToolTip(QKeySequence(keys).toString(QKeySequence.SequenceFormat.NativeText))
             QShortcut(QKeySequence(keys), self, activated=lambda p=page: self.go(p))
@@ -74,7 +78,9 @@ class MainWindow(QMainWindow):
             self.nav_buttons[page] = btn
             side.addWidget(btn)
         side.addStretch(1)
-        self.settings_btn = QPushButton("⚙   Settings", objectName="NavButton", cursor=Qt.CursorShape.PointingHandCursor)
+        self.settings_btn = QPushButton("  Settings", objectName="NavButton", cursor=Qt.CursorShape.PointingHandCursor)
+        self.settings_btn.setIcon(nav_icon("settings"))
+        self.settings_btn.setIconSize(QSize(18, 18))
         self.settings_btn.setToolTip(QKeySequence(QKeySequence.StandardKey.Preferences).toString(
             QKeySequence.SequenceFormat.NativeText) or "Settings")
         self.settings_btn.clicked.connect(lambda: self.open_settings())
