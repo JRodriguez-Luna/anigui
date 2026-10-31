@@ -136,6 +136,19 @@ QScrollBar::add-line, QScrollBar::sub-line {{ width: 0; height: 0; }}
 QScrollBar::add-page, QScrollBar::sub-page {{ background: transparent; }}
 QListView {{ background: transparent; border: none; }}
 
+/* Search filters */
+QToolButton#FilterButton {{
+    background: {SURFACE_2}; border: 1px solid {BORDER}; border-radius: {RADIUS}px;
+    padding: 6px 26px 6px 12px; font-size: 13px; font-weight: 600; color: {TEXT};
+}}
+QToolButton#FilterButton:hover {{ border-color: {SURFACE_3}; }}
+QToolButton#FilterButton[active="true"] {{ border-color: {ACCENT}; }}
+QToolButton#FilterButton::menu-indicator {{
+    image: url("__CHEVRON__"); width: 10px; height: 6px; subcontrol-position: right center; right: 9px;
+}}
+QComboBox#FilterCombo {{ font-size: 13px; padding: 6px 10px; min-width: 96px; }}
+QComboBox#FilterCombo:disabled {{ color: {FAINT}; background: {SURFACE}; }}
+
 /* Settings */
 #SettingsNav {{
     background: {SIDEBAR}; border: none; border-right: 1px solid {BORDER}; padding: 18px 10px;

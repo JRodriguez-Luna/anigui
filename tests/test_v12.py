@@ -510,3 +510,81 @@ def test_show_page_rows_and_back_between_shows(win):
     assert pump(lambda: d.anime_id == star and d.title.text() == "Starfall Academy")
     win.back()
     assert win.stack.currentWidget() is not d
+
+
+# -- v1.3: search filters -------------------------------------------------------------------
+
+def test_browse_variables():
+    from core.anilist import AniListClient
+    sent = []
+
+    def transport(payload):
+        sent.append(json.loads(payload)["variables"])
+        return ui_fakes.fake_anilist_transport(payload)
+
+    client = AniListClient(transport=transport)
+    client.browse(genres=["Action"], year=2026)
+    client.browse(search="  star  fall ")
+    client.browse(search="x", sort="SCORE_DESC")
+    assert sent[0]["genres"] == ["Action"] and sent[0]["year"] == 2026 and sent[0]["search"] is None
+    assert sent[0]["sort"] == ["POPULARITY_DESC"] and sent[0]["status"] is None
+    assert sent[1]["search"] == "star fall" and sent[1]["sort"] == ["SEARCH_MATCH", "POPULARITY_DESC"]
+    assert sent[2]["sort"] == ["SCORE_DESC"]
+
+
+def test_search_without_filters_still_uses_hianime(win):
+    page = win.search
+    page.box.setText("Starfall")
+    page._search()
+    assert pump(lambda: page.grid.cards.rowCount() and not page.grid.cards.index(0, 0).data(
+        __import__("ui.cards", fromlist=["CARD_ROLE"]).CARD_ROLE).is_skeleton)
+    from ui.cards import CARD_ROLE
+    card = page.grid.cards.index(0, 0).data(CARD_ROLE)
+    assert card.key.startswith("show:")                      # a hianime result, as before
+    assert not page.filter_bar.clear_btn.isVisible()
+
+
+def test_filters_browse_without_text_and_open(win):
+    from core.anilist import Media
+    from ui.cards import CARD_ROLE
+    page = win.search
+    win.go(page)
+    bar = page.filter_bar
+    bar.set_genres(["Action"])
+    assert bar.genre_btn.text() == "Action" and not bar.clear_btn.isHidden()
+
+    def titles():
+        return [page.grid.cards.index(i, 0).data(CARD_ROLE).title for i in range(page.grid.cards.rowCount())]
+
+    assert pump(lambda: "Starfall Academy" in titles())
+    assert set(titles()) == {"Starfall Academy", "Ashen Blade", "Neon Courier"}
+    assert "Action" in page.status.text() and "AniList" in page.status.text()
+
+    bar.format.setCurrentIndex(bar.format.findData("ONA"))
+    assert pump(lambda: titles() == ["Neon Courier"])
+    assert not bar.season.isEnabled()
+    bar.year.setCurrentIndex(bar.year.findData(2026))
+    assert bar.season.isEnabled()
+    assert pump(lambda: titles() == ["Neon Courier"])
+
+    card = page.grid.cards.index(0, 0).data(CARD_ROLE)
+    assert isinstance(card.payload, Media)
+    page.grid.cardActivated.emit(card)                       # opens like a Trending card
+    assert pump(lambda: win.stack.currentWidget() is win.detail and win.detail.anime_id)
+
+    bar.clear()
+    assert bar.genre_btn.text() == "Any genre" and bar.clear_btn.isHidden()
+    assert page.empty.text().startswith("Find anything")
+
+
+def test_filters_with_text_and_no_matches(win):
+    from ui.cards import CARD_ROLE
+    page = win.search
+    bar = page.filter_bar
+    page.box.setText("Lantern")
+    bar.status.setCurrentIndex(bar.status.findData("RELEASING"))
+    assert pump(lambda: page.grid.cards.rowCount() == 1
+                and page.grid.cards.index(0, 0).data(CARD_ROLE).title == "The Lantern Keeper")
+    bar.set_genres(["Sports"])
+    assert pump(lambda: page.stack.currentWidget() is page.empty)
+    assert "Nothing matches" in page.empty.text()

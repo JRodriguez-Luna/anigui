@@ -26,6 +26,11 @@ TTL_SEARCH = 7 * 24 * 3600
 TTL_MEDIA = 24 * 3600
 TTL_AIRING = 30 * 60
 TTL_RELATED = 24 * 3600
+TTL_BROWSE = 6 * 3600
+
+# AniList's genre list (minus adult-only ones), for the search filters
+GENRES = ("Action", "Adventure", "Comedy", "Drama", "Ecchi", "Fantasy", "Horror", "Mahou Shoujo", "Mecha", "Music",
+          "Mystery", "Psychological", "Romance", "Sci-Fi", "Slice of Life", "Sports", "Supernatural", "Thriller")
 MAX_RETRY_WAIT = 60.0
 
 _FIELDS = """
@@ -66,6 +71,15 @@ Q_AIRING = _FIELDS + """
 query ($ids: [Int], $perPage: Int) {
   Page(page: 1, perPage: $perPage) {
     media(id_in: $ids, type: ANIME) { ...f }
+  }
+}"""
+
+Q_BROWSE = _FIELDS + """
+query ($search: String, $genres: [String], $year: Int, $season: MediaSeason, $formats: [MediaFormat],
+       $status: MediaStatus, $sort: [MediaSort], $page: Int, $perPage: Int) {
+  Page(page: $page, perPage: $perPage) {
+    media(type: ANIME, isAdult: false, search: $search, genre_in: $genres, seasonYear: $year, season: $season,
+          format_in: $formats, status: $status, sort: $sort) { ...f }
   }
 }"""
 
@@ -239,6 +253,22 @@ class AniListClient:
     def media(self, anilist_id: int) -> Media | None:
         data = self._query(Q_MEDIA, {"id": anilist_id}, TTL_MEDIA, allow_not_found=True)
         return Media.from_json(data["Media"]) if data and data.get("Media") else None
+
+    def browse(self, *, search: str | None = None, genres: list[str] | None = None, year: int | None = None,
+               season: str | None = None, formats: list[str] | None = None, status: str | None = None,
+               sort: str | None = None, page: int = 1, per_page: int = 50) -> list[Media]:
+        """Filtered search. Any argument left as None isn't filtered on.
+
+        sort: AniList MediaSort, e.g. POPULARITY_DESC. None means best match when
+        there's text, most popular when there isn't.
+        """
+        search = " ".join((search or "").split()) or None
+        order = [sort] if sort else (["SEARCH_MATCH", "POPULARITY_DESC"] if search else ["POPULARITY_DESC"])
+        variables = {"search": search, "genres": list(genres) if genres else None, "year": year,
+                     "season": season, "formats": list(formats) if formats else None, "status": status,
+                     "sort": order, "page": page, "perPage": per_page}
+        data = self._query(Q_BROWSE, variables, TTL_BROWSE)
+        return [Media.from_json(m) for m in data["Page"]["media"]]
 
     def related(self, anilist_id: int) -> tuple[list[Related], list[Media]]:
         """(sequels, prequels, movies… in a sensible order; community recommendations, best first).

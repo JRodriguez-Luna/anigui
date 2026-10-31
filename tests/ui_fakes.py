@@ -63,7 +63,25 @@ def media_json(i: int) -> dict:
 def fake_anilist_transport(payload: bytes) -> http.Response:
     body = json.loads(payload)
     q, v = body["query"], body["variables"]
-    if "TRENDING_DESC" in q:
+    if "genre_in: $genres" in q:   # filtered browse
+        hits = []
+        for i, (title, _r, fmt, _e, score, year, genres, _c) in enumerate(SHOWS):
+            m = media_json(i)
+            if v["search"] and v["search"].lower() not in title.lower():
+                continue
+            if v["genres"] and not set(v["genres"]) <= set(genres):
+                continue
+            if v["year"] and year != v["year"]:
+                continue
+            if v["formats"] and fmt not in v["formats"]:
+                continue
+            if v["status"] and m["status"] != v["status"]:
+                continue
+            hits.append(m)
+        if v["sort"] == ["SCORE_DESC"]:
+            hits.sort(key=lambda m: -m["averageScore"])
+        data = {"Page": {"media": hits}}
+    elif "TRENDING_DESC" in q:
         media = [media_json(i) for i in range(len(SHOWS))]
         data = {"Page": {"media": media}}
     elif "seasonYear: $year" in q:
