@@ -6,6 +6,7 @@ database runs in WAL mode so readers never block the writer.
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 import sqlite3
 import threading
@@ -53,6 +54,13 @@ CREATE TABLE IF NOT EXISTS episode_watch (
     seen       TEXT NOT NULL,     -- newest episode the user has seen listed (opened the show)
     notified   TEXT NOT NULL,     -- newest episode a notification went out for
     checked_at REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS watch_log (
+    day      TEXT NOT NULL,       -- local date, YYYY-MM-DD
+    anime_id TEXT NOT NULL,
+    episode  TEXT NOT NULL,
+    seconds  REAL NOT NULL,       -- time actually spent playing (seeks and skips don't count)
+    PRIMARY KEY (day, anime_id, episode)
 );
 CREATE TABLE IF NOT EXISTS cache (
     key        TEXT PRIMARY KEY,
@@ -216,6 +224,7 @@ class Store:
                 (new_id, old_id),
             )
             c.execute("UPDATE OR IGNORE episode_watch SET anime_id = ? WHERE anime_id = ?", (new_id, old_id))
+            c.execute("UPDATE OR IGNORE watch_log SET anime_id = ? WHERE anime_id = ?", (new_id, old_id))
             c.execute("DELETE FROM shows WHERE anime_id = ?", (old_id,))  # cascades old progress
 
     def find_by_anilist(self, anilist_id: int) -> Show | None:
@@ -306,6 +315,7 @@ class Store:
         hidden = [(a, e) for e, a, _t in self._ani_cli_entries(history) if a == anime_id]
         with self._tx() as c:
             c.execute("DELETE FROM progress WHERE anime_id = ?", (anime_id,))
+            c.execute("DELETE FROM watch_log WHERE anime_id = ?", (anime_id,))
             c.executemany("INSERT OR IGNORE INTO history_hidden VALUES (?, ?)", hidden)
 
     def clear_history(self, history: str | Path | None = None) -> int:
@@ -319,8 +329,27 @@ class Store:
         with self._tx() as c:
             shows = c.execute("SELECT COUNT(DISTINCT anime_id) FROM progress").fetchone()[0]
             c.execute("DELETE FROM progress")
+            c.execute("DELETE FROM watch_log")  # stats come from history, so they go with it
             c.executemany("INSERT OR IGNORE INTO history_hidden VALUES (?, ?)", hidden)
         return shows
+
+    # -- watch log (for stats) ------------------------------------------------------
+
+    def log_watch(self, anime_id: str, episode: str, seconds: float, day: dt.date | None = None) -> None:
+        if seconds <= 0:
+            return
+        day = (day or dt.date.today()).isoformat()
+        with self._tx() as c:
+            c.execute("""INSERT INTO watch_log VALUES (?, ?, ?, ?)
+                         ON CONFLICT(day, anime_id, episode) DO UPDATE SET seconds = seconds + excluded.seconds""",
+                      (day, anime_id, episode, seconds))
+
+    def watch_log(self) -> list[tuple[str, str, str, float]]:
+        """(day, anime_id, episode, seconds) rows."""
+        return [tuple(r) for r in self._conn().execute("SELECT day, anime_id, episode, seconds FROM watch_log")]
+
+    def all_progress(self) -> list[Progress]:
+        return [_progress(r) for r in self._conn().execute("SELECT * FROM progress")]
 
     # -- new episodes -----------------------------------------------------------------
 

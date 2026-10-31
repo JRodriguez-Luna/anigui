@@ -588,3 +588,83 @@ def test_filters_with_text_and_no_matches(win):
     bar.set_genres(["Sports"])
     assert pump(lambda: page.stack.currentWidget() is page.empty)
     assert "Nothing matches" in page.empty.text()
+
+
+# -- v1.3: watch stats ----------------------------------------------------------------------
+
+import datetime as dt  # noqa: E402
+
+from core import stats  # noqa: E402
+
+
+def _m(genres, status="RELEASING", episodes=None):
+    return Media(1, None, "T", "T", None, (), None, None, None, "", episodes, status, "TV", tuple(genres),
+                 None, None, None, None, None)
+
+
+def test_stats_mix_logged_and_estimated(tmp_path, monkeypatch):
+    import time as _time
+    store = Store(tmp_path / "t.db")
+    today = dt.date(2026, 10, 31)   # a Saturday
+    for aid, al in (("frieren-1", 11), ("solo-2", 22)):
+        store.upsert_show(aid, aid.split("-")[0].title())
+        store.set_anilist_match(aid, al, 1.0)
+    # Frieren: 2 finished episodes, both logged (exact)
+    store.mark_watched("frieren-1", "1")
+    store.mark_watched("frieren-1", "2")
+    store.log_watch("frieren-1", "1", 1400, day=today)
+    store.log_watch("frieren-1", "2", 1300, day=today - dt.timedelta(days=1))
+    # Solo: one finished episode with no log (imported) -> estimated at 24 min
+    store.mark_watched("solo-2", "5")
+    media = {11: _m(["Adventure", "Fantasy"], "FINISHED", 2), 22: _m(["Action", "Fantasy"])}
+    st = stats.compute(store, media.get, today=today)
+
+    assert st.episodes == 3 and st.shows_started == 2 and st.shows_finished == 1
+    assert st.total_seconds == 1400 + 1300 + 24 * 60
+    assert st.estimated_seconds == 24 * 60
+    assert st.streak_days == 2 and st.best_streak_days >= 2
+    assert st.top_genres[0] == ("Fantasy", 3)
+    assert [s.anime_id for s in st.top_shows] == ["frieren-1", "solo-2"]
+    assert len(st.weeks) == 12 and st.weeks[-1][0] == dt.date(2026, 10, 26)
+    assert st.weeks[-1][1] >= 2700 and st.week_seconds >= 2700
+
+
+def test_stats_empty_and_cleared(tmp_path):
+    store = Store(tmp_path / "t.db")
+    assert stats.compute(store, None).empty
+    store.upsert_show("a-1", "A")
+    store.record_progress("a-1", "1", 300, 1400)
+    store.log_watch("a-1", "1", 300)
+    assert not stats.compute(store, None).empty
+    store.clear_history(tmp_path / "none")
+    assert stats.compute(store, None).empty and store.watch_log() == []
+
+
+def test_hours_text():
+    assert stats.hours_text(0) == "0m" and stats.hours_text(45 * 60) == "45m"
+    assert stats.hours_text(3 * 3600 + 20 * 60) == "3h 20m" and stats.hours_text(150 * 3600) == "150h"
+
+
+def test_playback_logs_real_watch_time_only(win, monkeypatch):
+    monkeypatch.setattr(win.ctx.catalog, "mal_id", lambda aid, title: 1)
+    monkeypatch.setattr(aniskip, "skip_times", lambda *a, **k: [aniskip.Segment("intro", 100.0, 190.0)])
+    win.ctx.set_pref("skip_intro", True)
+    mpv = start_playing(win, LANTERN, "The Lantern Keeper", "5")
+    mpv.set_prop("duration", 1440.0)
+    for t in (0.0, 1.0, 2.0, 3.0):          # 3 seconds of real playback
+        mpv.set_prop("time-pos", t)
+    mpv.set_prop("time-pos", 600.0)         # a seek: not counted
+    mpv.set_prop("time-pos", 601.5)         # 1.5 s more
+    mpv.set_prop("pause", True)
+    assert pump(lambda: sum(r[3] for r in win.ctx.store.watch_log()) == pytest.approx(4.5))
+
+
+def test_stats_page(win):
+    win.ctx.store.log_watch(ui_fakes.slug("Starfall Academy", 0), "4", 610)
+    win.go(win.stats)
+    page = win.stats
+    assert pump(lambda: page.stats is not None and page.content.isVisible())
+    assert page.episodes.value.text() == "2"                 # fake history: two finished episodes
+    assert page.time.note.text() == "partly estimated" and page.note.isVisible()
+    assert page.shows_row.model().rowCount() == 3
+    assert page.genres.rows                                  # fake shows are matched to AniList

@@ -31,6 +31,7 @@ PREFETCH_REMAINING_S = 120.0
 COUNTDOWN_S = 5
 RESUME_MIN_S = 30.0          # don't bother resuming the first 30 seconds
 RESUME_TAIL_S = 60.0         # or the last minute (credits)
+MAX_TICK_S = 10.0            # a bigger jump in position is a seek, not watching
 IPC_TIMEOUT_MS = 12_000
 
 
@@ -142,6 +143,8 @@ class _Now:
     duration: float | None = None
     last_save: float = 0.0
     pending_tracks: list[tuple[str, str]] = field(default_factory=list)
+    watched: float = 0.0                          # seconds played since the last save (for stats)
+    paused: bool = False
     skips: list[aniskip.Segment] | None = None   # None until looked up
     skipped: set[str] = field(default_factory=set)
 
@@ -210,6 +213,9 @@ class Session(QObject):
         if n.position is None:
             return
         self.ctx.store.record_progress(n.anime_id, n.episode, n.position, n.duration)
+        if n.watched:
+            self.ctx.store.log_watch(n.anime_id, n.episode, n.watched)
+            n.watched = 0.0
         n.last_save = time.monotonic()
         self.saved.emit(n.anime_id, n.episode)
 
@@ -239,6 +245,8 @@ class Session(QObject):
     def _on_property(self, name: str, value) -> None:
         n = self.now
         if name == "time-pos" and isinstance(value, (int, float)) and not self.loading:
+            if n.position is not None and not n.paused and 0 < value - n.position <= MAX_TICK_S:
+                n.watched += value - n.position   # normal playback; seeks and skips jump further
             n.position = float(value)
             if n.skips is None:
                 self._lookup_skips()  # in case the duration arrived while the file was still loading
@@ -250,8 +258,10 @@ class Session(QObject):
         elif name == "duration" and isinstance(value, (int, float)) and value > 0 and not self.loading:
             n.duration = float(value)
             self._lookup_skips()
-        elif name == "pause" and value is True:
-            self.save()
+        elif name == "pause":
+            n.paused = value is True
+            if n.paused:
+                self.save()
 
     def _on_event(self, name: str, msg: dict) -> None:
         if name == "file-loaded":

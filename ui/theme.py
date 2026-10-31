@@ -149,6 +149,13 @@ QToolButton#FilterButton::menu-indicator {{
 QComboBox#FilterCombo {{ font-size: 13px; padding: 6px 10px; min-width: 96px; }}
 QComboBox#FilterCombo:disabled {{ color: {FAINT}; background: {SURFACE}; }}
 
+/* Stats */
+#StatTile, #StatPanel {{ background: {SURFACE}; border: 1px solid {BORDER}; border-radius: 12px; }}
+#StatLabel {{ color: {MUTED}; font-size: 12px; font-weight: 700; }}
+#StatValue {{ font-size: 28px; font-weight: 800; }}
+#StatNote {{ color: {FAINT}; font-size: 11px; }}
+#PanelTitle {{ font-size: 15px; font-weight: 700; }}
+
 /* Settings */
 #SettingsNav {{
     background: {SIDEBAR}; border: none; border-right: 1px solid {BORDER}; padding: 18px 10px;
