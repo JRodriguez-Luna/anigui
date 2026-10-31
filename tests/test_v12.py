@@ -364,7 +364,9 @@ def test_settings_check_now_reports_status(win, monkeypatch):
 def test_changelog_covers_current_version():
     from core import __version__, changelog
     assert changelog.RELEASES[0].version == __version__
-    assert [r.version for r in changelog.since("1.1.0")] == [__version__]
+    previous = changelog.RELEASES[1].version
+    assert [r.version for r in changelog.since(previous)] == [__version__]
+    assert [r.version for r in changelog.since("1.1.0")][-1] == "1.2.0"
     assert changelog.since(__version__) == []
     assert len(changelog.since(None)) == len(changelog.RELEASES)
 
@@ -382,7 +384,10 @@ def test_whats_new_after_update_once(win, monkeypatch):
     win._on_status(_status())
     dlg = win._whats_new
     assert dlg.isVisible() and dlg.subtitle.text() == "Updated from 1.1.0."
-    assert dlg.release_boxes[0].property("highlight") is True and dlg.release_boxes[1].property("highlight") is False
+    from core import changelog
+    newer = {r.version for r in changelog.since("1.1.0")}
+    assert [b.property("highlight") for b in dlg.release_boxes] == [r.version in newer for r in changelog.RELEASES]
+    assert dlg.release_boxes[-1].property("highlight") is False   # 1.0.0
     assert checks == []                              # update pop-ups wait until it's closed
     dlg.accept()
     assert pump(lambda: checks)
