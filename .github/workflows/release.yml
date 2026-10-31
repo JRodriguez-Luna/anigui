@@ -157,6 +157,12 @@ jobs:
               import traceback
               report(False, f"Trending calendar: {type(exc).__name__}: {exc} | "
                             + " / ".join(traceback.format_exc().strip().splitlines()[-4:]))
+          # Search filters with no genre (used to send genres=null, which AniList answers with HTTP 500)
+          try:
+              found = AniListClient().browse(year=2025, sort="POPULARITY_DESC", per_page=5)
+              report(bool(found), f"Search filters, year only: {[m.display_title for m in found]}")
+          except Exception as exc:
+              report(False, f"Search filters, year only: {exc}")
           upd = updates.check_ani_cli(setup.ANI_CLI_PIN_VERSION)
           print(f"::notice title=setup::ani-cli update check: {'none' if upd is None else upd.latest}")
           raise SystemExit(fails)

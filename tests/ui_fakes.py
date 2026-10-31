@@ -69,30 +69,31 @@ def fake_anilist_transport(payload: bytes) -> http.Response:
         items = []
         for i, show in enumerate(SHOWS):
             m = media_json(i)
-            if m["status"] != "RELEASING" or (v["ids"] and m["id"] not in v["ids"]):
+            if m["status"] != "RELEASING" or (v.get("ids") and m["id"] not in v["ids"]):
                 continue
             items.append({"episode": 5 + i, "airingAt": start + (i % 7) * 86400 + 13 * 3600,
                           "media": {"isAdult": False, "popularity": 1000 - i, **m}})
         items.append({"episode": 1, "airingAt": start + 3600, "media": {"isAdult": True, **media_json(3)}})
         data = {"Page": {"pageInfo": {"hasNextPage": False}, "airingSchedules": sorted(items, key=lambda x: x["airingAt"])}}
-    elif "genre_in: $genres" in q:   # filtered browse
+    elif "media(type: ANIME, isAdult: false" in q:   # filtered browse (only set filters are sent)
+        assert all(value is not None for value in v.values()), "AniList 500s on null arguments"
         hits = []
         for i, (title, _r, fmt, _e, score, year, genres, _c) in enumerate(SHOWS):
             m = media_json(i)
-            if v["search"] and v["search"].lower() not in title.lower():
+            if v.get("search") and v.get("search").lower() not in title.lower():
                 continue
-            if v["genres"] and not set(v["genres"]) <= set(genres):
+            if v.get("genres") and not set(v.get("genres")) <= set(genres):
                 continue
-            if v["year"] and year != v["year"]:
+            if v.get("year") and year != v.get("year"):
                 continue
-            if v["formats"] and fmt not in v["formats"]:
+            if v.get("formats") and fmt not in v.get("formats"):
                 continue
-            if v["status"] and m["status"] != v["status"]:
+            if v.get("status") and m["status"] != v.get("status"):
                 continue
             hits.append(m)
-        if v["sort"] == ["SCORE_DESC"]:
+        if v.get("sort") == ["SCORE_DESC"]:
             hits.sort(key=lambda m: -m["averageScore"])
-        if v["sort"] == ["TRENDING_DESC"]:  # airing shows: next episode spread over the coming week
+        if v.get("sort") == ["TRENDING_DESC"]:  # airing shows: next episode spread over the coming week
             now = int(_time.time())
             for m in hits:
                 i = m["id"] - 500
@@ -115,7 +116,7 @@ def fake_anilist_transport(payload: bytes) -> http.Response:
     elif "id_in: $ids" in q:
         data = {"Page": {"media": [media_json(i - 500) for i in v["ids"] if 0 <= i - 500 < len(SHOWS)]}}
     elif "search: $search" in q:
-        text = v["search"].lower()
+        text = v.get("search").lower()
         data = {"Page": {"media": [media_json(i) for i, s in enumerate(SHOWS) if s[0].lower() in text or text in s[0].lower()]}}
     else:
         i = v["id"] - 500

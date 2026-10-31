@@ -76,24 +76,37 @@ query ($ids: [Int], $perPage: Int) {
   }
 }"""
 
-Q_BROWSE = _FIELDS + """
-query ($search: String, $genres: [String], $year: Int, $season: MediaSeason, $formats: [MediaFormat],
-       $status: MediaStatus, $sort: [MediaSort], $page: Int, $perPage: Int) {
-  Page(page: $page, perPage: $perPage) {
-    media(type: ANIME, isAdult: false, search: $search, genre_in: $genres, seasonYear: $year, season: $season,
-          format_in: $formats, status: $status, sort: $sort) { ...f }
-  }
-}"""
+# Filter name -> (GraphQL type, media() argument). Only filters that are set go into
+# the query: AniList answers HTTP 500 when a list argument is sent as null.
+BROWSE_ARGS = {
+    "search": ("String", "search"), "genres": ("[String]", "genre_in"), "year": ("Int", "seasonYear"),
+    "season": ("MediaSeason", "season"), "formats": ("[MediaFormat]", "format_in"),
+    "status": ("MediaStatus", "status"), "sort": ("[MediaSort]", "sort"),
+}
 
-Q_SCHEDULE = _FIELDS + """
-query ($start: Int, $end: Int, $ids: [Int], $page: Int) {
-  Page(page: $page, perPage: 50) {
-    pageInfo { hasNextPage }
-    airingSchedules(airingAt_greater: $start, airingAt_lesser: $end, mediaId_in: $ids, sort: TIME) {
-      episode airingAt media { isAdult ...f }
-    }
-  }
-}"""
+
+def browse_query(variables: dict) -> str:
+    used = [k for k in BROWSE_ARGS if variables.get(k) is not None]
+    params = "".join(f", ${k}: {BROWSE_ARGS[k][0]}" for k in used)
+    args = "".join(f", {BROWSE_ARGS[k][1]}: ${k}" for k in used)
+    return _FIELDS + f"""
+query ($page: Int, $perPage: Int{params}) {{
+  Page(page: $page, perPage: $perPage) {{
+    media(type: ANIME, isAdult: false{args}) {{ ...f }}
+  }}
+}}"""
+
+def schedule_query(with_ids: bool) -> str:
+    ids_param, ids_arg = (", $ids: [Int]", ", mediaId_in: $ids") if with_ids else ("", "")
+    return _FIELDS + f"""
+query ($start: Int, $end: Int, $page: Int{ids_param}) {{
+  Page(page: $page, perPage: 50) {{
+    pageInfo {{ hasNextPage }}
+    airingSchedules(airingAt_greater: $start, airingAt_lesser: $end{ids_arg}, sort: TIME) {{
+      episode airingAt media {{ isAdult ...f }}
+    }}
+  }}
+}}"""
 
 Q_RELATED = _FIELDS + """
 query ($id: Int) {
@@ -288,7 +301,8 @@ class AniListClient:
         variables = {"search": search, "genres": list(genres) if genres else None, "year": year,
                      "season": season, "formats": list(formats) if formats else None, "status": status,
                      "sort": order, "page": page, "perPage": per_page}
-        data = self._query(Q_BROWSE, variables, TTL_BROWSE)
+        variables = {k: v for k, v in variables.items() if v is not None}
+        data = self._query(browse_query(variables), variables, TTL_BROWSE)
         return [Media.from_json(m) for m in data["Page"]["media"]]
 
     def schedule(self, start: int, end: int, anilist_ids: list[int] | None = None) -> list[Airing]:
@@ -299,7 +313,8 @@ class AniListClient:
         ids = sorted({int(i) for i in anilist_ids}) if anilist_ids else None
         found: list[Airing] = []
         for page in range(1, MAX_SCHEDULE_PAGES + 1):
-            data = self._query(Q_SCHEDULE, {"start": start - 1, "end": end, "ids": ids, "page": page}, TTL_SCHEDULE)
+            variables = {"start": start - 1, "end": end, "page": page, **({"ids": ids} if ids else {})}
+            data = self._query(schedule_query(bool(ids)), variables, TTL_SCHEDULE)
             block = data["Page"]
             for item in block.get("airingSchedules") or []:
                 m = item.get("media") or {}

@@ -519,6 +519,14 @@ def test_show_page_rows_and_back_between_shows(win):
 
 # -- v1.3: search filters -------------------------------------------------------------------
 
+def test_browse_query_leaves_out_unset_filters():
+    from core.anilist import browse_query, schedule_query
+    q = browse_query({"year": 2026, "sort": ["POPULARITY_DESC"]})
+    assert "seasonYear: $year" in q and "sort: $sort" in q
+    assert "genre_in" not in q and "format_in" not in q and "$genres" not in q
+    assert "mediaId_in" not in schedule_query(False) and "mediaId_in: $ids" in schedule_query(True)
+
+
 def test_browse_variables():
     from core.anilist import AniListClient
     sent = []
@@ -531,8 +539,9 @@ def test_browse_variables():
     client.browse(genres=["Action"], year=2026)
     client.browse(search="  star  fall ")
     client.browse(search="x", sort="SCORE_DESC")
-    assert sent[0]["genres"] == ["Action"] and sent[0]["year"] == 2026 and sent[0]["search"] is None
-    assert sent[0]["sort"] == ["POPULARITY_DESC"] and sent[0]["status"] is None
+    assert sent[0]["genres"] == ["Action"] and sent[0]["year"] == 2026
+    assert "search" not in sent[0] and "status" not in sent[0]        # unset filters aren't sent at all
+    assert sent[0]["sort"] == ["POPULARITY_DESC"]
     assert sent[1]["search"] == "star fall" and sent[1]["sort"] == ["SEARCH_MATCH", "POPULARITY_DESC"]
     assert sent[2]["sort"] == ["SCORE_DESC"]
 
