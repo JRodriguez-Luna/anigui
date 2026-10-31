@@ -148,10 +148,15 @@ jobs:
           from core import calendar as cal
           from core.catalog import Catalog
           from core.store import Store
-          week = cal.build(Store(), Catalog(Store()), mine=False)
-          top = sorted((e for d in week.days for e in d), key=lambda e: e.rank)[:5]
-          report(week.count > 0, f"Trending calendar: {week.count} shows this week; top: "
-                                 f"{[(e.rank, e.title, e.episode, e.when.strftime('%a %H:%M')) for e in top]}")
+          try:
+              week = cal.build(Store(), Catalog(Store()), mine=False)
+              top = sorted((e for d in week.days for e in d), key=lambda e: e.rank)[:5]
+              report(week.count > 0, f"Trending calendar: {week.count} shows this week; top: "
+                                     f"{[(e.rank, e.title, e.episode, e.when.strftime('%a %H:%M')) for e in top]}")
+          except Exception as exc:
+              import traceback
+              report(False, f"Trending calendar: {type(exc).__name__}: {exc} | "
+                            + " / ".join(traceback.format_exc().strip().splitlines()[-4:]))
           upd = updates.check_ani_cli(setup.ANI_CLI_PIN_VERSION)
           print(f"::notice title=setup::ani-cli update check: {'none' if upd is None else upd.latest}")
           raise SystemExit(fails)
