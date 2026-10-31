@@ -481,3 +481,32 @@ def test_whats_new_after_setup_when_update_needed_setup(win, monkeypatch):
     assert win._whats_new.isVisible() and checks == []
     win._whats_new.accept()
     assert pump(lambda: checks)
+
+
+# -- v1.3: Related and recommendations ---------------------------------------------------------
+
+def test_related_query_orders_and_filters():
+    from core.anilist import AniListClient
+    client = AniListClient(transport=ui_fakes.fake_anilist_transport)
+    related, recs = client.related(500)
+    assert [(r.relation, r.label, r.media.anilist_id) for r in related] == [("PREQUEL", "Prequel", 501),
+                                                                              ("SEQUEL", "Sequel", 502)]
+    assert [m.anilist_id for m in recs] == [504, 505, 506, 507, 508]   # manga and unrated left out
+
+
+def test_show_page_rows_and_back_between_shows(win):
+    from ui.cards import CARD_ROLE
+    star = ui_fakes.slug("Starfall Academy", 0)
+    win.open_item(win.ctx.store.get_show(star))
+    d = win.detail
+    assert pump(lambda: d.related_row.isVisible() and d.recs_row.isVisible())
+    first = d.related_row.model().index(0, 0).data(CARD_ROLE)
+    assert first.badge == "PREQUEL" and first.title == "The Lantern Keeper"
+    assert d.recs_row.model().rowCount() == 5
+
+    d.related_row.view.cardActivated.emit(first)                 # open the prequel from Starfall's page
+    assert pump(lambda: d.title.text() == "The Lantern Keeper" and d.anime_id)
+    win.back()                                                   # Back returns to Starfall, not Home
+    assert pump(lambda: d.anime_id == star and d.title.text() == "Starfall Academy")
+    win.back()
+    assert win.stack.currentWidget() is not d

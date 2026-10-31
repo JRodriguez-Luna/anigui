@@ -17,6 +17,7 @@ from core.hianime import Episode
 from core.store import episode_key
 
 from . import theme
+from .cards import CardRow, media_card
 from .context import AppContext
 from .hero import Backdrop, airing_note, media_meta, truncate
 from .playback import PlaybackController
@@ -197,6 +198,7 @@ class EpisodeGrid(QListView):
 
 class DetailPage(QScrollArea):
     backRequested = Signal()
+    openItem = Signal(object)  # Media from the Related / You might also like rows
     libraryChanged = Signal()
     toast = Signal(str, bool)  # message, is_error
 
@@ -215,6 +217,8 @@ class DetailPage(QScrollArea):
         self.episodes: list[Episode] = []
         self.play_target: str | None = None
         self.autoplay = False
+        self._related_for: int | None = None
+        self.current_item = None           # what was opened (Media or Show), for Back between shows
 
         # Header
         self.header = Backdrop(ctx.images)
@@ -308,6 +312,16 @@ class DetailPage(QScrollArea):
         episodes.addLayout(ep_head)
         episodes.addWidget(self.message)
         episodes.addWidget(self.grid)
+
+        # More like this (AniList)
+        self.related_row = CardRow("Related", ctx.images)
+        self.recs_row = CardRow("You might also like", ctx.images)
+        for row in (self.related_row, self.recs_row):
+            row.setContentsMargins(5, 0, 5, 0)
+            row.cardActivated.connect(lambda card: self.openItem.emit(card.payload))
+            row.setVisible(False)
+            episodes.addSpacing(22)
+            episodes.addWidget(row)
         episodes.addStretch(1)
 
         body = QWidget(objectName="PageBody")
@@ -330,6 +344,7 @@ class DetailPage(QScrollArea):
     def open_media(self, media: Media, autoplay: bool = False) -> None:
         """From an AniList card: find it on hianime first."""
         self._reset(autoplay)
+        self.current_item = media
         self._show_media(media)
         self._set_status("Checking availability…")
         gen = self.gen
@@ -342,6 +357,7 @@ class DetailPage(QScrollArea):
     def open_show(self, anime_id: str, title: str, poster: str | None = None, autoplay: bool = False) -> None:
         """From search, history or My List: we already know the hianime id."""
         self._reset(autoplay)
+        self.current_item = (anime_id, title, poster)
         self.title.setText(title)
         self.poster.set_cover(poster, label=title)
         self.header.set_image(None, poster)
@@ -362,6 +378,9 @@ class DetailPage(QScrollArea):
         self.airing.setVisible(False)
         self.message.setVisible(False)
         self.grid.model_.set_items([])
+        self._related_for = None
+        for row in (self.related_row, self.recs_row):
+            row.set_cards([])
         self.play_btn.setEnabled(False)
         self.play_btn.setText("▶  Play")
         self.list_btn.setEnabled(False)
@@ -379,6 +398,24 @@ class DetailPage(QScrollArea):
         if not keep_poster or not self.poster.url:
             self.poster.set_cover(media.cover, media.cover_color, media.display_title)
         self.header.set_image(media.banner, media.cover, media.cover_color)
+        self._load_related(media)
+
+    def _load_related(self, media: Media) -> None:
+        if getattr(self, "_related_for", None) == media.anilist_id:
+            return
+        self._related_for = media.anilist_id
+        gen = self.gen
+        self.ctx.runner.submit(self.ctx.catalog.anilist.related, media.anilist_id,
+                               on_done=lambda result: gen == self.gen and self._show_related(*result),
+                               group="detail-related")
+
+    def _show_related(self, related, recs) -> None:
+        cards = []
+        for r in related:
+            card = media_card(r.media)
+            cards.append(replace(card, badge=r.label.upper()))
+        self.related_row.set_cards(cards)
+        self.recs_row.set_cards([media_card(m) for m in recs])
 
     def _on_found(self, gen: int, result) -> None:
         if gen != self.gen:

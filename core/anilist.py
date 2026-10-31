@@ -25,6 +25,7 @@ TTL_SEASON = 12 * 3600
 TTL_SEARCH = 7 * 24 * 3600
 TTL_MEDIA = 24 * 3600
 TTL_AIRING = 30 * 60
+TTL_RELATED = 24 * 3600
 MAX_RETRY_WAIT = 60.0
 
 _FIELDS = """
@@ -67,6 +68,22 @@ query ($ids: [Int], $perPage: Int) {
     media(id_in: $ids, type: ANIME) { ...f }
   }
 }"""
+
+Q_RELATED = _FIELDS + """
+query ($id: Int) {
+  Media(id: $id, type: ANIME) {
+    relations { edges { relationType(version: 2) node { type ...f } } }
+    recommendations(sort: RATING_DESC, perPage: 16) { nodes { rating mediaRecommendation { type ...f } } }
+  }
+}"""
+
+# Order and wording for the Related row; anything else falls under "Related"
+RELATION_LABELS = {
+    "PREQUEL": "Prequel", "SEQUEL": "Sequel", "PARENT": "Main story", "SIDE_STORY": "Side story",
+    "SPIN_OFF": "Spin-off", "ALTERNATIVE": "Alternate version", "SUMMARY": "Recap", "COMPILATION": "Compilation",
+    "CONTAINS": "Part of", "OTHER": "Related", "CHARACTER": "Crossover",
+}
+RELATION_ORDER = list(RELATION_LABELS)
 
 Q_MEDIA = _FIELDS + """
 query ($id: Int) { Media(id: $id, type: ANIME) { ...f } }
@@ -156,6 +173,16 @@ class Media:
         )
 
 
+@dataclass(frozen=True)
+class Related:
+    media: Media
+    relation: str        # AniList relationType, e.g. SEQUEL
+
+    @property
+    def label(self) -> str:
+        return RELATION_LABELS.get(self.relation, "Related")
+
+
 def clean_description(text: str | None) -> str:
     if not text:
         return ""
@@ -212,6 +239,27 @@ class AniListClient:
     def media(self, anilist_id: int) -> Media | None:
         data = self._query(Q_MEDIA, {"id": anilist_id}, TTL_MEDIA, allow_not_found=True)
         return Media.from_json(data["Media"]) if data and data.get("Media") else None
+
+    def related(self, anilist_id: int) -> tuple[list[Related], list[Media]]:
+        """(sequels, prequels, movies… in a sensible order; community recommendations, best first).
+        Manga and novels are left out: only anime can be watched."""
+        data = self._query(Q_RELATED, {"id": anilist_id}, TTL_RELATED, allow_not_found=True)
+        node = (data or {}).get("Media") or {}
+        related: list[Related] = []
+        for edge in (node.get("relations") or {}).get("edges") or []:
+            m = edge.get("node") or {}
+            if m.get("type") == "ANIME" and edge.get("relationType") not in ("SOURCE", "ADAPTATION"):
+                related.append(Related(Media.from_json(m), edge.get("relationType") or "OTHER"))
+        related.sort(key=lambda r: (RELATION_ORDER.index(r.relation) if r.relation in RELATION_ORDER
+                                    else len(RELATION_ORDER), r.media.year or 9999))
+        recs: list[Media] = []
+        seen = {anilist_id, *(r.media.anilist_id for r in related)}
+        for rec in (node.get("recommendations") or {}).get("nodes") or []:
+            m = rec.get("mediaRecommendation")
+            if m and m.get("type") == "ANIME" and (rec.get("rating") or 0) > 0 and m["id"] not in seen:
+                seen.add(m["id"])
+                recs.append(Media.from_json(m))
+        return related, recs
 
     def airing(self, anilist_ids: list[int]) -> dict[int, Media]:
         """Fresh status and next-episode info for several shows (cached briefly)."""

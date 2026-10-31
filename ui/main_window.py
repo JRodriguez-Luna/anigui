@@ -46,6 +46,7 @@ class MainWindow(QMainWindow):
         for page in (self.home, self.search, self.library, self.detail):
             self.stack.addWidget(page)
         self.history: list[QWidget] = []
+        self.show_history: list = []   # earlier shows when one show page leads to another
 
         # Sidebar
         sidebar = QWidget(objectName="Sidebar")
@@ -103,6 +104,7 @@ class MainWindow(QMainWindow):
         self.home.historyChanged.connect(self.detail.refresh_if_showing)
         self.search.setupRequested.connect(self.open_setup)
         self.detail.backRequested.connect(self.back)
+        self.detail.openItem.connect(self.open_item)
         self.detail.libraryChanged.connect(self._local_changed)
         self.detail.toast.connect(lambda text, err: self.toast.show_message(text, error=err))
         self.playback.started.connect(lambda *_: self._local_changed())
@@ -130,6 +132,8 @@ class MainWindow(QMainWindow):
         current = self.stack.currentWidget()
         if page is current:
             return
+        if page is not self.detail:
+            self.show_history.clear()
         if remember:
             self.history.append(current)
             del self.history[:-30]
@@ -142,6 +146,9 @@ class MainWindow(QMainWindow):
             self.library.refresh()
 
     def back(self) -> None:
+        if self.stack.currentWidget() is self.detail and self.show_history:
+            self._reopen(self.show_history.pop())  # back to the show we came from
+            return
         while self.history:
             page = self.history.pop()
             if page is not self.stack.currentWidget():
@@ -150,7 +157,15 @@ class MainWindow(QMainWindow):
         self.go(self.home, remember=False)
 
     def open_item(self, item, autoplay: bool = False) -> None:
-        if isinstance(item, Media):
+        if self.stack.currentWidget() is self.detail and self.detail.current_item is not None:
+            self.show_history.append(self.detail.current_item)
+            del self.show_history[:-30]
+        self._reopen(item, autoplay)
+
+    def _reopen(self, item, autoplay: bool = False) -> None:
+        if isinstance(item, tuple):  # (anime_id, title, poster) saved by the show page
+            self.detail.open_show(*item, autoplay=autoplay)
+        elif isinstance(item, Media):
             self.detail.open_media(item, autoplay=autoplay)
         else:  # Show or SearchResult: both carry anime_id, title, poster
             self.detail.open_show(item.anime_id, item.title, item.poster, autoplay=autoplay)

@@ -340,7 +340,7 @@ def format_label(fmt: str | None) -> str | None:
 def media_card(media) -> Card:
     """Card for an AniList Media."""
     bits = [b for b in (format_label(media.format),
-                        f"{media.episodes} eps" if media.episodes else None,
+                        f"{media.episodes} eps" if media.episodes and media.format != "MOVIE" else None,
                         str(media.year) if media.year else None) if b]
     return Card(
         key=f"anilist:{media.anilist_id}",

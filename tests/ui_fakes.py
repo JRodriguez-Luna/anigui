@@ -68,6 +68,15 @@ def fake_anilist_transport(payload: bytes) -> http.Response:
         data = {"Page": {"media": media}}
     elif "seasonYear: $year" in q:
         data = {"Page": {"media": [media_json(i) for i in (10, 3, 6, 1, 8, 11, 2)]}}
+    elif "relations {" in q:
+        i = v["id"] - 500
+        node = lambda j: {"type": "ANIME", **media_json(j)}  # noqa: E731
+        edges = [{"relationType": "SEQUEL", "node": node((i + 2) % len(SHOWS))},
+                 {"relationType": "PREQUEL", "node": node((i + 1) % len(SHOWS))},
+                 {"relationType": "ADAPTATION", "node": {**node((i + 3) % len(SHOWS)), "type": "MANGA"}}]
+        recs = [{"rating": 40 - k, "mediaRecommendation": node((i + 4 + k) % len(SHOWS))} for k in range(5)]
+        recs.append({"rating": 0, "mediaRecommendation": node((i + 10) % len(SHOWS))})  # unrated: skipped
+        data = {"Media": {"relations": {"edges": edges}, "recommendations": {"nodes": recs}}}
     elif "id_in: $ids" in q:
         data = {"Page": {"media": [media_json(i - 500) for i in v["ids"] if 0 <= i - 500 < len(SHOWS)]}}
     elif "search: $search" in q:
