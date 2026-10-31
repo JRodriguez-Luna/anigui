@@ -1,6 +1,7 @@
 ## Install
 
 1. Download **AniGUI-{{VERSION}}-macOS-AppleSilicon.dmg** below, open it, and drag **AniGUI** onto the **Applications** folder.
+   That's the only file you need: the `.sha256` file is the checksum AniGUI's updater uses, and the source code archives are added by GitHub.
 
    > ⚠️ **Your browser may block the download.** Chrome flags new apps that aren't notarized by Apple as "dangerous". AniGUI is open source and this file was built by GitHub Actions straight from the repo. To keep it, open `chrome://downloads` and choose **Keep** (it may be under the **⋮** menu), or download with **Safari**. Prefer not to? Build it yourself from the [README](https://github.com/JRodriguez-Luna/anigui#build-from-source).
 
