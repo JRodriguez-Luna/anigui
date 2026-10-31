@@ -27,6 +27,8 @@ TTL_MEDIA = 24 * 3600
 TTL_AIRING = 30 * 60
 TTL_RELATED = 24 * 3600
 TTL_BROWSE = 6 * 3600
+TTL_SCHEDULE = 30 * 60
+MAX_SCHEDULE_PAGES = 8   # 50 per page; a busy week has ~150 episodes
 
 # AniList's genre list (minus adult-only ones), for the search filters
 GENRES = ("Action", "Adventure", "Comedy", "Drama", "Ecchi", "Fantasy", "Horror", "Mahou Shoujo", "Mecha", "Music",
@@ -41,7 +43,7 @@ fragment f on Media {
   coverImage { extraLarge large color }
   bannerImage
   description(asHtml: false)
-  episodes status format genres averageScore season seasonYear
+  episodes status format genres averageScore season seasonYear popularity
   nextAiringEpisode { episode airingAt }
 }
 """
@@ -80,6 +82,16 @@ query ($search: String, $genres: [String], $year: Int, $season: MediaSeason, $fo
   Page(page: $page, perPage: $perPage) {
     media(type: ANIME, isAdult: false, search: $search, genre_in: $genres, seasonYear: $year, season: $season,
           format_in: $formats, status: $status, sort: $sort) { ...f }
+  }
+}"""
+
+Q_SCHEDULE = _FIELDS + """
+query ($start: Int, $end: Int, $ids: [Int], $page: Int) {
+  Page(page: $page, perPage: 50) {
+    pageInfo { hasNextPage }
+    airingSchedules(airingAt_greater: $start, airingAt_lesser: $end, mediaId_in: $ids, sort: TIME) {
+      episode airingAt media { isAdult ...f }
+    }
   }
 }"""
 
@@ -146,6 +158,7 @@ class Media:
     year: int | None
     next_episode: int | None = None
     next_airing_at: int | None = None
+    popularity: int | None = None
 
     @property
     def display_title(self) -> str:
@@ -184,7 +197,15 @@ class Media:
             year=d.get("seasonYear"),
             next_episode=nxt.get("episode"),
             next_airing_at=nxt.get("airingAt"),
+            popularity=d.get("popularity"),
         )
+
+
+@dataclass(frozen=True)
+class Airing:
+    media: Media
+    episode: int
+    airing_at: int       # unix time
 
 
 @dataclass(frozen=True)
@@ -269,6 +290,24 @@ class AniListClient:
                      "sort": order, "page": page, "perPage": per_page}
         data = self._query(Q_BROWSE, variables, TTL_BROWSE)
         return [Media.from_json(m) for m in data["Page"]["media"]]
+
+    def schedule(self, start: int, end: int, anilist_ids: list[int] | None = None) -> list[Airing]:
+        """Episodes airing between two unix times, in airing order. `anilist_ids` limits it to
+        those shows (None = everything airing). Adult titles are left out."""
+        if anilist_ids is not None and not anilist_ids:
+            return []
+        ids = sorted({int(i) for i in anilist_ids}) if anilist_ids else None
+        found: list[Airing] = []
+        for page in range(1, MAX_SCHEDULE_PAGES + 1):
+            data = self._query(Q_SCHEDULE, {"start": start - 1, "end": end, "ids": ids, "page": page}, TTL_SCHEDULE)
+            block = data["Page"]
+            for item in block.get("airingSchedules") or []:
+                m = item.get("media") or {}
+                if m and not m.get("isAdult"):
+                    found.append(Airing(Media.from_json(m), int(item["episode"]), int(item["airingAt"])))
+            if not (block.get("pageInfo") or {}).get("hasNextPage"):
+                break
+        return found
 
     def related(self, anilist_id: int) -> tuple[list[Related], list[Media]]:
         """(sequels, prequels, movies… in a sensible order; community recommendations, best first).

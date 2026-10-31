@@ -37,6 +37,7 @@
 - **Skips intros, endings and recaps** using [AniSkip](https://aniskip.com)'s community timings, in IINA or mpv, with nothing extra to install.
 - **New episode alerts:** when a show in My List gets a new episode, it shows up at the top of Home with a NEW badge, plus a Mac notification.
 - **More like this:** every show page lists sequels, prequels and movies, plus shows other fans recommend.
+- **Airing calendar:** this week's episodes for the shows you follow (or everything airing), in your time zone, with what's already watchable.
 - **Your Stats:** time watched, episodes, daily streak, a 12-week chart, top genres and most-watched shows.
 - **Your history, your call:** clear all of it, or remove one show from Continue Watching with a right-click.
 - **Picks up your terminal history:** shows you watched with `ani-cli` appear in Continue Watching, and outdated show IDs are repaired automatically.
@@ -137,7 +138,7 @@ Or double-click **`AniGUI.command`**, which does the same and keeps the setup fo
 | **Clear history** | **Clear** next to Continue Watching, right-click a show there, or **History → Clear Watch History**. My List is kept. |
 | **What's New** | Opens once after each update; anytime from the **AniGUI** menu. |
 
-**Keyboard shortcuts:** <kbd>⌘,</kbd> Settings · <kbd>⌘1</kbd> Home · <kbd>⌘2</kbd> Search · <kbd>⌘3</kbd> My List · <kbd>⌘4</kbd> Stats · <kbd>⌘F</kbd> jump to search · <kbd>⌘[</kbd> or <kbd>Esc</kbd> back
+**Keyboard shortcuts:** <kbd>⌘,</kbd> Settings · <kbd>⌘1</kbd> Home · <kbd>⌘2</kbd> Search · <kbd>⌘3</kbd> My List · <kbd>⌘4</kbd> Stats · <kbd>⌘5</kbd> Calendar · <kbd>⌘F</kbd> jump to search · <kbd>⌘[</kbd> or <kbd>Esc</kbd> back
 
 **Where your data lives**
 
@@ -199,11 +200,12 @@ anigui/
 │   ├── alerts.py              new-episode checks (AniList airing + hianime)
 │   ├── changelog.py           release notes for the What's New window
 │   ├── stats.py               watch statistics (exact log + estimates)
+│   ├── calendar.py            the airing calendar (AniList schedule + hianime availability)
 │   └── tasks.py               thread pool → UI-thread callbacks
 ├── ui/                        PySide6 interface
 │   ├── main_window.py         sidebar, menus, navigation, startup checks
 │   ├── settings_dialog.py · whats_new.py · alerts.py
-│   ├── home_page.py · search_page.py · library_page.py · detail_page.py · stats_page.py
+│   ├── home_page.py · search_page.py · library_page.py · detail_page.py · stats_page.py · calendar_page.py
 │   ├── playback.py            resolve → play → track → skip → auto-next
 │   ├── setup_dialog.py        the Setup assistant
 │   ├── cards.py · hero.py · widgets.py · images.py · theme.py

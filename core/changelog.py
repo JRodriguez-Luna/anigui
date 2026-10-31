@@ -25,6 +25,13 @@ class Release:
 
 
 RELEASES: tuple[Release, ...] = (
+    Release("1.4.0", "October 31, 2026", (
+        Change("Airing calendar", "A new Calendar page (⌘5) with this week's episodes, a column per day, in your "
+                                  "time zone. WATCH NOW marks episodes that are already on hianime."),
+        Change("My shows or everything", "See just the shows you follow, or switch to All airing to discover "
+                                         "something new. Right-click any show to add it to My List."),
+        Change("Any week", "Flip to last week or next week with the arrows."),
+    )),
     Release("1.3.0", "October 31, 2026", (
         Change("More like this", "Below the episodes on every show page: sequels, prequels, movies and spin-offs, "
                                  "then shows other fans recommend."),

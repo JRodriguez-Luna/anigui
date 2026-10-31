@@ -156,6 +156,22 @@ QComboBox#FilterCombo:disabled {{ color: {FAINT}; background: {SURFACE}; }}
 #StatNote {{ color: {FAINT}; font-size: 11px; }}
 #PanelTitle {{ font-size: 15px; font-weight: 700; }}
 
+/* Calendar */
+#CalRange {{ font-size: 14px; font-weight: 700; min-width: 120px; qproperty-alignment: AlignCenter; }}
+#CalDay {{ background: {SURFACE}; border: 1px solid {BORDER}; border-radius: 12px; }}
+#CalDay[today="true"] {{ border: 1px solid {ACCENT}; }}
+#CalDayTitle {{ color: {MUTED}; font-size: 13px; font-weight: 800; padding: 0 2px 2px 2px; }}
+#CalDay[today="true"] #CalDayTitle {{ color: {ACCENT}; }}
+#CalEntry {{ background: {SURFACE_2}; border: 1px solid transparent; border-radius: 10px; }}
+#CalEntry:hover {{ border-color: {SURFACE_3}; }}
+#CalTitle {{ font-size: 12px; font-weight: 700; }}
+#CalMeta {{ color: {MUTED}; font-size: 11px; font-weight: 600; }}
+#CalEp {{ font-size: 13px; font-weight: 800; }}
+#CalBadge {{ color: {FAINT}; font-size: 10px; font-weight: 800; }}
+#CalBadge[state="available"] {{ color: white; background: {ACCENT}; border-radius: 6px; padding: 1px 6px; }}
+#CalBadge[state="pending"] {{ color: #F5B83D; }}
+#CalEmpty {{ color: {FAINT}; padding: 4px; }}
+
 /* Update progress */
 QProgressBar#UpdateBar {{ background: {SURFACE_2}; border: none; border-radius: 4px; max-height: 8px; min-height: 8px; }}
 QProgressBar#UpdateBar::chunk {{ background: {ACCENT}; border-radius: 4px; }}

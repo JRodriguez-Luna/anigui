@@ -21,6 +21,7 @@ from .library_page import LibraryPage
 from .playback import PlaybackController
 from .search_page import SearchPage
 from .settings_dialog import SettingsDialog
+from .calendar_page import CalendarPage
 from .stats_page import StatsPage
 from .update_dialog import UpdateDialog
 from .setup_dialog import SetupDialog
@@ -43,10 +44,11 @@ class MainWindow(QMainWindow):
         self.search = SearchPage(ctx)
         self.library = LibraryPage(ctx)
         self.stats = StatsPage(ctx)
+        self.calendar = CalendarPage(ctx)
         self.detail = DetailPage(ctx, self.playback)
 
         self.stack = QStackedWidget()
-        for page in (self.home, self.search, self.library, self.stats, self.detail):
+        for page in (self.home, self.search, self.library, self.calendar, self.stats, self.detail):
             self.stack.addWidget(page)
         self.history: list[QWidget] = []
         self.show_history: list = []   # earlier shows when one show page leads to another
@@ -62,7 +64,8 @@ class MainWindow(QMainWindow):
         brand = QLabel("Ani<span style='color:#FF6B3D'>GUI</span>", objectName="Brand")
         side.addWidget(brand)
         for label, page, keys in (("⌂   Home", self.home, "Ctrl+1"), ("⌕   Search", self.search, "Ctrl+2"),
-                                  ("♡   My List", self.library, "Ctrl+3"), ("▤   Stats", self.stats, "Ctrl+4")):
+                                  ("♡   My List", self.library, "Ctrl+3"), ("▤   Stats", self.stats, "Ctrl+4"),
+                                  ("▦   Calendar", self.calendar, "Ctrl+5")):
             btn = QPushButton(label, objectName="NavButton", checkable=True, cursor=Qt.CursorShape.PointingHandCursor)
             btn.clicked.connect(lambda _c=False, p=page: self.go(p))
             btn.setToolTip(QKeySequence(keys).toString(QKeySequence.SequenceFormat.NativeText))
@@ -101,8 +104,10 @@ class MainWindow(QMainWindow):
         self.toast = Toast(central)
 
         # Wiring
-        for page in (self.home, self.search, self.library, self.stats):
+        for page in (self.home, self.search, self.library, self.calendar, self.stats):
             page.openItem.connect(self.open_item)
+        self.calendar.libraryChanged.connect(self._local_changed)
+        self.calendar.toast.connect(lambda text, err: self.toast.show_message(text, error=err))
         self.home.playItem.connect(lambda media: self.open_item(media, autoplay=True))
         self.home.historyChanged.connect(self.detail.refresh_if_showing)
         self.search.setupRequested.connect(self.open_setup)
@@ -149,6 +154,8 @@ class MainWindow(QMainWindow):
             self.library.refresh()
         elif page is self.stats:
             self.stats.refresh()
+        elif page is self.calendar:
+            self.calendar.refresh()
 
     def back(self) -> None:
         if self.stack.currentWidget() is self.detail and self.show_history:

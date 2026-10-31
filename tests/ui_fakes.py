@@ -63,7 +63,18 @@ def media_json(i: int) -> dict:
 def fake_anilist_transport(payload: bytes) -> http.Response:
     body = json.loads(payload)
     q, v = body["query"], body["variables"]
-    if "genre_in: $genres" in q:   # filtered browse
+    if "airingSchedules(" in q:    # a week of airings: each airing show once, spread over the days
+        start = v["start"] + 1
+        items = []
+        for i, show in enumerate(SHOWS):
+            m = media_json(i)
+            if m["status"] != "RELEASING" or (v["ids"] and m["id"] not in v["ids"]):
+                continue
+            items.append({"episode": 5 + i, "airingAt": start + (i % 7) * 86400 + 13 * 3600,
+                          "media": {"isAdult": False, "popularity": 1000 - i, **m}})
+        items.append({"episode": 1, "airingAt": start + 3600, "media": {"isAdult": True, **media_json(3)}})
+        data = {"Page": {"pageInfo": {"hasNextPage": False}, "airingSchedules": sorted(items, key=lambda x: x["airingAt"])}}
+    elif "genre_in: $genres" in q:   # filtered browse
         hits = []
         for i, (title, _r, fmt, _e, score, year, genres, _c) in enumerate(SHOWS):
             m = media_json(i)
