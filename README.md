@@ -29,13 +29,15 @@
 ## Highlights
 
 - **Home that feels like a streaming service:** a rotating spotlight of trending shows, plus rows for Continue Watching, Trending Now, This Season and My List.
-- **Search as you type** across everything ani-cli can stream.
+- **Search as you type** across everything ani-cli can stream, or browse with filters for genre, year, season, format and status.
 - **Rich show pages** with cover art, banners, scores, genres and next-episode countdowns from [AniList](https://anilist.co), plus Sub/Dub and quality choices.
 - **One click to play** in [IINA](https://iina.io) or [mpv](https://mpv.io).
 - **Real watch tracking** over mpv's IPC socket: your position saves as you watch, episodes count as watched past 90%, and Resume picks up exactly where you stopped.
 - **Auto-play next:** the next episode is fetched in the background and starts in the same player window after a short countdown.
 - **Skips intros, endings and recaps** using [AniSkip](https://aniskip.com)'s community timings, in IINA or mpv, with nothing extra to install.
 - **New episode alerts:** when a show in My List gets a new episode, it shows up at the top of Home with a NEW badge, plus a Mac notification.
+- **More like this:** every show page lists sequels, prequels and movies, plus shows other fans recommend.
+- **Your Stats:** time watched, episodes, daily streak, a 12-week chart, top genres and most-watched shows.
 - **Your history, your call:** clear all of it, or remove one show from Continue Watching with a right-click.
 - **Picks up your terminal history:** shows you watched with `ani-cli` appear in Continue Watching, and outdated show IDs are repaired automatically.
 - **Sets itself up:** on first launch AniGUI installs ani-cli and IINA for you (no Homebrew or Terminal needed), checks that the streaming site is reachable, and helps you pick a VPN if your network blocks it.
@@ -135,7 +137,7 @@ Or double-click **`AniGUI.command`**, which does the same and keeps the setup fo
 | **Clear history** | **Clear** next to Continue Watching, right-click a show there, or **History → Clear Watch History**. My List is kept. |
 | **What's New** | Opens once after each update; anytime from the **AniGUI** menu. |
 
-**Keyboard shortcuts:** <kbd>⌘,</kbd> Settings · <kbd>⌘1</kbd> Home · <kbd>⌘2</kbd> Search · <kbd>⌘3</kbd> My List · <kbd>⌘F</kbd> jump to search · <kbd>⌘[</kbd> or <kbd>Esc</kbd> back
+**Keyboard shortcuts:** <kbd>⌘,</kbd> Settings · <kbd>⌘1</kbd> Home · <kbd>⌘2</kbd> Search · <kbd>⌘3</kbd> My List · <kbd>⌘4</kbd> Stats · <kbd>⌘F</kbd> jump to search · <kbd>⌘[</kbd> or <kbd>Esc</kbd> back
 
 **Where your data lives**
 
@@ -196,11 +198,12 @@ anigui/
 │   ├── aniskip.py             intro / ending / recap times from AniSkip
 │   ├── alerts.py              new-episode checks (AniList airing + hianime)
 │   ├── changelog.py           release notes for the What's New window
+│   ├── stats.py               watch statistics (exact log + estimates)
 │   └── tasks.py               thread pool → UI-thread callbacks
 ├── ui/                        PySide6 interface
 │   ├── main_window.py         sidebar, menus, navigation, startup checks
 │   ├── settings_dialog.py · whats_new.py · alerts.py
-│   ├── home_page.py · search_page.py · library_page.py · detail_page.py
+│   ├── home_page.py · search_page.py · library_page.py · detail_page.py · stats_page.py
 │   ├── playback.py            resolve → play → track → skip → auto-next
 │   ├── setup_dialog.py        the Setup assistant
 │   ├── cards.py · hero.py · widgets.py · images.py · theme.py

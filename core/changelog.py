@@ -25,6 +25,16 @@ class Release:
 
 
 RELEASES: tuple[Release, ...] = (
+    Release("1.3.0", "October 31, 2026", (
+        Change("More like this", "Below the episodes on every show page: sequels, prequels, movies and spin-offs, "
+                                 "then shows other fans recommend."),
+        Change("Search filters", "Filter by genre, year, season, format and airing status, and sort by popularity "
+                                 "or rating. Works without typing too, so you can just browse."),
+        Change("Your Stats", "A new page (⌘4) with time watched, episodes, your daily streak, the last 12 weeks, "
+                             "top genres and most-watched shows."),
+        Change("Back between shows", "Open a show from another show's page, and Back takes you to the one you "
+                                     "came from."),
+    )),
     Release("1.2.0", "October 30, 2026", (
         Change("Settings", "Everything in one place (⌘,): player, sub or dub, quality, auto-play, skipping, "
                            "new-episode alerts, history, connection and updates."),
