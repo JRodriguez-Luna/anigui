@@ -22,19 +22,8 @@ jobs:
               except Exception as e:
                   return 0, str(e), b"", url
           def note(t, m): print(f"::notice title={t}::{m}".replace("\n", " | "))
-          shows = {"MHA1": 21459, "OnePiece": 21, "Frieren": 154587, "Bebop": 1, "Naruto": 20, "DemonSlayer1": 101922}
-          q = "query($id:Int){Media(id:$id){idMal episodes streamingEpisodes{title thumbnail site}}}"
-          mal = {}
-          for name, aid in shows.items():
-              s, ct, body, _ = get("https://graphql.anilist.co", json.dumps({"query": q, "variables": {"id": aid}}).encode(), {"Content-Type": "application/json"})
-              m = json.loads(body)["data"]["Media"]; mal[name] = m["idMal"]
-              se = m["streamingEpisodes"]
-              sample = [f"{e['title'][:50]} @ {(e['thumbnail'] or '')[:80]} [{e['site']}]" for e in se[:2] + se[-2:]]
-              note(f"anilist {name}", f"mal={m['idMal']} eps={m['episodes']} streaming={len(se)} " + " || ".join(sample))
-              if se and se[0]["thumbnail"]:
-                  s, ct, b, u = get(se[0]["thumbnail"])
-                  note(f"anilist-img {name}", f"{s} {ct} {len(b)} bytes {b[:4]!r} final={u[:80]}")
-          for base in ("https://kitsu.app/api/edge", "https://kitsu.io/api/edge"):
+          mal = {"MHA1": 31964, "OnePiece": 21, "Naruto": 20}
+          for base in ("https://kitsu.app/api/edge",):
               for name in ("MHA1", "OnePiece", "Bebop"):
                   url = base + "/mappings?" + urllib.parse.urlencode({"filter[externalSite]": "myanimelist/anime", "filter[externalId]": mal[name], "include": "item"})
                   s, ct, body, fu = get(url, headers={"Accept": "application/vnd.api+json"})
