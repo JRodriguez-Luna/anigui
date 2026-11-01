@@ -250,7 +250,9 @@ def test_ani_cli_update_checks(tmp_path):
     assert updates.check_ani_cli("5.1.6", None, fetch=released(newer, tag="v5.1.8")) is None
 
 
-def test_anigui_update_checks(tmp_path):
+def test_anigui_update_checks(tmp_path, monkeypatch):
+    from core import signing
+    monkeypatch.setattr(signing, "PUBLIC_KEYS", ())      # checksum mechanics; signatures: test_security.py
     def release(tag, **extra):
         return lambda url: json.dumps({"tag_name": tag, "html_url": "https://gh/r", "body": "notes", **extra}).encode()
 

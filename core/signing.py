@@ -16,7 +16,9 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey,
 
 # Base64 Ed25519 public keys allowed to sign AniGUI releases. Adding a second key
 # here (in a release signed by the first) is how the key would be rotated.
-PUBLIC_KEYS: tuple[str, ...] = ()
+PUBLIC_KEYS: tuple[str, ...] = (
+    "6a0BF+EDyjWfnnMwWfUc5JTLZZ7tFuxJ1JOWeFZohSQ=",   # JRodriguez-Luna, created Nov 1, 2026
+)
 
 CONTEXT = b"AniGUI release signature v1"
 

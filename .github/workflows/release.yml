@@ -195,7 +195,7 @@ jobs:
           stages = []
           def fetch(url):
               return pathlib.Path(url.removeprefix("file://")).read_bytes()
-          self_update.download_and_install(upd, app, stage=stages.append, fetch=fetch)
+          self_update.download_and_install(upd, app, stage=stages.append, fetch=fetch, keys=())  # mechanics only
           version = self_update.bundle_version(app)
           leftovers = [p.name for p in app.parent.iterdir() if p.name != "AniGUI.app"]
           ok = version == "${{ steps.v.outputs.version }}" and not leftovers
@@ -226,7 +226,7 @@ jobs:
               ok = False
           bad = upd.__class__(**{**upd.__dict__, "sha256": "0" * 64})
           try:
-              self_update.download_and_install(bad, app, fetch=fetch)
+              self_update.download_and_install(bad, app, fetch=fetch, keys=())
               print("::error title=update::FAIL a wrong checksum was installed")
               ok = False
           except self_update.UpdateError as exc:

@@ -24,6 +24,14 @@ import ui_fakes  # noqa: E402
 from core import self_update, updates  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def signing_off(monkeypatch):
+    """These tests cover the download/checksum/swap mechanics; signatures have their own tests
+    in test_security.py. Here they run as if no publisher key were built in."""
+    from core import signing
+    monkeypatch.setattr(signing, "PUBLIC_KEYS", ())
+
+
 def pump(cond, timeout=5.0):
     end = time.time() + timeout
     while time.time() < end:

@@ -223,7 +223,8 @@ def test_unsigned_release_not_offered_once_signing_is_on(monkeypatch, keypair):
     release = {"tag_name": "v9.0.0", "html_url": "u", "body": "", "assets": [
         {"name": "A.dmg", "browser_download_url": "https://d/A.dmg", "digest": "sha256:" + "ab" * 32}]}
     fetch = lambda url: json.dumps(release).encode()  # noqa: E731
-    assert updates.check_anigui(fetch=fetch).installable                # signing off (today): offered
+    monkeypatch.setattr(signing, "PUBLIC_KEYS", ())
+    assert updates.check_anigui(fetch=fetch).installable                # no key built in: offered
     monkeypatch.setattr(signing, "PUBLIC_KEYS", (public,))
     assert updates.check_anigui(fetch=fetch) is None                    # signing on: waits for the .sig
     release["assets"].append({"name": "A.dmg.sig", "browser_download_url": "https://d/A.dmg.sig"})
@@ -361,3 +362,13 @@ def test_ani_cli_updates_arrive_with_anigui(tmp_path, monkeypatch):
     assert setup.ensure_pinned_ani_cli() == setup.ANI_CLI_PIN_VERSION and installed == [1]
     target.write_text(f'#!/bin/sh\nversion_number="{setup.ANI_CLI_PIN_VERSION}"\n')
     assert setup.ensure_pinned_ani_cli() is None and installed == [1]   # already current
+
+
+def test_publisher_key_is_built_in_and_enforced():
+    import base64
+    assert signing.PUBLIC_KEYS and signing.enforced()
+    for key in signing.PUBLIC_KEYS:
+        assert len(base64.b64decode(key, validate=True)) == 32
+    # A signature from any other key is refused by the real, built-in key list
+    other = signing.new_private_key()
+    assert not signing.verify("9.9.9", "ab" * 32, signing.sign(other, "9.9.9", "ab" * 32))
