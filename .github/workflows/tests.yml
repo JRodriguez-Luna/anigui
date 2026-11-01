@@ -48,33 +48,6 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r requirements.txt
 
-      - name: Probe episode stills (temporary)
-        if: runner.os == 'macOS'
-        continue-on-error: true
-        run: |
-          python - <<'PY'
-          from core.anilist import AniListClient
-          from core.stills import EpisodeStills, titles_agree, number_key
-          from core.hianime import HianimeClient
-          hi = HianimeClient()
-          src = EpisodeStills(AniListClient())
-          shows = [("Frieren", 154587, 52991, "frieren"), ("Demon Slayer", 101922, 38000, "demon slayer kimetsu no yaiba"),
-                   ("JJK", 113415, 40748, "jujutsu kaisen"), ("Naruto", 20, 20, "naruto"), ("Solo Leveling", 151807, 52299, "solo leveling"),
-                   ("Chainsaw Man", 127230, 44511, "chainsaw man"), ("Bleach", 269, 269, "bleach")]
-          for name, aid, mal, q in shows:
-              try:
-                  res = hi.search(q)[0]
-                  eps = hi.episodes(res.anime_id)[:40]
-              except Exception as e:
-                  print(f"::notice title=titles {name}::hianime failed: {e}"); continue
-              plain = src.for_episodes(aid, mal, [(e.number, None) for e in eps])
-              titled = src.for_episodes(aid, mal, [(e.number, e.title) for e in eps])
-              lost = [n for n in plain if n not in titled]
-              ex = [(n, next(e.title for e in eps if e.number == n)) for n in lost[:3]]
-              print(f"::notice title=titles {name}::{res.title!r}: {len(eps)} eps, {len(plain)} stills by number, "
-                    f"{len(titled)} after title check; rejected {lost[:12]} e.g. {ex}")
-          PY
-
       - name: Run tests (offline; fake site, fake mpv, real ani-cli)
         run: pytest -q
 
