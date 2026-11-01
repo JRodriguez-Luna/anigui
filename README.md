@@ -31,6 +31,7 @@
 - **Home that feels like a streaming service:** a rotating spotlight of trending shows, plus rows for Continue Watching, Trending Now, This Season and My List.
 - **Search as you type** across everything ani-cli can stream, or browse with filters for genre, year, season, format and status.
 - **Rich show pages** with cover art, banners, scores, genres and next-episode countdowns from [AniList](https://anilist.co), plus Sub/Dub and quality choices.
+- **Episode stills:** every episode card shows a picture from the episode (from AniList and [Kitsu](https://kitsu.app)); long shows like One Piece get pages of 100 and a Jump to episode box.
 - **One click to play** in [IINA](https://iina.io) or [mpv](https://mpv.io).
 - **Real watch tracking** over mpv's IPC socket: your position saves as you watch, episodes count as watched past 90%, and Resume picks up exactly where you stopped.
 - **Auto-play next:** the next episode is fetched in the background and starts in the same player window after a short countdown.
@@ -197,6 +198,7 @@ anigui/
 │   ├── setup.py               installs ani-cli + IINA, checks the connection
 │   ├── updates.py             once-a-day checks for new ani-cli / AniGUI versions
 │   ├── aniskip.py             intro / ending / recap times from AniSkip
+│   ├── stills.py              episode thumbnails (AniList, then Kitsu), checked against the show
 │   ├── alerts.py              new-episode checks (AniList airing + hianime)
 │   ├── changelog.py           release notes for the What's New window
 │   ├── stats.py               watch statistics (exact log + estimates)
@@ -207,6 +209,7 @@ anigui/
 │   ├── main_window.py         sidebar, menus, navigation, startup checks
 │   ├── settings_dialog.py · whats_new.py · alerts.py
 │   ├── home_page.py · search_page.py · library_page.py · detail_page.py · stats_page.py · calendar_page.py
+│   ├── episodes.py            the show page's episode cards, pages and Jump to episode
 │   ├── playback.py            resolve → play → track → skip → auto-next
 │   ├── setup_dialog.py        the Setup assistant
 │   ├── cards.py · hero.py · widgets.py · images.py · theme.py

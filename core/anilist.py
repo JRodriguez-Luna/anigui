@@ -28,6 +28,7 @@ TTL_AIRING = 30 * 60
 TTL_RELATED = 24 * 3600
 TTL_BROWSE = 6 * 3600
 TTL_SCHEDULE = 30 * 60
+TTL_STREAMING = 3 * 24 * 3600
 MAX_SCHEDULE_PAGES = 8   # 50 per page; a busy week has ~150 episodes
 
 # AniList's genre list (minus adult-only ones), for the search filters
@@ -123,6 +124,11 @@ RELATION_LABELS = {
     "CONTAINS": "Part of", "OTHER": "Related", "CHARACTER": "Crossover",
 }
 RELATION_ORDER = list(RELATION_LABELS)
+
+# Episode thumbnails from streaming sites (mostly Crunchyroll); see core/stills.py
+Q_STREAMING = """
+query ($id: Int) { Media(id: $id, type: ANIME) { streamingEpisodes { title thumbnail } } }
+"""
 
 Q_MEDIA = _FIELDS + """
 query ($id: Int) { Media(id: $id, type: ANIME) { ...f } }
@@ -344,6 +350,13 @@ class AniListClient:
                 seen.add(m["id"])
                 recs.append(Media.from_json(m))
         return related, recs
+
+    def streaming_episodes(self, anilist_id: int) -> list[tuple[str, str | None]]:
+        """(title, thumbnail URL) pairs, e.g. ("Episode 3 - Roaring Muscles", "https://…")."""
+        data = self._query(Q_STREAMING, {"id": anilist_id}, TTL_STREAMING, allow_not_found=True)
+        node = (data or {}).get("Media") or {}
+        return [(str(e.get("title") or ""), e.get("thumbnail"))
+                for e in node.get("streamingEpisodes") or [] if isinstance(e, dict)]
 
     def airing(self, anilist_ids: list[int]) -> dict[int, Media]:
         """Fresh status and next-episode info for several shows (cached briefly)."""

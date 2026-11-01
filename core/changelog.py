@@ -25,6 +25,14 @@ class Release:
 
 
 RELEASES: tuple[Release, ...] = (
+    Release("1.6.0", "November 1, 2026", (
+        Change("Episode pictures", "Episodes now show a still from the episode, with the title underneath. "
+                                   "Hover one to see a play button and its full title. When there's no picture, "
+                                   "you get a big episode number instead."),
+        Change("Pages for long shows", "Shows with more than 100 episodes are split into pages (1–100, 101–200, …) "
+                                       "and open on the page with your next episode."),
+        Change("Jump to episode", "Type an episode number above the grid and press Return to go straight to it."),
+    )),
     Release("1.5.0", "November 1, 2026", (
         Change("Signed updates", "From this version on, Update Now only installs updates signed by AniGUI's "
                                  "publisher. Even someone who broke into the GitHub account couldn't push you a "

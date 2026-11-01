@@ -127,6 +127,7 @@ def fake_anilist_transport(payload: bytes) -> http.Response:
 class FakeHianime:
     def __init__(self, episodes_per_show: int = 12) -> None:
         self.eps = episodes_per_show
+        self.counts: dict[str, int] = {}   # anime_id -> episode count, to fake a long show
 
     def search(self, query: str) -> list[SearchResult]:
         q = query.lower()
@@ -136,6 +137,7 @@ class FakeHianime:
     def episodes(self, anime_id: str) -> list[Episode]:
         i = int(anime_id.rsplit("-", 1)[-1]) - 1000
         count = SHOWS[i][3] if 0 <= i < len(SHOWS) else self.eps
+        count = self.counts.get(anime_id, count)
         return [Episode(str(n), str(10_000 + n), f"Chapter {n}: The {['Gate', 'Rival', 'Choir', 'Storm'][n % 4]}")
                 for n in range(1, count + 1)]
 
@@ -148,11 +150,24 @@ def _png(img: QImage) -> bytes:
     return bytes(data)
 
 
+class FakeStills:
+    """Episode stills for every episode except 3, 10, 17…, which get the numbered tile."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[int | None, list[str]]] = []
+
+    def for_episodes(self, anilist_id, mal_id, episodes):
+        numbers = [n for n, _title in episodes]
+        self.calls.append((anilist_id, numbers))
+        i = (anilist_id or 500) - 500
+        return {n: f"fake://still/{i}?ep={n}" for n in numbers if int(float(n)) % 7 != 3}
+
+
 def fake_art(url: str) -> bytes:
     kind, _, idx = url.removeprefix("fake://").partition("/")
-    i = int(idx)
+    i = int(idx.split("?")[0])
     color = QColor(SHOWS[i][7])
-    w, h = (1600, 420) if kind == "banner" else (460, 690)
+    w, h = {"banner": (1600, 420), "still": (640, 360)}.get(kind, (460, 690))
     img = QImage(w, h, QImage.Format.Format_ARGB32)
     p = QPainter(img)
     p.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -298,5 +313,5 @@ def fake_context(root: Path, with_history: bool = True) -> AppContext:
     return AppContext(
         store=store, catalog=catalog, runner=TaskRunner(),
         images=ImageLoader(CoverCache(root / "covers", fetcher=fake_art)),
-        bridge=FakeBridge(hianime), player=FakePlayer(), settings=settings,
+        bridge=FakeBridge(hianime), player=FakePlayer(), settings=settings, stills=FakeStills(),
     )

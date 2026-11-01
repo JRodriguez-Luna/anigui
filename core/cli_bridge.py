@@ -64,7 +64,8 @@ class CliBridge(QObject):
             os.close(fd)
             cmd, env = build_command(request, self._ani_cli, self._shim, capture)
         except AniCliError as exc:
-            QTimer.singleShot(0, lambda: self.failed.emit(request_id, str(exc)))
+            message = str(exc)  # `exc` is gone once the except block ends, before the timer fires
+            QTimer.singleShot(0, lambda: self.failed.emit(request_id, message))
             return request_id
 
         proc = QProcess(self)

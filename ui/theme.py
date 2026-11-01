@@ -107,6 +107,18 @@ QLineEdit#SearchBox {{
     padding: 12px 18px; font-size: 18px; selection-background-color: {ACCENT};
 }}
 QLineEdit#SearchBox:focus {{ border-color: {ACCENT}; }}
+QPushButton#PageTab {{
+    background: {SURFACE}; border: 1px solid {BORDER}; border-radius: 7px;
+    padding: 5px 11px; font-size: 12px; font-weight: 700; color: {MUTED};
+}}
+QPushButton#PageTab:hover {{ color: {TEXT}; border-color: {FAINT}; }}
+QPushButton#PageTab:checked {{ background: {TEXT}; color: {BG}; border-color: {TEXT}; }}
+QLineEdit#JumpBox {{
+    background: {SURFACE}; border: 1px solid {BORDER}; border-radius: 7px;
+    padding: 5px 10px; font-size: 12px; selection-background-color: {ACCENT};
+}}
+QLineEdit#JumpBox:focus {{ border-color: {ACCENT}; }}
+#JumpError {{ color: #FF8A80; font-size: 12px; }}
 QComboBox {{
     background: {SURFACE_2}; border: 1px solid {BORDER}; border-radius: {RADIUS}px;
     padding: 8px 12px; font-weight: 700;

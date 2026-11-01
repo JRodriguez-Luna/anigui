@@ -2,198 +2,25 @@
 
 from __future__ import annotations
 
-import math
-from dataclasses import dataclass, replace
+from dataclasses import replace
 
-from PySide6.QtCore import QAbstractListModel, QModelIndex, QRectF, QSize, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QPainter, QPen
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
-    QButtonGroup, QComboBox, QHBoxLayout, QLabel, QListView, QMenu, QPushButton, QScrollArea,
-    QSizePolicy, QStyle, QStyledItemDelegate, QVBoxLayout, QWidget,
+    QButtonGroup, QComboBox, QHBoxLayout, QLabel, QPushButton, QScrollArea, QVBoxLayout, QWidget,
 )
 
 from core.anilist import Media
 from core.hianime import Episode
 from core.store import episode_key
 
-from . import theme
 from .cards import CardRow, media_card
 from .context import AppContext
+from .episodes import PER_PAGE, EpisodeGrid, EpisodeItem, EpisodePager, find_episode, page_ranges
 from .hero import Backdrop, airing_note, media_meta, truncate
 from .playback import PlaybackController
 from .widgets import PosterWidget
 
 QUALITIES = [("Best", "best"), ("1080p", "1080"), ("720p", "720"), ("480p", "480")]
-EP_ROLE = Qt.ItemDataRole.UserRole + 2
-
-
-@dataclass(frozen=True)
-class EpisodeItem:
-    number: str
-    title: str | None
-    state: str = "new"        # new | progress | watched
-    fraction: float = 0.0
-    busy: str | None = None   # status text while resolving
-    up_next: bool = False
-    playing: bool = False
-
-
-class EpisodeModel(QAbstractListModel):
-    def __init__(self, parent=None) -> None:
-        super().__init__(parent)
-        self.items: list[EpisodeItem] = []
-
-    def rowCount(self, parent=QModelIndex()) -> int:
-        return 0 if parent.isValid() else len(self.items)
-
-    def data(self, index, role=Qt.ItemDataRole.DisplayRole):
-        if not index.isValid():
-            return None
-        item = self.items[index.row()]
-        if role == EP_ROLE:
-            return item
-        if role == Qt.ItemDataRole.ToolTipRole:
-            return f"Episode {item.number}" + (f": {item.title}" if item.title else "")
-        return None
-
-    def set_items(self, items: list[EpisodeItem]) -> None:
-        self.beginResetModel()
-        self.items = items
-        self.endResetModel()
-
-    def update_progress(self, number: str, state: str, fraction: float, playing: bool | None = None) -> None:
-        for row, item in enumerate(self.items):
-            if item.number == number:
-                changes = {"state": state, "fraction": fraction}
-                if playing is not None:
-                    changes["playing"] = playing
-                self.items[row] = replace(item, **changes)
-                self.dataChanged.emit(self.index(row), self.index(row))
-                return
-
-    def set_busy(self, number: str | None, text: str | None = None) -> None:
-        for row, item in enumerate(self.items):
-            busy = text if item.number == number else None
-            if item.busy != busy:
-                self.items[row] = replace(item, busy=busy)
-                self.dataChanged.emit(self.index(row), self.index(row))
-
-
-class EpisodeDelegate(QStyledItemDelegate):
-    W, H = 150, 78
-
-    def __init__(self, parent=None) -> None:
-        super().__init__(parent)
-        self.small = theme.font(10, QFont.Weight.Bold)
-        self.number = theme.font(22, QFont.Weight.Black)
-        self.title = theme.font(12)
-
-    def sizeHint(self, option, index) -> QSize:
-        return QSize(self.W, self.H)
-
-    def paint(self, p: QPainter, option, index) -> None:
-        item: EpisodeItem = index.data(EP_ROLE)
-        r = QRectF(option.rect).adjusted(0.5, 0.5, -0.5, -0.5)
-        hover = bool(option.state & QStyle.StateFlag.State_MouseOver)
-        watched = item.state == "watched"
-        p.save()
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-        lit = hover or item.busy or item.playing
-        p.setPen(QPen(QColor(theme.ACCENT) if lit else QColor(theme.BORDER), 1.5 if lit else 1))
-        p.setBrush(QColor(theme.SURFACE_2 if hover else theme.SURFACE))
-        p.drawRoundedRect(r, 8, 8)
-
-        inner = r.adjusted(12, 8, -12, -8)
-        p.setFont(self.small)
-        label = "▶ NOW PLAYING" if item.playing else ("UP NEXT" if item.up_next else "EPISODE")
-        p.setPen(QColor(theme.ACCENT if (item.up_next or item.playing) else theme.FAINT))
-        p.drawText(QRectF(inner.left(), inner.top(), inner.width(), 14), Qt.AlignmentFlag.AlignLeft, label)
-        if watched and not item.playing:
-            p.setPen(QColor(theme.GOOD))
-            p.drawText(QRectF(inner.left(), inner.top(), inner.width(), 14), Qt.AlignmentFlag.AlignRight, "✓ WATCHED")
-
-        p.setFont(self.number)
-        p.setPen(QColor(theme.FAINT if watched else theme.TEXT))
-        p.drawText(QRectF(inner.left(), inner.top() + 13, inner.width(), 28),
-                   Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, item.number)
-
-        p.setFont(self.title)
-        p.setPen(QColor(theme.ACCENT if item.busy else theme.MUTED))
-        text = item.busy or item.title or ""
-        if text and text.strip().lower() != f"episode {item.number}".lower():
-            text = p.fontMetrics().elidedText(text, Qt.TextElideMode.ElideRight, int(inner.width()))
-            p.drawText(QRectF(inner.left(), inner.bottom() - 16, inner.width(), 16),
-                       Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, text)
-
-        if item.state == "progress":
-            bar = QRectF(r.left() + 1, r.bottom() - 4, r.width() - 2, 3)
-            p.setPen(Qt.PenStyle.NoPen)
-            p.setBrush(QColor(255, 255, 255, 40))
-            p.drawRect(bar)
-            p.setBrush(QColor(theme.ACCENT))
-            p.drawRect(QRectF(bar.left(), bar.top(), bar.width() * max(0.05, item.fraction), 3))
-        p.restore()
-
-
-class EpisodeGrid(QListView):
-    """Wrapping grid that grows to fit its content, so the whole page scrolls as one."""
-
-    episodeClicked = Signal(str)
-    markRequested = Signal(str, str)  # episode, "watched" | "unwatched" | "upto"
-    SPACING = 5
-
-    def __init__(self, parent=None) -> None:
-        super().__init__(parent)
-        self.model_ = EpisodeModel(self)
-        self.setModel(self.model_)
-        self.setItemDelegate(EpisodeDelegate(self))
-        self.setViewMode(QListView.ViewMode.IconMode)
-        self.setFlow(QListView.Flow.LeftToRight)
-        self.setWrapping(True)
-        self.setResizeMode(QListView.ResizeMode.Adjust)
-        self.setMovement(QListView.Movement.Static)
-        self.setUniformItemSizes(True)
-        self.setSpacing(self.SPACING)
-        self.setSelectionMode(QListView.SelectionMode.NoSelection)
-        self.setMouseTracking(True)
-        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.setFrameShape(QListView.Shape.NoFrame)
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.viewport().setCursor(Qt.CursorShape.PointingHandCursor)
-        self.clicked.connect(lambda idx: self.episodeClicked.emit(idx.data(EP_ROLE).number))
-        self.model_.modelReset.connect(self._fit)
-        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.customContextMenuRequested.connect(self._menu)
-
-    def _menu(self, pos) -> None:
-        index = self.indexAt(pos)
-        if not index.isValid():
-            return
-        item: EpisodeItem = index.data(EP_ROLE)
-        menu = QMenu(self)
-        if item.state == "watched":
-            menu.addAction("Mark as unwatched", lambda: self.markRequested.emit(item.number, "unwatched"))
-        else:
-            menu.addAction("Mark as watched", lambda: self.markRequested.emit(item.number, "watched"))
-        menu.addAction(f"Mark episodes 1–{item.number} as watched", lambda: self.markRequested.emit(item.number, "upto"))
-        menu.exec(self.viewport().mapToGlobal(pos))
-
-    def wheelEvent(self, event) -> None:
-        event.ignore()  # the page scrolls, not the grid
-
-    def resizeEvent(self, event) -> None:
-        super().resizeEvent(event)
-        self._fit()
-
-    def _fit(self) -> None:
-        cell_w = EpisodeDelegate.W + 2 * self.SPACING
-        cell_h = EpisodeDelegate.H + 2 * self.SPACING
-        per_row = max(1, self.viewport().width() // cell_w)
-        rows = math.ceil(len(self.model_.items) / per_row) if self.model_.items else 0
-        self.setFixedHeight(rows * cell_h + 4)
 
 
 class DetailPage(QScrollArea):
@@ -218,6 +45,10 @@ class DetailPage(QScrollArea):
         self.play_target: str | None = None
         self.autoplay = False
         self._related_for: int | None = None
+        self.page: int | None = None       # None = pick the page with Up Next
+        self.jumped_to: str | None = None
+        self.stills: dict[str, str] = {}
+        self._stills_asked: set[tuple] = set()
         self.current_item = None           # what was opened (Media or Show), for Back between shows
 
         # Header
@@ -301,7 +132,11 @@ class DetailPage(QScrollArea):
         ep_head.addWidget(self.ep_count)
         ep_head.addStretch(1)
         ep_head.addWidget(self.status)
-        self.grid = EpisodeGrid()
+        self.pager = EpisodePager()
+        self.pager.pageChosen.connect(self._go_page)
+        self.pager.jumpRequested.connect(self._jump)
+        self.pager.setVisible(False)
+        self.grid = EpisodeGrid(ctx.images)
         self.grid.episodeClicked.connect(self.play)
         self.grid.markRequested.connect(self._mark)
         self.message = QLabel("", objectName="EmptyState", wordWrap=True)
@@ -314,6 +149,7 @@ class DetailPage(QScrollArea):
         episodes.setSpacing(12)
         episodes.addLayout(ep_head)
         episodes.addWidget(self.message)
+        episodes.addWidget(self.pager)
         episodes.addWidget(self.grid)
 
         # More like this (AniList)
@@ -381,6 +217,11 @@ class DetailPage(QScrollArea):
         self.airing.setVisible(False)
         self.message.setVisible(False)
         self.grid.model_.set_items([])
+        self.grid.set_tile_color(None)
+        self.page, self.jumped_to, self.stills, self._stills_asked = None, None, {}, set()
+        self.pager.setVisible(False)
+        self.pager.jump.clear()
+        self.pager.set_error("")
         self._related_for = None
         for row in (self.related_row, self.recs_row):
             row.set_cards([])
@@ -401,7 +242,9 @@ class DetailPage(QScrollArea):
         if not keep_poster or not self.poster.url:
             self.poster.set_cover(media.cover, media.cover_color, media.display_title)
         self.header.set_image(media.banner, media.cover, media.cover_color)
+        self.grid.set_tile_color(media.cover_color)
         self._load_related(media)
+        self._load_stills()
 
     def _load_related(self, media: Media) -> None:
         if getattr(self, "_related_for", None) == media.anilist_id:
@@ -463,8 +306,9 @@ class DetailPage(QScrollArea):
         if not episodes:
             self._show_message("No episodes listed yet.")
             return
-        self.ep_count.setText(str(len(episodes)))
+        self.ep_count.setText(f"{len(episodes):,}")
         self._refresh_episode_states()
+        self._load_stills()
         if self.autoplay and self.play_target:
             self.autoplay = False
             self.play(self.play_target)
@@ -484,8 +328,18 @@ class DetailPage(QScrollArea):
         self.play_target = target.number if target else None
         busy = self.playback.active
         playing = self.playback.now_playing
+        numbers = [ep.number for ep in self.episodes]
+        pages = page_ranges(numbers)
+        if self.page is None:  # first time: open on the page with Up Next
+            at = numbers.index(target.number) if target and target.number in numbers else 0
+            self.page = at // PER_PAGE
+        self.page = max(0, min(self.page, len(pages) - 1))
+        first, last, _label = pages[self.page]
+        self.pager.setVisible(len(pages) > 1)
+        if len(pages) > 1:
+            self.pager.set_pages([label for _a, _b, label in pages], self.page)
         items = []
-        for ep in self.episodes:
+        for ep in self.episodes[first:last]:
             p = progress.get(ep.number)
             state = "watched" if p and p.completed else ("progress" if p else "new")
             items.append(EpisodeItem(
@@ -493,6 +347,8 @@ class DetailPage(QScrollArea):
                 up_next=bool(target and kind in ("next", "resume") and ep.number == target.number),
                 busy=None,
                 playing=bool(playing and playing == (self.anime_id, ep.number)),
+                still=self.stills.get(ep.number),
+                hit=ep.number == self.jumped_to,
             ))
         self.grid.model_.set_items(items)
         if busy and busy[0] == self.anime_id:
@@ -506,6 +362,56 @@ class DetailPage(QScrollArea):
             text += f"  ·  {mins}:{secs:02d}"
         self.play_btn.setText(text)
         self.play_btn.setEnabled(target is not None)
+
+    # -- pages, jump, stills ------------------------------------------------------------
+
+    def _go_page(self, page: int) -> None:
+        self.page, self.jumped_to = page, None
+        self.pager.set_error("")
+        self._refresh_episode_states()
+        self._load_stills()
+
+    def _jump(self, text: str) -> None:
+        numbers = [ep.number for ep in self.episodes]
+        at = find_episode(numbers, text)
+        if at is None:
+            self.pager.set_error(f"No episode {text.strip()}")
+            return
+        self.page, self.jumped_to = at // PER_PAGE, numbers[at]
+        self.pager.set_error("")
+        self._refresh_episode_states()
+        self._load_stills()
+        QTimer.singleShot(0, lambda n=numbers[at]: self._scroll_to(n))
+
+    def _scroll_to(self, number: str) -> None:
+        row = self.grid.model_.row_of(number)
+        if row is None:
+            return
+        rect = self.grid.visualRect(self.grid.model_.index(row))
+        middle = self.grid.mapTo(self.widget(), rect.center()).y()
+        self.verticalScrollBar().setValue(middle - self.viewport().height() // 2)
+
+    def _load_stills(self) -> None:
+        """Ask for this page's episode stills (once per show and page)."""
+        stills = getattr(self.ctx, "stills", None)
+        if stills is None or not self.media or not self.episodes or self.page is None:
+            return
+        key = (self.anime_id, self.media.anilist_id, self.page)
+        if key in self._stills_asked:
+            return
+        self._stills_asked.add(key)
+        first = self.page * PER_PAGE
+        wanted = [(ep.number, ep.title) for ep in self.episodes[first:first + PER_PAGE]]
+        media, gen = self.media, self.gen
+        self.ctx.runner.submit(
+            stills.for_episodes, media.anilist_id, media.mal_id, wanted,
+            on_done=lambda found: gen == self.gen and self._on_stills(found),
+            group=f"detail-stills-{self.page}",
+        )
+
+    def _on_stills(self, found: dict[str, str]) -> None:
+        self.stills.update(found)
+        self.grid.model_.set_stills(found)
 
     def _refresh_library_button(self) -> None:
         show = self.ctx.store.get_show(self.anime_id) if self.anime_id else None

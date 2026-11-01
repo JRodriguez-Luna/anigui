@@ -46,21 +46,26 @@ class AppContext:
     player: Any             # core.player.Player (or a test double)
     settings: QSettings
     events: PrefEvents = field(default_factory=PrefEvents)
+    stills: Any = None      # core.stills.EpisodeStills; None = numbered tiles only
 
     @classmethod
     def create(cls) -> "AppContext":
         from core.cli_bridge import CliBridge
         from core.player import Player
 
+        from core.stills import EpisodeStills
+
         store = Store()
+        catalog = Catalog(store)
         return cls(
             store=store,
-            catalog=Catalog(store),
+            catalog=catalog,
             runner=TaskRunner(),
             images=ImageLoader(CoverCache()),
             bridge=CliBridge(),
             player=Player(),
             settings=QSettings("AniGUI", "AniGUI"),
+            stills=EpisodeStills(catalog.anilist, store),
         )
 
     # Preferences (QSettings). `default` falls back to DEFAULTS for known keys.
