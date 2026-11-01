@@ -177,7 +177,6 @@ def parse_capture(data: bytes) -> StreamInfo:
 
     url = args[-1]
     referrer = title = audio = subs = None
-    extra: list[str] = []
     for arg in args[:-1]:
         if arg.startswith("--referrer="):
             referrer = arg.split("=", 1)[1] or None
@@ -187,12 +186,22 @@ def parse_capture(data: bytes) -> StreamInfo:
             audio = arg.split("=", 1)[1] or None
         elif arg.startswith("--sub-file="):
             subs = arg.split("=", 1)[1] or None
-        else:
-            extra.append(arg)
+        # Anything else is dropped: only these four values ever reach the player, so a
+        # hostile page can't smuggle player options (like --script) through ani-cli.
 
-    if not url.startswith(("http://", "https://")):
+    if not is_web_url(url):
         raise AniCliError(f"Unexpected stream URL from ani-cli: {url[:120]}")
-    return StreamInfo(url, referrer, title, audio, subs, tuple(extra))
+    audio = audio if audio and is_web_url(audio) else None
+    subs = subs if subs and is_web_url(subs) else None
+    referrer = referrer if referrer and is_web_url(referrer) else None
+    return StreamInfo(url, referrer, title, audio, subs, ())
+
+
+def is_web_url(value: str) -> bool:
+    """An http(s) link with nothing a player could read as an option or a second value."""
+    if not value.startswith(("https://", "http://")) or len(value) > 4096:
+        return False
+    return not any(ord(c) < 32 or c in ' "\\' or ord(c) == 127 for c in value)
 
 
 def clean_output(text: str) -> str:

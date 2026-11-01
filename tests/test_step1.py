@@ -90,7 +90,7 @@ def test_parse_capture():
     assert info.audio_url == "https://cdn/a.m3u8"
     assert info.subtitle_url == "https://cdn/en.vtt"
     assert info.title == "Show Episode 1"
-    assert info.extra_args == ("--script-opts=skip-op_start=10",)
+    assert info.extra_args == ()     # extra options never reach the player
 
 
 def test_parse_capture_rejects_empty_and_bad_url():

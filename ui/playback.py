@@ -19,7 +19,7 @@ from typing import Callable
 from PySide6.QtCore import QObject, QTimer, Signal
 
 from core import aniskip
-from core.ani_cli import StreamInfo
+from core.ani_cli import StreamInfo, is_web_url
 from core.catalog import CatalogError
 from core.mpv_ipc import MpvIpc
 from core.player import PLAYER_NAMES
@@ -206,6 +206,9 @@ class Session(QObject):
         self.now.pending_tracks = [("audio-add", info.audio_url)] if info.audio_url else []
         if info.subtitle_url:
             self.now.pending_tracks.append(("sub-add", info.subtitle_url))
+        if not is_web_url(info.url) or any(u and not is_web_url(u) for u in (info.audio_url, info.subtitle_url)):
+            self.notice.emit("The stream link didn't look right, so it wasn't opened.", True)
+            return
         self.ipc.command("loadfile", info.url, "replace")
 
     def save(self) -> None:

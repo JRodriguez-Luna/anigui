@@ -6,7 +6,7 @@ import os
 import subprocess
 import tempfile
 
-from .ani_cli import StreamInfo
+from .ani_cli import StreamInfo, is_web_url
 from .env import child_env, find_player
 
 INSTALL_HINT = "No video player found. Open Setup in AniGUI to install IINA."
@@ -25,7 +25,14 @@ def default_ipc_path() -> str:
 
 def build_player_command(kind: str, path: str, info: StreamInfo, title: str,
                          ipc_path: str | None = None, start: float | None = None) -> list[str]:
-    """IINA takes mpv options with an --mpv- prefix; mpv takes them directly."""
+    """IINA takes mpv options with an --mpv- prefix; mpv takes them directly.
+
+    Every link is checked again here (http(s) only), so nothing from a website can
+    be read by the player as an option.
+    """
+    for link in (info.url, info.audio_url, info.subtitle_url, info.referrer):
+        if link is not None and not is_web_url(link):
+            raise PlayerError("The stream link didn't look right, so it wasn't opened.")
     opts: list[tuple[str, str]] = []
     if info.referrer:
         opts.append(("referrer", info.referrer))
@@ -44,7 +51,6 @@ def build_player_command(kind: str, path: str, info: StreamInfo, title: str,
             cmd.append(f"--mpv-audio-files={esc(info.audio_url)}")
         if info.subtitle_url:
             cmd.append(f"--mpv-sub-files={esc(info.subtitle_url)}")
-        cmd += [f"--mpv-{a[2:]}" if a.startswith("--") else a for a in info.extra_args]
         cmd += [f"--mpv-{k}={v}" for k, v in opts]
         cmd.append(info.url)
         return cmd
@@ -56,9 +62,8 @@ def build_player_command(kind: str, path: str, info: StreamInfo, title: str,
         cmd.append(f"--audio-file={info.audio_url}")
     if info.subtitle_url:
         cmd.append(f"--sub-file={info.subtitle_url}")
-    cmd += list(info.extra_args)
     cmd += [f"--{k}={v}" for k, v in opts]
-    cmd.append(info.url)
+    cmd += ["--", info.url]   # mpv: everything after -- is a file, never an option
     return cmd
 
 
