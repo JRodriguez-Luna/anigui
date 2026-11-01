@@ -48,29 +48,25 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r requirements.txt
 
-      - name: Probe stills for this season (temporary)
+      - name: Probe ani.zip for shows without pictures (temporary)
         if: runner.os == 'Linux'
         continue-on-error: true
         run: |
           python - <<'PY'
-          import collections
+          import json
+          from core import http
           from core.anilist import AniListClient
-          from core.stills import EpisodeStills
-          al = AniListClient(); src = EpisodeStills(al)
-          shows = al.season("FALL", 2026, per_page=30)
-          total = got = 0; none = []; lines = []
-          for m in shows:
-              aired = (m.next_episode - 1) if m.next_episode else (m.episodes or 0)
-              if aired <= 0:
+          al = AniListClient()
+          want = ("Made in Abyss", "Laid-Off", "Ramparts of Ice", "Rascal Does Not", "Beerus", "Hello, I am a Witch", "Magic Repo Man")
+          for m in al.season("FALL", 2026, per_page=30):
+              if not any(w.lower() in m.display_title.lower() for w in want):
                   continue
-              found = src.for_episodes(m.anilist_id, m.mal_id, [(str(i), None) for i in range(1, aired + 1)])
-              hosts = collections.Counter(u.split("/")[2] for u in found.values())
-              total += aired; got += len(found)
-              if not found: none.append(m.display_title[:30])
-              lines.append(f"{m.display_title[:28]} {len(found)}/{aired} {dict(hosts)}")
-          print(f"::notice title=season summary::{len(lines)} shows, {got}/{total} aired episodes have pictures; none at all: {none}")
-          for i in range(0, len(lines), 8):
-              print("::notice title=season " + str(i // 8) + "::" + " | ".join(lines[i:i + 8]))
+              r = http.request(f"https://api.ani.zip/mappings?anilist_id={m.anilist_id}", timeout=20)
+              if r.status != 200:
+                  print(f"::notice title=az {m.display_title[:25]}::HTTP {r.status}"); continue
+              d = json.loads(r.body); eps = d.get("episodes") or {}
+              summ = [(k, (v or {}).get("episodeNumber"), (v or {}).get("absoluteEpisodeNumber"), bool((v or {}).get("image")), (v or {}).get("airDate")) for k, v in list(eps.items())[:8]]
+              print(f"::notice title=az {m.display_title[:25]}::next_ep={m.next_episode} eps={len(eps)} mappings={json.dumps(d.get('mappings'))[:160]} first={summ}")
           PY
 
       - name: Run tests (offline; fake site, fake mpv, real ani-cli)
