@@ -125,6 +125,14 @@ def test_verify_iina_requires_iinas_team_and_gatekeeper(tmp_path):
     setup.verify_iina(app, _Run(gate=3, gate_text="accepted (override=security disabled)"))  # Gatekeeper off
 
 
+def released_as(tag, script):
+    def fetch(url):
+        if url == setup.ANI_CLI_RELEASES:
+            return json.dumps({"tag_name": tag}).encode()
+        return script
+    return fetch
+
+
 def test_ani_cli_updates_come_from_tagged_releases():
     script = b'#!/bin/sh\nversion_number="5.2.0"\n'
     urls = []
@@ -139,6 +147,10 @@ def test_ani_cli_updates_come_from_tagged_releases():
 
     assert setup.latest_ani_cli(fetch) == ("5.2.0", script)
     assert urls[-1] == setup.ANI_CLI_RAW.format(ref="v5.2.0") and not any("master" in u for u in urls)
+    short_tag = released_as("v5.1", b'#!/bin/sh\nversion_number="5.1.0"\n')
+    assert setup.latest_ani_cli(short_tag)[0] == "5.1.0"          # "v5.1" is the 5.1.0 release
+    with pytest.raises(setup.SetupError, match="doesn't match"):
+        setup.latest_ani_cli(released_as("v5.1", b'#!/bin/sh\nversion_number="5.2.0"\n'))
     with pytest.raises(setup.SetupError, match="unexpected name"):
         setup.latest_ani_cli(lambda url: json.dumps({"tag_name": "main; rm -rf"}).encode())
 

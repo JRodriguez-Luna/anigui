@@ -153,7 +153,8 @@ def latest_ani_cli(fetch: Fetch = _fetch) -> tuple[str, bytes]:
         raise SetupError(f"ani-cli's latest release has an unexpected name ({tag[:40]}).")
     script = fetch(ANI_CLI_RAW.format(ref=tag))
     version = script_version(script)
-    if not version or version != tag.lstrip("v") or not script.startswith(b"#!"):
+    tag_parts = parse_version(tag)
+    if not version or parse_version(version)[:len(tag_parts)] != tag_parts or not script.startswith(b"#!"):
         raise SetupError(f"The ani-cli script for {tag} doesn't match its release, so it wasn't offered.")
     return version, script
 
