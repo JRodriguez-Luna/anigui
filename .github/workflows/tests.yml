@@ -48,6 +48,32 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r requirements.txt
 
+      - name: Probe stills for new shows (temporary)
+        if: runner.os == 'Linux'
+        continue-on-error: true
+        run: |
+          python - <<'PY'
+          import json
+          from core import http
+          from core.anilist import AniListClient
+          from core.stills import EpisodeStills
+          al = AniListClient(); src = EpisodeStills(al)
+          for q in ("FX Fighter Kurumi-chan", "I'm Dating a Dark Summoner", "Frieren", "Solo Leveling"):
+              m = al.search(q, per_page=1)[0]
+              ours = src.for_episodes(m.anilist_id, m.mal_id, [(str(i), None) for i in range(1, 6)])
+              se = al.streaming_episodes(m.anilist_id)
+              r = http.request(f"https://api.ani.zip/mappings?anilist_id={m.anilist_id}", timeout=20)
+              info = ""
+              if r.status == 200:
+                  d = json.loads(r.body); eps = d.get("episodes") or {}
+                  imgs = {k: (v or {}).get("image") for k, v in eps.items()}
+                  info = (f"anizip eps={len(eps)} with image={sum(1 for v in imgs.values() if v)} "
+                          f"keys={list(eps)[:6]} ep1={json.dumps(eps.get('1'))[:300]}")
+              else:
+                  info = f"anizip HTTP {r.status} {r.body[:100]!r}"
+              print(f"::notice title=new {q}::id={m.anilist_id} mal={m.mal_id} ours={len(ours)}/5 anilist_streaming={len(se)} | {info}")
+          PY
+
       - name: Run tests (offline; fake site, fake mpv, real ani-cli)
         run: pytest -q
 
