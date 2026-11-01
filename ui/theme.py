@@ -171,6 +171,10 @@ QComboBox#FilterCombo:disabled {{ color: {FAINT}; background: {SURFACE}; }}
 #CalBadge[state="pending"] {{ color: #F5B83D; }}
 #CalEmpty {{ color: {FAINT}; padding: 4px; }}
 
+/* Release signer */
+#SignerDetails {{ background: {SURFACE}; border: 1px solid {BORDER}; border-radius: 10px; padding: 12px; color: #C9C9D6; }}
+#SignerProblem {{ color: #FFD6D6; background: #3A1717; border: 1px solid #6E2A2A; border-radius: 8px; padding: 8px 10px; }}
+
 /* Update progress */
 QProgressBar#UpdateBar {{ background: {SURFACE_2}; border: none; border-radius: 4px; max-height: 8px; min-height: 8px; }}
 QProgressBar#UpdateBar::chunk {{ background: {ACCENT}; border-radius: 4px; }}

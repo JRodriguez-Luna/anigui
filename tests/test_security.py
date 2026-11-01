@@ -141,3 +141,197 @@ def test_ani_cli_updates_come_from_tagged_releases():
     assert urls[-1] == setup.ANI_CLI_RAW.format(ref="v5.2.0") and not any("master" in u for u in urls)
     with pytest.raises(setup.SetupError, match="unexpected name"):
         setup.latest_ani_cli(lambda url: json.dumps({"tag_name": "main; rm -rf"}).encode())
+
+
+# -- 2. Signed updates --------------------------------------------------------------------------
+
+import hashlib  # noqa: E402
+import subprocess  # noqa: E402
+
+from core import self_update, signer, signing, updates  # noqa: E402
+
+
+@pytest.fixture
+def keypair():
+    private = signing.new_private_key()
+    return private, signing.public_key_of(private)
+
+
+def test_signature_binds_version_and_file(keypair):
+    private, public = keypair
+    sha = "ab" * 32
+    sig = signing.sign(private, "1.5.0", sha)
+    assert signing.verify("1.5.0", sha, sig, (public,))
+    assert not signing.verify("1.6.0", sha, sig, (public,))           # an old release passed off as newer
+    assert not signing.verify("1.5.0", "cd" * 32, sig, (public,))     # a different file
+    other = signing.public_key_of(signing.new_private_key())
+    assert not signing.verify("1.5.0", sha, sig, (other,))            # someone else's key
+    assert not signing.verify("1.5.0", sha, "not base64!!", (public,))
+    assert not signing.enforced(()) and signing.enforced((public,))
+
+
+def _release(tmp_path, private, version="1.5.0", sign_version=None):
+    dmg = tmp_path / "AniGUI.dmg"
+    dmg.write_bytes(b"pretend disk image")
+    digest = hashlib.sha256(dmg.read_bytes()).hexdigest()
+    sig = tmp_path / "AniGUI.dmg.sig"
+    sig.write_text(signing.sign(private, sign_version or version, digest))
+    upd = updates.AppUpdate("1.4.1", version, "https://x/releases/v1.5.0", "", dmg_url=dmg.as_uri(),
+                            sha256=digest, sig_url=sig.as_uri())
+    return upd
+
+
+def _read(url):
+    return Path(url.removeprefix("file://")).read_bytes()
+
+
+def test_update_now_refuses_unsigned_or_wrongly_signed(tmp_path, keypair, monkeypatch):
+    private, public = keypair
+    installs = []
+    monkeypatch.setattr(self_update, "install", lambda dmg, app, version, run: installs.append(version) or app)
+    good = _release(tmp_path, private)
+    assert self_update.download_and_install(good, tmp_path / "AniGUI.app", fetch=_read, keys=(public,))
+    assert installs == ["1.5.0"]
+
+    stranger = signing.new_private_key()
+    forged = _release(tmp_path, stranger)
+    with pytest.raises(self_update.UpdateError, match="isn't signed by AniGUI's publisher"):
+        self_update.download_and_install(forged, tmp_path / "AniGUI.app", fetch=_read, keys=(public,))
+    replay = _release(tmp_path, private, version="1.6.0", sign_version="1.5.0")
+    with pytest.raises(self_update.UpdateError, match="isn't signed"):
+        self_update.download_and_install(replay, tmp_path / "AniGUI.app", fetch=_read, keys=(public,))
+    unsigned = updates.AppUpdate(**{**good.__dict__, "sig_url": None})
+    with pytest.raises(self_update.UpdateError, match="isn't signed by AniGUI's publisher yet"):
+        self_update.download_and_install(unsigned, tmp_path / "AniGUI.app", fetch=_read, keys=(public,))
+    assert installs == ["1.5.0"]                                       # nothing else got installed
+
+
+def test_unsigned_release_not_offered_once_signing_is_on(monkeypatch, keypair):
+    _private, public = keypair
+    release = {"tag_name": "v9.0.0", "html_url": "u", "body": "", "assets": [
+        {"name": "A.dmg", "browser_download_url": "https://d/A.dmg", "digest": "sha256:" + "ab" * 32}]}
+    fetch = lambda url: json.dumps(release).encode()  # noqa: E731
+    assert updates.check_anigui(fetch=fetch).installable                # signing off (today): offered
+    monkeypatch.setattr(signing, "PUBLIC_KEYS", (public,))
+    assert updates.check_anigui(fetch=fetch) is None                    # signing on: waits for the .sig
+    release["assets"].append({"name": "A.dmg.sig", "browser_download_url": "https://d/A.dmg.sig"})
+    upd = updates.check_anigui(fetch=fetch)
+    assert upd.installable and upd.sig_url == "https://d/A.dmg.sig"
+
+
+# -- the publisher's signer ---------------------------------------------------------------------
+
+class FakeMac:
+    """`security` keeps one item; `gh` records uploads."""
+
+    def __init__(self):
+        self.keychain: str | None = None
+        self.uploads = []
+
+    def __call__(self, cmd, **_kw):
+        ok = subprocess.CompletedProcess(cmd, 0, "", "")
+        if cmd[:2] == ["security", "add-generic-password"]:
+            assert cmd[cmd.index("-T") + 1] == ""                      # no app may read it without asking
+            self.keychain = cmd[cmd.index("-w") + 1]
+            return ok
+        if cmd[:2] == ["security", "find-generic-password"]:
+            if self.keychain is None:
+                return subprocess.CompletedProcess(cmd, 44, "", "not found")
+            return subprocess.CompletedProcess(cmd, 0, self.keychain + "\n" if "-w" in cmd else "", "")
+        if cmd[1:3] == ["release", "upload"]:
+            self.uploads.append((cmd[3], Path(cmd[4]).read_text().strip()))
+            return ok
+        raise AssertionError(cmd)
+
+
+@pytest.fixture
+def home(tmp_path, monkeypatch):
+    monkeypatch.setenv("ANIGUI_HOME", str(tmp_path / "home"))
+    monkeypatch.setattr(signer, "which", lambda name: "/opt/homebrew/bin/gh")
+    return tmp_path
+
+
+def _github(tmp_path, digest, tag="v1.5.0", signed=False, published="2026-11-01T08:00:00Z"):
+    assets = [{"name": "AniGUI-1.5.0.dmg", "browser_download_url": (tmp_path / "rel.dmg").as_uri(), "size": 10,
+               "digest": f"sha256:{digest}"}]
+    if signed:
+        assets.append({"name": "AniGUI-1.5.0.dmg.sig", "browser_download_url": "x"})
+    return [{"tag_name": tag, "published_at": published, "author": {"login": "JRodriguez-Luna"},
+             "body": "## What's new\n- Security", "html_url": "u", "assets": assets}]
+
+
+def test_signer_init_review_sign_upload(home, monkeypatch):
+    import datetime as dt
+    mac = FakeMac()
+    public = signer.init(mac)
+    assert mac.keychain and signing.public_key_of(mac.keychain) == public
+    assert signer.init(mac) == public                                   # doesn't replace an existing key
+
+    (home / "rel.dmg").write_bytes(b"the real release")
+    digest = hashlib.sha256(b"the real release").hexdigest()
+    now = dt.datetime(2026, 11, 1, 9, tzinfo=dt.timezone.utc)
+    releases = _github(home, digest)
+    pending = signer.pending_releases(lambda url: json.dumps(releases).encode(), signer.State(), now)
+    assert [p.tag for p in pending] == ["v1.5.0"]
+    review = signer.prepare(pending[0], fetch=_read)
+    assert review.safe and review.sha256 == digest
+
+    monkeypatch.setattr(signing, "PUBLIC_KEYS", (public,))
+    signer.sign_and_upload(review, run=mac)
+    tag, sig = mac.uploads[0]
+    assert tag == "v1.5.0" and signing.verify("1.5.0", digest, sig)     # users would accept it
+    assert signer.pending_releases(lambda url: json.dumps(releases).encode(), now=now) == []  # remembered
+
+
+def test_signer_refuses_mismatched_files_and_wrong_key(home, monkeypatch):
+    import datetime as dt
+    mac = FakeMac()
+    signer.init(mac)
+    (home / "rel.dmg").write_bytes(b"swapped file")
+    now = dt.datetime(2026, 11, 1, 9, tzinfo=dt.timezone.utc)
+    releases = _github(home, "00" * 32)
+    review = signer.prepare(signer.pending_releases(lambda url: json.dumps(releases).encode(), signer.State(),
+                                                    now)[0], fetch=_read)
+    assert not review.safe and "checksum" in review.problems[0]
+    with pytest.raises(signer.SignerError, match="Not signing"):
+        signer.sign_and_upload(review, run=mac)
+
+    (home / "rel.dmg").write_bytes(b"ok")
+    good = signer.prepare(signer.pending_releases(lambda url: json.dumps(_github(home, hashlib.sha256(b"ok").hexdigest())).encode(),
+                                                  signer.State(), now)[0], fetch=_read)
+    monkeypatch.setattr(signing, "PUBLIC_KEYS", (signing.public_key_of(signing.new_private_key()),))
+    with pytest.raises(signer.SignerError, match="isn't one this AniGUI trusts"):
+        signer.sign_and_upload(good, run=mac)
+    assert mac.uploads == []
+
+
+def test_signer_skips_old_signed_rejected_and_snoozed(home):
+    import datetime as dt
+    now = dt.datetime(2026, 11, 1, 9, tzinfo=dt.timezone.utc)
+    fetch = lambda r: (lambda url: json.dumps(r).encode())  # noqa: E731
+    assert signer.pending_releases(fetch(_github(home, "a" * 64, signed=True)), signer.State(), now) == []
+    assert signer.pending_releases(fetch(_github(home, "a" * 64, published="2026-08-01T00:00:00Z")),
+                                   signer.State(), now) == []
+    assert signer.pending_releases(fetch(_github(home, "a" * 64)), signer.State(rejected=["v1.5.0"]), now) == []
+    later = signer.State(snoozed={"v1.5.0": now.timestamp() + 60})
+    assert signer.pending_releases(fetch(_github(home, "a" * 64)), later, now) == []
+
+
+def test_launch_agent_plist(home, monkeypatch):
+    import plistlib
+    monkeypatch.setattr(signer.Path, "home", staticmethod(lambda: home))
+    data = plistlib.loads(signer.agent_plist())
+    assert data["Label"] == signer.AGENT_LABEL and data["StartInterval"] == 300
+    assert data["ProgramArguments"][-1] == "--signer-check"
+
+
+def test_sign_dialog_blocks_signing_when_something_is_off(tmp_path):
+    from PySide6.QtWidgets import QApplication
+    from ui.signer_dialog import SignDialog
+    QApplication.instance() or QApplication([])
+    p = signer.Pending("v1.5.0", "1.5.0", "Nov 1, 1:00 AM", "JRodriguez-Luna", "- Security <b>x</b>", "u",
+                       "AniGUI-1.5.0.dmg", "file:///x", 1048576, "ab" * 32, None)
+    ok = SignDialog(signer.Review(p, tmp_path / "a.dmg", "ab" * 32, []))
+    assert ok.sign_btn.isEnabled() and not ok.problem.isVisibleTo(ok)
+    bad = SignDialog(signer.Review(p, tmp_path / "a.dmg", "cd" * 32, ["The file doesn't match GitHub's checksum for it."]))
+    assert not bad.sign_btn.isEnabled() and bad.problem.isVisibleTo(bad)

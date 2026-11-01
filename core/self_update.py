@@ -26,7 +26,7 @@ import urllib.request
 from pathlib import Path
 from typing import Callable
 
-from . import http
+from . import http, signing
 from .setup import SetupError
 
 Progress = Callable[[int, int], None]     # bytes done, total (0 if unknown)
@@ -114,6 +114,19 @@ def expected_sha256(sha256: str | None, sha256_url: str | None, fetch=None) -> s
     return value
 
 
+def publisher_signature(update, fetch=None, keys: tuple[str, ...] | None = None) -> str | None:
+    """The release's signature, or None when signing isn't switched on (no key built in)."""
+    if not signing.enforced(keys):
+        return None
+    if not getattr(update, "sig_url", None):
+        raise UpdateError("This release isn't signed by AniGUI's publisher yet, so it can't be installed.")
+    from .setup import _fetch
+    try:
+        return (fetch or _fetch)(update.sig_url).decode("utf-8", "replace").strip()
+    except SetupError as exc:
+        raise UpdateError(f"Couldn't get the release's signature: {exc}") from exc
+
+
 def verify(path: Path, expected: str) -> None:
     if sha256_of(path) != expected.lower():
         raise UpdateError("The download didn't match its checksum, so it wasn't installed.")
@@ -192,12 +205,17 @@ def relaunch(app: Path) -> None:
 
 def download_and_install(update, app: Path, progress: Progress = lambda _d, _t: None,
                          cancelled: Callable[[], bool] = lambda: False, stage: Callable[[str], None] = lambda _s: None,
-                         run: Run = subprocess.run, opener=None, fetch=None) -> Path:
-    """Everything up to (not including) the restart. Raises UpdateError with a readable message."""
+                         run: Run = subprocess.run, opener=None, fetch=None,
+                         keys: tuple[str, ...] | None = None) -> Path:
+    """Everything up to (not including) the restart. Raises UpdateError with a readable message.
+
+    `keys` overrides the built-in publisher keys (tests and CI only).
+    """
     if not update.dmg_url:
         raise UpdateError("This release has no installer to download.")
     stage("Checking the release…")
     expected = expected_sha256(update.sha256, update.sha256_url, fetch)
+    signature = publisher_signature(update, fetch, keys)
     work = Path(tempfile.mkdtemp(prefix="anigui-dl-"))
     try:
         dmg = work / "AniGUI.dmg"
@@ -205,6 +223,8 @@ def download_and_install(update, app: Path, progress: Progress = lambda _d, _t: 
         download(update.dmg_url, dmg, progress, cancelled, opener)
         stage("Verifying…")
         verify(dmg, expected)
+        if signature is not None and not signing.verify(update.latest, sha256_of(dmg), signature, keys):
+            raise UpdateError("This download isn't signed by AniGUI's publisher, so it wasn't installed.")
         if cancelled():
             raise Cancelled("Update cancelled.")
         stage("Installing…")

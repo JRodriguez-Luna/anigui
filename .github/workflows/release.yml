@@ -196,6 +196,29 @@ jobs:
           ok = version == "${{ steps.v.outputs.version }}" and not leftovers
           print(f"::{'notice' if ok else 'error'} title=update::{'PASS' if ok else 'FAIL'} installed {version}, "
                 f"stages {stages}, leftovers {leftovers}")
+          # Signed updates (with a throwaway key; the real key never leaves the publisher's Mac)
+          from core import signing
+          from core.self_update import sha256_of
+          test_key = signing.new_private_key()
+          test_pub = signing.public_key_of(test_key)
+          sig = pathlib.Path(f"{dmg}.sig")
+          sig.write_text(signing.sign(test_key, "${{ steps.v.outputs.version }}", sha256_of(dmg)))
+          signed = upd.__class__(**{**upd.__dict__, "sig_url": sig.as_uri()})
+          self_update.download_and_install(signed, app, fetch=fetch, keys=(test_pub,))
+          print("::notice title=update::PASS signed update installed")
+          try:
+              self_update.download_and_install(signed, app, fetch=fetch, keys=(signing.public_key_of(signing.new_private_key()),))
+              print("::error title=update::FAIL an update signed by another key was installed")
+              ok = False
+          except self_update.UpdateError as exc:
+              print(f"::notice title=update::PASS other key refused: {exc}")
+          from core import setup as st
+          try:
+              v, script = st.latest_ani_cli()
+              print(f"::notice title=ani-cli::PASS latest tagged release: {v} ({len(script)} bytes)")
+          except Exception as exc:
+              print(f"::error title=ani-cli::FAIL latest tagged release: {exc}")
+              ok = False
           bad = upd.__class__(**{**upd.__dict__, "sha256": "0" * 64})
           try:
               self_update.download_and_install(bad, app, fetch=fetch)

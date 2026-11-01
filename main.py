@@ -44,8 +44,8 @@ def self_test() -> int:
     problems = []
     try:
         from PySide6.QtNetwork import QLocalSocket  # noqa: F401
-        from core import alerts, ani_cli, aniskip, calendar, catalog, changelog, covers, mpv_ipc, player, self_update, setup, stats, store, updates  # noqa: F401
-        from ui import alerts as ui_alerts, calendar_page, icons, main_window, search_page, settings_dialog, setup_dialog, stats_page, update_dialog, whats_new  # noqa: F401
+        from core import alerts, ani_cli, aniskip, calendar, catalog, changelog, covers, mpv_ipc, player, self_update, setup, signer, signing, stats, store, updates  # noqa: F401
+        from ui import alerts as ui_alerts, calendar_page, icons, main_window, search_page, settings_dialog, setup_dialog, signer_dialog, stats_page, update_dialog, whats_new  # noqa: F401
         import certifi
 
         if not Path(certifi.where()).is_file():
@@ -65,9 +65,85 @@ def self_test() -> int:
     return 1 if problems else 0
 
 
+SIGNER_HELP = """AniGUI release signer (for the publisher only)
+
+  --signer-init        create your signing key (kept in the macOS Keychain) and print the public key
+  --signer-install     check for releases to sign every 5 minutes, in the background
+  --signer-check       check once now
+  --signer-backup      print the private key, to keep in your password manager
+  --signer-restore     put a backed-up key into the Keychain (paste it, then press Return)
+  --signer-uninstall   stop the background checks
+"""
+
+
+def signer_main(command: str) -> int:
+    from core import signer
+
+    try:
+        if command == "--signer-init":
+            public = signer.init()
+            print("Your signing key is in your Keychain (login keychain, \"AniGUI release signing key\").\n")
+            print("Public key (safe to share; it goes into AniGUI):\n")
+            print(f"    {public}\n")
+            print("Next: back up the private key with --signer-backup, then run --signer-install.")
+        elif command == "--signer-backup":
+            print("macOS will ask for your password to release the key.\n")
+            print(signer.read_key())
+            print("\nKeep this in your password manager. Anyone with it can sign AniGUI updates. "
+                  "Clear this Terminal window afterwards (Cmd+K).")
+        elif command == "--signer-restore":
+            key = sys.stdin.readline().strip()
+            from core import signing
+            print(f"Restored. Public key: {signing.public_key_of(key)}")
+            signer.store_key(key)
+        elif command == "--signer-install":
+            path = signer.install_agent()
+            print(f"Background checks are on ({path}). You'll get a window when a release is ready to sign.")
+        elif command == "--signer-uninstall":
+            signer.uninstall_agent()
+            print("Background checks are off.")
+        elif command == "--signer-check":
+            return signer_check()
+        else:
+            print(SIGNER_HELP)
+            return 1
+    except signer.SignerError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
+def signer_check() -> int:
+    """One look at GitHub; a review window for each release waiting to be signed."""
+    from core import signer
+
+    try:
+        pending = signer.pending_releases()
+    except Exception as exc:  # noqa: BLE001 - offline etc.: try again next time
+        print(f"signer: couldn't check GitHub: {exc}")
+        return 0
+    if not pending:
+        return 0
+    from PySide6.QtWidgets import QApplication
+
+    from ui.signer_dialog import SignDialog
+    from ui.theme import apply_theme
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    apply_theme(app)
+    for p in pending:
+        print(f"signer: {p.tag} is waiting to be signed")
+        review = signer.prepare(p)
+        SignDialog(review).exec()
+    return 0
+
+
 def main() -> int:
     if "--self-test" in sys.argv:
         return self_test()
+    command = next((a for a in sys.argv[1:] if a.startswith("--signer")), None)
+    if command:
+        return signer_main(command)
     setup_logging()
 
     from PySide6.QtGui import QIcon

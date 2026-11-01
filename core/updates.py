@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 
-from . import __version__
+from . import __version__, signing
 from .ani_cli import is_supported
 from .setup import Fetch, SetupError, _fetch, latest_ani_cli, parse_version
 
@@ -34,11 +34,13 @@ class AppUpdate:
     dmg_url: str | None = None       # the installer, for Update Now
     sha256: str | None = None        # from GitHub's asset digest, if it has one
     sha256_url: str | None = None    # or the .sha256 file published next to the .dmg
+    sig_url: str | None = None       # the publisher's signature (.sig), required once signing is on
 
     @property
     def installable(self) -> bool:
-        """Update Now needs the .dmg and a checksum to verify it against."""
-        return bool(self.dmg_url and (self.sha256 or self.sha256_url))
+        """Update Now needs the .dmg, a checksum, and (with signing on) the publisher's signature."""
+        signed = bool(self.sig_url) or not signing.enforced()
+        return bool(self.dmg_url and (self.sha256 or self.sha256_url) and signed)
 
 
 def check_ani_cli(installed: str | None, store=None, fetch: Fetch = _fetch,
@@ -68,18 +70,27 @@ def check_anigui(store=None, fetch: Fetch = _fetch, force: bool = False,
         release = json.loads(fetch(ANIGUI_RELEASES))
     except (SetupError, ValueError):
         return None
-    if store is not None:
-        store.cache_put(key, "checked", CHECK_EVERY_S)
     tag = str(release.get("tag_name", "")).lstrip("v")
     if not tag or release.get("draft") or release.get("prerelease"):
         return None
     if parse_version(tag) <= parse_version(current):
+        if store is not None:
+            store.cache_put(key, "checked", CHECK_EVERY_S)
         return None
     assets = release.get("assets") or []
     dmg = next((a for a in assets if str(a.get("name", "")).endswith(".dmg")), None)
+    name = (dmg or {}).get("name")
     digest = str((dmg or {}).get("digest") or "")
-    checksum = next((a for a in assets if dmg and a.get("name") == f"{dmg.get('name')}.sha256"), None)
+    checksum = next((a for a in assets if dmg and a.get("name") == f"{name}.sha256"), None)
+    sig = next((a for a in assets if dmg and a.get("name") == f"{name}.sig"), None)
+    if signing.enforced() and sig is None:
+        # Published but not signed by the publisher yet: not offered (or until it is signed,
+        # if it never will be). No daily cache here, so it shows up soon after signing.
+        return None
+    if store is not None:
+        store.cache_put(key, "checked", CHECK_EVERY_S)
     return AppUpdate(current, tag, release.get("html_url", ""), release.get("body") or "",
                      dmg_url=(dmg or {}).get("browser_download_url"),
                      sha256=digest.removeprefix("sha256:") if digest.startswith("sha256:") else None,
-                     sha256_url=(checksum or {}).get("browser_download_url"))
+                     sha256_url=(checksum or {}).get("browser_download_url"),
+                     sig_url=(sig or {}).get("browser_download_url"))
