@@ -48,6 +48,36 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r requirements.txt
 
+      - name: Probe episode stills (temporary)
+        if: runner.os == 'Linux'
+        continue-on-error: true
+        run: |
+          python - <<'PY'
+          import collections
+          from core.anilist import AniListClient
+          from core.stills import EpisodeStills
+          from core.covers import _default_fetcher, image_extension
+          src = EpisodeStills(AniListClient())
+          shows = [("Frieren", 154587, 52991, 28), ("MHA S1", 21459, 31964, 13), ("One Piece", 21, 21, 60),
+                   ("Naruto", 20, 20, 40), ("Demon Slayer", 101922, 38000, 26), ("JJK", 113415, 40748, 24),
+                   ("Solo Leveling", 151807, 52299, 12), ("Bleach", 269, 269, 40), ("Chainsaw Man", 127230, 44511, 12)]
+          for name, aid, mal, n in shows:
+              found = src.for_episodes(aid, mal, [(str(i), None) for i in range(1, n + 1)])
+              results = collections.Counter()
+              bad = []
+              for ep, url in found.items():
+                  host = url.split("/")[2]
+                  try:
+                      data = _default_fetcher(url)
+                      ok = bool(image_extension(data))
+                      results[(host, "ok" if ok else "not-image")] += 1
+                      if not ok: bad.append((ep, url[:90], data[:40]))
+                  except Exception as e:
+                      results[(host, "fail")] += 1
+                      bad.append((ep, url[:90], str(e)[:80]))
+              print(f"::notice title=stills {name}::{len(found)}/{n} found; {dict(results)}; bad: {bad[:3]}")
+          PY
+
       - name: Run tests (offline; fake site, fake mpv, real ani-cli)
         run: pytest -q
 
