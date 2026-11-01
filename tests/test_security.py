@@ -372,3 +372,10 @@ def test_publisher_key_is_built_in_and_enforced():
     # A signature from any other key is refused by the real, built-in key list
     other = signing.new_private_key()
     assert not signing.verify("9.9.9", "ab" * 32, signing.sign(other, "9.9.9", "ab" * 32))
+
+
+def test_signer_ignores_releases_from_before_signing(home):
+    import datetime as dt
+    now = dt.datetime(2026, 11, 1, 9, tzinfo=dt.timezone.utc)
+    old = _github(home, "a" * 64, tag="v1.4.1")
+    assert signer.pending_releases(lambda url: json.dumps(old).encode(), signer.State(), now) == []

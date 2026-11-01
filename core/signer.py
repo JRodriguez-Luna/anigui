@@ -28,7 +28,7 @@ from typing import Callable
 from . import paths, signing
 from .env import which
 from .self_update import download, sha256_of
-from .setup import SetupError, _fetch
+from .setup import SetupError, _fetch, parse_version
 
 REPO = "JRodriguez-Luna/anigui"
 RELEASES_API = f"https://api.github.com/repos/{REPO}/releases?per_page=10"
@@ -38,6 +38,7 @@ AGENT_LABEL = "io.github.jrodriguez-luna.anigui.signer"
 CHECK_EVERY_S = 300
 RECENT_DAYS = 30
 SNOOZE_S = 3600
+SIGN_FROM = "1.5.0"   # the first signed release; older ones were never meant to be signed
 
 Run = Callable[..., subprocess.CompletedProcess]
 
@@ -136,6 +137,8 @@ def pending_releases(fetch=_fetch, state: State | None = None, now: dt.datetime 
     for r in releases:
         tag = str(r.get("tag_name") or "")
         if not tag or r.get("draft") or r.get("prerelease") or tag in state.signed or tag in state.rejected:
+            continue
+        if parse_version(tag) < parse_version(SIGN_FROM):
             continue
         if state.snoozed.get(tag, 0) > now.timestamp():
             continue
