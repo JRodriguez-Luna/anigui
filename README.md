@@ -32,7 +32,7 @@
 - **Search as you type** across everything ani-cli can stream, or browse with filters for genre, year, season, format and status.
 - **Rich show pages** with cover art, banners, scores, genres and next-episode countdowns from [AniList](https://anilist.co), plus Sub/Dub and quality choices.
 - **Filler guide:** FILLER tags from [Anime Filler List](https://www.animefillerlist.com), a count on the show page, and switches to hide fillers or have Up Next and auto-play skip them.
-- **Episode stills:** every episode card shows a picture from the episode (from AniList and [Kitsu](https://kitsu.app)); long shows like One Piece get pages of 100 and a Jump to episode box.
+- **Episode stills:** every episode card shows a picture from the episode (from AniList, [Kitsu](https://kitsu.app) and [ani.zip](https://ani.zip)/TheTVDB); long shows like One Piece get pages of 100 and a Jump to episode box.
 - **One click to play** in [IINA](https://iina.io) or [mpv](https://mpv.io).
 - **Real watch tracking** over mpv's IPC socket: your position saves as you watch, episodes count as watched past 90%, and Resume picks up exactly where you stopped.
 - **Auto-play next:** the next episode is fetched in the background and starts in the same player window after a short countdown.
@@ -199,7 +199,7 @@ anigui/
 │   ├── setup.py               installs ani-cli + IINA, checks the connection
 │   ├── updates.py             once-a-day checks for new ani-cli / AniGUI versions
 │   ├── aniskip.py             intro / ending / recap times from AniSkip
-│   ├── stills.py              episode thumbnails (AniList, then Kitsu), checked against the show
+│   ├── stills.py              episode thumbnails (AniList, Kitsu, ani.zip), checked against the show
 │   ├── fillers.py             filler episodes from Anime Filler List, matched by exact title
 │   ├── alerts.py              new-episode checks (AniList airing + hianime)
 │   ├── changelog.py           release notes for the What's New window

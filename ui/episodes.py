@@ -140,6 +140,7 @@ class EpisodeDelegate(QStyledItemDelegate):
         super().__init__(parent)
         self.images = images
         self.tile_color = QColor(theme.SURFACE_2)   # the show's color, for episodes without a still
+        self.tile_art: str | None = None              # the show's banner, behind the number on those
         self.small = theme.font(11, QFont.Weight.Bold)
         self.title = theme.font(13)
         self.big = theme.font(34, QFont.Weight.Black)
@@ -234,10 +235,17 @@ class EpisodeDelegate(QStyledItemDelegate):
         p.restore()
 
     def _tile(self, p: QPainter, rect: QRectF, number: str) -> None:
+        """No still for this episode: the show's banner, darkened, with the episode number."""
         base = QColor(self.tile_color)
-        p.fillRect(rect, base.darker(260))
+        art = self.images.pixmap(self.tile_art, self.W - 2, self.STILL_H - 1) if (self.images and self.tile_art) else None
+        if art is not None:
+            p.drawPixmap(rect.toRect(), art)
+            p.fillRect(rect, QColor(8, 8, 12, 165))
+            p.setPen(QColor(255, 255, 255, 235))
+        else:
+            p.fillRect(rect, base.darker(260))
+            p.setPen(base.lighter(150) if base.lightness() < 140 else base)
         p.setFont(self.big)
-        p.setPen(base.lighter(150) if base.lightness() < 140 else base)
         p.drawText(rect, Qt.AlignmentFlag.AlignCenter, number)
 
     def _kind_badge(self, p: QPainter, still: QRectF, kind: str) -> None:
@@ -297,8 +305,9 @@ class EpisodeGrid(QListView):
         if images is not None:
             images.loaded.connect(lambda _url: self.viewport().update())
 
-    def set_tile_color(self, color: str | None) -> None:
+    def set_tile_color(self, color: str | None, art: str | None = None) -> None:
         self.delegate.tile_color = QColor(color) if color and QColor(color).isValid() else QColor(theme.SURFACE_2)
+        self.delegate.tile_art = art
         self.viewport().update()
 
     def _menu(self, pos) -> None:

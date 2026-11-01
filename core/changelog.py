@@ -25,6 +25,12 @@ class Release:
 
 
 RELEASES: tuple[Release, ...] = (
+    Release("1.7.1", "November 1, 2026", (
+        Change("Pictures for new shows", "Shows that started this season now get episode pictures too, from a "
+                                         "third source (TheTVDB, through ani.zip) that has them days earlier."),
+        Change("Nicer placeholders", "Episodes that still have no picture show the show's own artwork, darkened, "
+                                     "behind the episode number, instead of a plain block of color."),
+    )),
     Release("1.7.0", "November 1, 2026", (
         Change("Filler badges", "Episodes that aren't from the manga get a FILLER tag, and the show page says how "
                                 "many there are, e.g. \"87 of 220 episodes are filler\"."),

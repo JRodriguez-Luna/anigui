@@ -253,7 +253,7 @@ class DetailPage(QScrollArea):
         if not keep_poster or not self.poster.url:
             self.poster.set_cover(media.cover, media.cover_color, media.display_title)
         self.header.set_image(media.banner, media.cover, media.cover_color)
-        self.grid.set_tile_color(media.cover_color)
+        self.grid.set_tile_color(media.cover_color, media.banner or media.cover)
         self._load_related(media)
         self._load_stills()
         self._load_fillers()

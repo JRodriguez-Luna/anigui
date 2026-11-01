@@ -73,8 +73,13 @@ def test_anilist_stills_are_checked_against_the_show(tmp_path):
         {"title": "Episode 3 - Title number 3", "thumbnail": "javascript:alert(1)"},            # not an image URL
         {"title": "Episode 4 - Title number 4", "thumbnail": "https://img/4.jpg"},
     ]
-    src = stills.EpisodeStills(anilist_with(streaming), kitsu_fetch=lambda _u: pytest.fail("no Kitsu without a MAL id"))
+    src = stills.EpisodeStills(anilist_with(streaming), kitsu_fetch=lambda _u: pytest.fail("no Kitsu without a MAL id"),
+                               anizip_fetch=no_anizip)
     assert src.for_episodes(21, None, eps(13)) == {"1": "https://img/1.jpg", "4": "https://img/4.jpg"}
+
+
+def no_anizip(_url):
+    raise OSError("ani.zip not used in this test")
 
 
 def kitsu(pages, mapping_id="11469"):
@@ -99,7 +104,7 @@ def test_kitsu_fills_the_gaps_and_is_cached(tmp_path):
     store = Store(tmp_path / "t.db")
     streaming = [{"title": "Episode 1 - Title number 1", "thumbnail": "https://img/1.jpg"}]
     fetch, seen = kitsu(pages=set(range(1, 30)))
-    src = stills.EpisodeStills(anilist_with(streaming), cache=store, kitsu_fetch=fetch)
+    src = stills.EpisodeStills(anilist_with(streaming), cache=store, kitsu_fetch=fetch, anizip_fetch=no_anizip)
     found = src.for_episodes(21, 31964, eps(25))
     assert found["1"] == "https://img/1.jpg"                                  # AniList wins
     assert found["2"] == "https://media.kitsu.app/2.jpg" and found["25"].endswith("/25.jpg")
@@ -110,7 +115,7 @@ def test_kitsu_fills_the_gaps_and_is_cached(tmp_path):
 
 def test_kitsu_only_fetches_the_pages_it_needs(tmp_path):
     fetch, seen = kitsu(pages=set())
-    src = stills.EpisodeStills(anilist_with([]), kitsu_fetch=fetch)
+    src = stills.EpisodeStills(anilist_with([]), kitsu_fetch=fetch, anizip_fetch=no_anizip)
     page = [(str(n), None) for n in range(201, 301)]
     assert src.for_episodes(21, 31964, page) == {}                             # no stills there: tiles
     offsets = sorted(int(u.split("page%5Boffset%5D=")[1].split("&")[0]) for u in seen if "/episodes?" in u)
@@ -124,10 +129,47 @@ def test_network_trouble_never_breaks_the_page():
     def broken_kitsu(_url):
         raise OSError("offline")
 
-    src = stills.EpisodeStills(AniListClient(transport=broken_transport), kitsu_fetch=broken_kitsu)
+    src = stills.EpisodeStills(AniListClient(transport=broken_transport), kitsu_fetch=broken_kitsu,
+                               anizip_fetch=broken_kitsu)
     assert src.for_episodes(21, 31964, eps(5)) == {}
-    junk = stills.EpisodeStills(anilist_with([]), kitsu_fetch=lambda _u: b"<html>")
+    junk = stills.EpisodeStills(anilist_with([]), kitsu_fetch=lambda _u: b"<html>", anizip_fetch=lambda _u: b"<html>")
     assert junk.for_episodes(21, 31964, eps(5)) == {}
+
+
+def test_anizip_covers_brand_new_shows(tmp_path):
+    """AniList and Kitsu have nothing yet for a show that started this season; ani.zip does."""
+    store = Store(tmp_path / "t.db")
+    seen = []
+
+    def anizip(url):
+        seen.append(url)
+        assert url == "https://api.ani.zip/mappings?anilist_id=208025"
+        return json.dumps({"titles": {"en": "x"}, "episodes": {
+            "1": {"episodeNumber": 1, "title": {"en": "The Dark Summoner and the Stubborn Priest"},
+                  "image": "https://artworks.thetvdb.com/banners/v4/episode/1.jpg"},
+            "2": {"title": {"en": "Title number 2"}, "image": "https://artworks.thetvdb.com/2.jpg"},
+            "3": {"title": {"en": "Something else entirely"}, "image": "https://artworks.thetvdb.com/3.jpg"},
+            "4": {"title": {"en": "Title number 4"}},                                 # no image yet
+            "S1": {"title": {"en": "Special"}, "image": "https://artworks.thetvdb.com/s1.jpg"},
+            "5": {"title": {"en": "Title number 5"}, "image": "http://insecure/5.jpg"},
+        }}).encode()
+
+    fetch, _ = kitsu(pages=set())
+    src = stills.EpisodeStills(anilist_with([]), cache=store, kitsu_fetch=fetch, anizip_fetch=anizip)
+    episodes = [("1", "The Dark Summoner and the Stubborn Priest"), ("2", None), ("3", "Title number 3"),
+                ("4", None), ("5", None)]
+    found = src.for_episodes(208025, 31964, episodes)
+    assert found == {"1": "https://artworks.thetvdb.com/banners/v4/episode/1.jpg",
+                     "2": "https://artworks.thetvdb.com/2.jpg"}          # 3: other title; 4: none; 5: not https
+    src.for_episodes(208025, 31964, episodes)
+    assert len(seen) == 1                                                # cached
+
+
+def test_anizip_is_only_asked_when_something_is_missing():
+    streaming = [{"title": f"Episode {n} - Title number {n}", "thumbnail": f"https://img/{n}.jpg"} for n in (1, 2)]
+    src = stills.EpisodeStills(anilist_with(streaming), kitsu_fetch=no_anizip,
+                               anizip_fetch=lambda _u: pytest.fail("everything was already found"))
+    assert len(src.for_episodes(21, None, eps(2))) == 2
 
 
 # -- paging helpers -----------------------------------------------------------------------

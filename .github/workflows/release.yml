@@ -244,10 +244,14 @@ jobs:
           src = EpisodeStills(AniListClient())
           # (name, AniList id, MAL id, episodes, at least this many stills)
           for name, aid, mal, count, want in (("Frieren", 154587, 52991, 28, 20),
-                                              ("My Hero Academia S1", 21459, 31964, 13, 10)):
+                                              ("My Hero Academia S1", 21459, 31964, 13, 10),
+                                              ("I'm Dating a Dark Summoner (new)", 208025, 63509, 4, 3)):
               found = src.for_episodes(aid, mal, [(str(n), None) for n in range(1, count + 1)])
               level = "notice" if len(found) >= want else "warning"
               hosts = sorted({u.split("/")[2] for u in found.values()})
+              from core.covers import _default_fetcher, image_extension
+              loads = sum(1 for u in list(found.values())[:4] if image_extension(_default_fetcher(u)))
+              level = level if loads == min(4, len(found)) else "warning"
               print(f"::{level} title=stills::{'PASS' if level == 'notice' else 'LOW'} {name}: "
                     f"{len(found)}/{count} episodes have stills (from {', '.join(hosts) or 'nowhere'})")
           from core.fillers import FillerGuide

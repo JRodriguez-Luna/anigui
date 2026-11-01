@@ -1,12 +1,14 @@
 """Episode stills (thumbnails) for the show page.
 
-Two sources, best first:
+Three sources, best first:
 - AniList's `streamingEpisodes` (Crunchyroll's episode thumbnails). Often complete for
   shows on Crunchyroll, partial for long ones, and sometimes attached to the wrong
   season (My Hero Academia season 1 lists episodes 139-159).
 - Kitsu's episode list, which fills the gaps for most popular shows.
+- ani.zip (TheTVDB's episode images, keyed by AniList id), which usually has shows
+  that are airing right now, days before the other two.
 
-Neither source is trusted blindly: a still is only used for an episode number the show
+No source is trusted blindly: a still is only used for an episode number the show
 actually has, and when both sides have a real episode title, the titles must agree.
 Anything doubtful falls back to the numbered tile in the UI. Network trouble never
 raises: the page just shows fewer stills.
@@ -27,6 +29,8 @@ KITSU_PAGE = 20                 # Kitsu's maximum page size
 MAX_KITSU_PAGES = 6             # per request: enough for one 100-episode page of the grid
 TTL_KITSU_ID = 30 * 24 * 3600
 TTL_KITSU_EPISODES = 3 * 24 * 3600
+ANIZIP_API = "https://api.ani.zip/mappings?anilist_id={id}"
+TTL_ANIZIP = 24 * 3600          # airing shows gain an episode a week
 
 _EP_PREFIX = re.compile(r"^\s*(?:episode|ep\.?)\s*(\d+(?:\.\d+)?)\s*(?:[-:–—]\s*)?", re.I)
 _WORD = re.compile(r"[a-z0-9]+")
@@ -39,6 +43,13 @@ def _kitsu_fetch(url: str) -> bytes:
     resp = http.request(url, headers={"Accept": "application/vnd.api+json"}, timeout=20)
     if resp.status != 200:
         raise OSError(f"Kitsu HTTP {resp.status}")
+    return resp.body
+
+
+def _anizip_fetch(url: str) -> bytes:
+    resp = http.request(url, headers={"Accept": "application/json"}, timeout=20)
+    if resp.status != 200:
+        raise OSError(f"ani.zip HTTP {resp.status}")
     return resp.body
 
 
@@ -82,10 +93,11 @@ def titles_agree(ours: str | None, theirs: str | None, number: str) -> bool:
 
 class EpisodeStills:
     def __init__(self, anilist: AniListClient, cache: Cache | None = None,
-                 kitsu_fetch: Fetch = _kitsu_fetch) -> None:
+                 kitsu_fetch: Fetch = _kitsu_fetch, anizip_fetch: Fetch = _anizip_fetch) -> None:
         self.anilist = anilist
         self.cache = cache
         self.kitsu_fetch = kitsu_fetch
+        self.anizip_fetch = anizip_fetch
 
     def for_episodes(self, anilist_id: int | None, mal_id: int | None,
                      episodes: Iterable[tuple[str, str | None]]) -> dict[str, str]:
@@ -116,6 +128,11 @@ class EpisodeStills:
             try:
                 take(self._from_kitsu(mal_id, missing))
             except (OSError, ValueError, KeyError, TypeError, IndexError):
+                pass
+        if anilist_id and any(k not in found for k in wanted):
+            try:
+                take(self._from_anizip(anilist_id))
+            except (OSError, ValueError, KeyError, TypeError, AttributeError):
                 pass
         return {wanted[k][0]: url for k, url in found.items()}
 
@@ -167,6 +184,24 @@ class EpisodeStills:
                 if number and _web_image(thumb) and number not in out:
                     out[number] = (thumb, attrs.get("canonicalTitle"))
         return out
+
+    # -- ani.zip -------------------------------------------------------------------------
+
+    def _from_anizip(self, anilist_id: int) -> dict[str, tuple[str, str | None]]:
+        url = ANIZIP_API.format(id=int(anilist_id))
+        key = "anizip:" + url
+        data = self.cache.cache_get_json(key) if self.cache is not None else None
+        if data is None:
+            raw = json.loads(self.anizip_fetch(url))
+            episodes = raw.get("episodes") if isinstance(raw, dict) else None
+            data = {}   # keep only number -> (image, English title)
+            for number, ep in (episodes or {}).items():
+                if isinstance(ep, dict) and number_key(number) and _web_image(ep.get("image")):
+                    title = ep.get("title") if isinstance(ep.get("title"), dict) else {}
+                    data[number_key(number)] = [ep["image"], title.get("en")]
+            if self.cache is not None:
+                self.cache.cache_put_json(key, data, TTL_ANIZIP)
+        return {number: (image, title) for number, (image, title) in data.items()}
 
 
 def _web_image(url) -> bool:
