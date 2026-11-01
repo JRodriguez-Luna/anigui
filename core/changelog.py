@@ -25,6 +25,19 @@ class Release:
 
 
 RELEASES: tuple[Release, ...] = (
+    Release("1.5.0", "November 1, 2026", (
+        Change("Signed updates", "From this version on, Update Now only installs updates signed by AniGUI's "
+                                 "publisher. Even someone who broke into the GitHub account couldn't push you a "
+                                 "fake update."),
+        Change("Safer playback", "Only plain web links from the streaming site ever reach IINA or mpv, so a "
+                                 "hacked site can't slip in player options."),
+        Change("Verified downloads", "Setup checks that IINA is really from IINA's developer and approved by "
+                                     "Apple before installing it, and ani-cli updates come only from its official "
+                                     "releases."),
+        Change("Under the hood", "Text from websites is always shown as plain text, temporary files live in "
+                                 "private folders, and the build pipeline is locked down and checked for "
+                                 "vulnerable libraries every week."),
+    )),
     Release("1.4.1", "October 31, 2026", (
         Change("Trending in the calendar", "All airing is now Trending: the 30 hottest airing shows right now, "
                                            "ranked by AniList activity this week, each on its airing day with its "

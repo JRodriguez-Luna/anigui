@@ -200,6 +200,7 @@ anigui/
 │   ├── alerts.py              new-episode checks (AniList airing + hianime)
 │   ├── changelog.py           release notes for the What's New window
 │   ├── stats.py               watch statistics (exact log + estimates)
+│   ├── signing.py · signer.py  release signatures; the publisher's signer (--signer-*)
 │   ├── calendar.py            the airing calendar (AniList schedule / trending + hianime availability)
 │   └── tasks.py               thread pool → UI-thread callbacks
 ├── ui/                        PySide6 interface
@@ -245,6 +246,15 @@ python tools/step1_test.py "frieren" --play  # search → episodes → stream �
 python tools/step2_test.py --sandbox         # live AniList, matching and covers check
 QT_QPA_PLATFORM=offscreen QT_SCALE_FACTOR=2 python tools/ui_preview.py docs/screenshots
 ```
+
+## Security
+
+- **Signed updates.** Each release carries an Ed25519 signature over its version and its `.dmg`'s SHA-256, made on the publisher's Mac with a key that never leaves the macOS Keychain. AniGUI ships only the public key, and Update Now refuses anything that isn't signed by it, so a compromised GitHub account can't push an update.
+- **Player input.** Only the stream, audio, subtitle and referrer links (plain `http(s)://` URLs) are taken from ani-cli and passed to IINA/mpv; anything that could be read as a player option is dropped.
+- **Third-party downloads.** ani-cli is installed from a pinned, checksum-verified commit, and updated only from its tagged releases. IINA is installed only if `codesign` shows IINA's own Apple team and Gatekeeper accepts it.
+- **Hygiene.** Web text is rendered as plain text; helper commands take values as arguments; temporary files live in private folders; CI uses pinned Actions with least privilege, Dependabot and `pip-audit`.
+
+Found a problem? Please open an issue (or contact the maintainer privately for anything sensitive).
 
 ## Troubleshooting
 
