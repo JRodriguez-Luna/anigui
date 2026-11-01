@@ -176,10 +176,13 @@ def install(dmg: Path, app: Path, expected_version: str | None = None, run: Run 
 
 
 def relaunch_command(app: Path, pid: int | None = None) -> list[str]:
-    """A detached shell that waits for this AniGUI to quit, then opens the new one."""
+    """A detached shell that waits for this AniGUI to quit, then opens the new one.
+
+    The pid and path are passed as arguments ($1, $2), never pasted into the script.
+    """
     pid = pid or os.getpid()
-    script = f'while kill -0 {pid} 2>/dev/null; do sleep 0.2; done; open "{app}"'
-    return ["/bin/sh", "-c", script]
+    script = 'while kill -0 "$1" 2>/dev/null; do sleep 0.2; done; exec open "$2"'
+    return ["/bin/sh", "-c", script, "anigui-relaunch", str(int(pid)), str(app)]
 
 
 def relaunch(app: Path) -> None:

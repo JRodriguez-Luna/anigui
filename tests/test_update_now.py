@@ -142,7 +142,13 @@ def test_supported_and_running_app(tmp_path):
 
 def test_relaunch_waits_for_this_process():
     cmd = self_update.relaunch_command(Path("/Applications/AniGUI.app"), pid=4321)
-    assert cmd[:2] == ["/bin/sh", "-c"] and "kill -0 4321" in cmd[2] and 'open "/Applications/AniGUI.app"' in cmd[2]
+    assert cmd[:2] == ["/bin/sh", "-c"] and cmd[-2:] == ["4321", "/Applications/AniGUI.app"]
+    assert "4321" not in cmd[2] and "AniGUI.app" not in cmd[2]           # values never pasted into the script
+    import subprocess as sp
+    tricky = self_update.relaunch_command(Path('/tmp/x"; touch /tmp/pwned; ".app'), pid=999999)
+    out = sp.run(tricky[:3] + ["anigui-relaunch", "999999", "/nonexistent/x\"; touch pwned; \".app"],
+                 capture_output=True, text=True)
+    assert not Path("pwned").exists()
 
 
 def test_update_check_reads_installer_and_checksum():

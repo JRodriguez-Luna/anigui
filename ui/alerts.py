@@ -41,10 +41,13 @@ class Notifier(QObject):
             tray.show()
             tray.showMessage(title, body, QSystemTrayIcon.MessageIcon.NoIcon, 10_000)
         elif sys.platform == "darwin":
-            def q(text: str) -> str:
-                return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
+            # Title and text are passed as arguments, never pasted into the script. The
+            # fixed first argument ends option parsing, so a title like "-e …" stays text.
+            cmd = ["osascript", "-e", "on run argv",
+                   "-e", "display notification (item 3 of argv) with title (item 2 of argv)",
+                   "-e", "end run", "anigui", title, body]
             try:
-                subprocess.Popen(["osascript", "-e", f"display notification {q(body)} with title {q(title)}"],
+                subprocess.Popen(cmd,
                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             except OSError:
                 pass

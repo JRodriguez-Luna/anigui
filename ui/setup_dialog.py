@@ -52,12 +52,13 @@ class StepRow(QFrame):
         self.body.setSpacing(10)
         self.body.addLayout(self.top)
 
-    def set_state(self, state: str, detail: str, action: str | None = None) -> None:
-        """state: ok | needed | busy | warn"""
+    def set_state(self, state: str, detail: str, action: str | None = None, rich: bool = False) -> None:
+        """state: ok | needed | busy | warn | optional. `detail` is plain text unless rich=True."""
         self.dot.setText({"ok": "✓", "needed": "!", "busy": "…", "warn": "!"}.get(state, "•"))
         self.dot.setProperty("state", state)
         self.dot.style().unpolish(self.dot)
         self.dot.style().polish(self.dot)
+        self.detail.setTextFormat(Qt.TextFormat.RichText if rich else Qt.TextFormat.PlainText)
         self.detail.setText(detail)
         self.button.setVisible(bool(action))
         self.button.setEnabled(state != "busy")
@@ -284,7 +285,7 @@ class SetupDialog(QDialog):
         if "iina.io" in message:
             message = html.escape(message).replace(
                 "iina.io", f"<a href='{setup.IINA_SITE}' style='color:#FF8559'>iina.io</a>")
-        row.set_state("needed", message, action)
+        row.set_state("needed", message, action, rich="iina.io" in message)
         self._queue = []
         self.everything.setEnabled(True)
 

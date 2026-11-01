@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import html
+
 from PySide6.QtCore import QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import QAction, QDesktopServices, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
@@ -369,8 +371,8 @@ class MainWindow(QMainWindow):
     def _ask(self, title: str, text: str, primary: str) -> str:
         box = QMessageBox(self)
         box.setWindowTitle(title)
-        box.setText(f"<b>{title}</b>")
-        box.setInformativeText(text)
+        box.setText(f"<b>{html.escape(title)}</b>")
+        box.setInformativeText(text)   # callers escape what they put in
         yes = box.addButton(primary, QMessageBox.ButtonRole.AcceptRole)
         later = box.addButton("Later", QMessageBox.ButtonRole.RejectRole)
         skip = box.addButton("Skip This Version", QMessageBox.ButtonRole.DestructiveRole)
@@ -386,7 +388,7 @@ class MainWindow(QMainWindow):
             "<br><br>This is a bigger update than AniGUI has been tested with; "
             "AniGUI may need an update too.")
         answer = self._ask(f"ani-cli {update.latest} is available",
-                           f"You have {update.current}. Updates usually fix searching and playback "
+                           f"You have {html.escape(str(update.current))}. Updates usually fix searching and playback "
                            f"when the site changes.{note}", "Update")
         if answer == "skip":
             self.ctx.set_pref("skip_ani_cli", update.latest)
@@ -403,11 +405,11 @@ class MainWindow(QMainWindow):
         can_install, _why = self_update.supported(app)
         if can_install and update.installable:
             answer = self._ask(f"AniGUI {update.latest} is available",
-                               f"You have {update.current}. AniGUI downloads the update, installs it and restarts. "
+                               f"You have {html.escape(update.current)}. AniGUI downloads the update, installs it and restarts. "
                                f"Your library and progress stay as they are.", "Update Now")
         else:
             answer = self._ask(f"AniGUI {update.latest} is available",
-                               f"You have {update.current}. Download the new version from GitHub, then replace "
+                               f"You have {html.escape(update.current)}. Download the new version from GitHub, then replace "
                                f"AniGUI in Applications. Your library and progress carry over.", "Download")
         if answer == "skip":
             self.ctx.set_pref("skip_anigui", update.latest)
@@ -434,7 +436,7 @@ class MainWindow(QMainWindow):
         box.setIcon(QMessageBox.Icon.Warning)
         box.setWindowTitle("Update didn't finish")
         box.setText("<b>The update didn't finish</b>")
-        box.setInformativeText(f"{message}<br><br>AniGUI is unchanged. You can download the new version from "
+        box.setInformativeText(f"{html.escape(message)}<br><br>AniGUI is unchanged. You can download the new version from "
                                "GitHub and drag it into Applications instead.")
         page = box.addButton("Open Download Page", QMessageBox.ButtonRole.AcceptRole)
         box.addButton(QMessageBox.StandardButton.Close)

@@ -223,6 +223,7 @@ class SettingsDialog(QDialog):
     def set_episodes_status(self, text: str, busy: bool = False) -> None:
         self.check_episodes_btn.setEnabled(not busy)
         rows = self.pages.widget(self.SECTIONS.index("New Episodes")).widget().findChildren(SettingRow)
+        rows[-1].detail.setTextFormat(Qt.TextFormat.PlainText)
         rows[-1].detail.setText(text)
         rows[-1].detail.setVisible(bool(text))
 

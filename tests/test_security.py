@@ -48,3 +48,46 @@ def test_player_commands_end_options_and_refuse_bad_links():
         bad = StreamInfo(**{**info.__dict__, field: "--script=/tmp/evil.lua"})
         with pytest.raises(PlayerError):
             build_player_command("mpv", "/x/mpv", bad, "T")
+
+
+# -- 5-7. Text, commands, temp files --------------------------------------------------------
+
+def test_ipc_socket_in_private_folder():
+    import os
+    import stat
+    from core import player
+    path = player.default_ipc_path()
+    folder = os.path.dirname(path)
+    assert len(path) < 104 and stat.S_IMODE(os.stat(folder).st_mode) == 0o700
+    assert player.default_ipc_path() == path      # same folder for the whole run
+
+
+def test_notification_fallback_passes_text_as_arguments(monkeypatch):
+    from ui import alerts
+    seen = []
+    monkeypatch.setattr(alerts.QSystemTrayIcon, "isSystemTrayAvailable", staticmethod(lambda: False))
+    monkeypatch.setattr(alerts.sys, "platform", "darwin")
+    monkeypatch.setattr(alerts.subprocess, "Popen", lambda cmd, **k: seen.append(cmd))
+    alerts.Notifier().notify('-e do shell script "touch /tmp/pwned"', 'x" & (do shell script "id") & "')
+    cmd = seen[0]
+    assert cmd[-3] == "anigui"                                  # stops option parsing before user text
+    assert cmd[-2].startswith("-e do shell") and all("pwned" not in part for part in cmd[:-3])
+
+
+def test_web_text_is_shown_as_plain_text(tmp_path):
+    from PySide6.QtCore import Qt
+    import ui_fakes
+    from ui.main_window import MainWindow
+    ctx = ui_fakes.fake_context(tmp_path)
+    win = MainWindow(ctx)
+    for label in (win.detail.title, win.detail.synopsis, win.detail.meta, win.home.hero.title, win.toast,
+                  win.search.status):
+        assert label.textFormat() == Qt.TextFormat.PlainText
+    win.close()
+    ctx.shutdown()
+
+
+def test_theme_images_not_in_shared_temp():
+    import tempfile
+    from ui import theme
+    assert not theme._chevron_path().startswith(tempfile.gettempdir())

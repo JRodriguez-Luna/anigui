@@ -47,6 +47,7 @@ class EntryCard(QFrame):
         top.addLayout(when, 1)
 
         title = QLabel(entry.title, objectName="CalTitle", wordWrap=True)
+        title.setTextFormat(Qt.TextFormat.PlainText)
         col = QVBoxLayout(self)
         col.setContentsMargins(8, 8, 8, 8)
         col.setSpacing(6)
@@ -111,6 +112,7 @@ class CalendarPage(QScrollArea):
         head.addWidget(self.next_btn)
 
         self.status = QLabel("", objectName="Muted", wordWrap=True)
+        self.status.setTextFormat(Qt.TextFormat.PlainText)
         self.note = QLabel("Times are the original broadcast in Japan, shown in your time zone. hianime usually "
                            "has the sub a few hours later; dubs come later.", objectName="SettingsNote", wordWrap=True)
 

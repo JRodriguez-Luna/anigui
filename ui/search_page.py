@@ -4,6 +4,7 @@ with filters on, AniList does the filtering and browsing, and a click finds the 
 from __future__ import annotations
 
 import datetime as dt
+import html
 from dataclasses import dataclass, field
 
 from PySide6.QtCore import Qt, QTimer, Signal
@@ -154,6 +155,7 @@ class SearchPage(QWidget):
         self.filter_bar = FilterBar()
         self.filter_bar.changed.connect(self._search)
         self.status = QLabel("", objectName="Muted")
+        self.status.setTextFormat(Qt.TextFormat.PlainText)
 
         self.grid = CardGrid(ctx.images)
         self.grid.cardActivated.connect(lambda card: self.openItem.emit(card.payload))
@@ -237,7 +239,7 @@ class SearchPage(QWidget):
     def _show(self, query: str, results) -> None:
         if not results:
             self.status.setText("")
-            self.empty.setText(f"No results for “{query}”. Try the Japanese title or fewer words.")
+            self.empty.setText(html.escape(f"No results for “{query}”. Try the Japanese title or fewer words."))
             self.stack.setCurrentWidget(self.empty)
             return
         self.status.setText(f"{len(results)} results for “{query}”")
@@ -250,7 +252,8 @@ class SearchPage(QWidget):
         self._last_key = None  # allow retrying the same search
         self.status.setText("")
         if "VPN" in message:
-            self.empty.setText(f"{message}<br><br><a href='#setup' style='color:#FF8559'>Check the connection</a>")
+            self.empty.setText(f"{html.escape(message)}<br><br>"
+                               "<a href='#setup' style='color:#FF8559'>Check the connection</a>")
         else:
-            self.empty.setText(f"Search failed: {message}")
+            self.empty.setText(html.escape(f"Search failed: {message}"))
         self.stack.setCurrentWidget(self.empty)

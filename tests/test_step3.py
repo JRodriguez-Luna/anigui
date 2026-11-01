@@ -57,7 +57,7 @@ def win(app, tmp_path):
 
 
 def test_stylesheet_parses(app):
-    assert "anigui-chevron" in app.styleSheet()
+    assert "chevron-v1.png" in app.styleSheet()
 
 
 def test_home_loads_rows_and_hero(win):

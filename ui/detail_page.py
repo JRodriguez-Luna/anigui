@@ -232,6 +232,8 @@ class DetailPage(QScrollArea):
         self.meta = QLabel("", objectName="Meta", wordWrap=True)
         self.airing = QLabel("", objectName="Kicker")
         self.synopsis = QLabel("", objectName="Synopsis", wordWrap=True)
+        for label in (self.kicker, self.title, self.meta, self.airing, self.synopsis):
+            label.setTextFormat(Qt.TextFormat.PlainText)   # text from AniList / hianime
         self.synopsis.setMaximumWidth(720)
         self.synopsis.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
 
@@ -303,6 +305,7 @@ class DetailPage(QScrollArea):
         self.grid.episodeClicked.connect(self.play)
         self.grid.markRequested.connect(self._mark)
         self.message = QLabel("", objectName="EmptyState", wordWrap=True)
+        self.message.setTextFormat(Qt.TextFormat.PlainText)
         self.message.setAlignment(Qt.AlignmentFlag.AlignLeft)
         self.message.setContentsMargins(5, 0, 5, 0)
 

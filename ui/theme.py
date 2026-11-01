@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import tempfile
 from pathlib import Path
 
 from PySide6.QtCore import QPointF, Qt
@@ -235,8 +234,18 @@ def apply_theme(app: QApplication) -> None:
     app.setStyleSheet(STYLESHEET.replace("__CHEVRON__", _chevron_path()).replace("__CHECK__", _check_path()))
 
 
+def _asset_dir() -> Path:
+    """Drawn images live in AniGUI's own cache folder, not the shared temp folder
+    (where another account could plant a file under the same name)."""
+    from core import paths
+
+    path = paths.cache_dir() / "ui"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def _check_path() -> str:
-    path = Path(tempfile.gettempdir()) / "anigui-check-v1.png"
+    path = _asset_dir() / "check-v1.png"
     if not path.exists():
         img = QImage(28, 28, QImage.Format.Format_ARGB32)
         img.fill(Qt.GlobalColor.transparent)
@@ -251,7 +260,7 @@ def _check_path() -> str:
 
 def _chevron_path() -> str:
     """Stylesheets can only load arrow images from files, so draw one at startup."""
-    path = Path(tempfile.gettempdir()) / "anigui-chevron-v1.png"
+    path = _asset_dir() / "chevron-v1.png"
     if not path.exists():
         img = QImage(20, 12, QImage.Format.Format_ARGB32)
         img.fill(Qt.GlobalColor.transparent)

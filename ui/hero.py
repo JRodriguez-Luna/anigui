@@ -137,6 +137,8 @@ class HeroBanner(Backdrop):
         self.title = QLabel("", objectName="HeroTitle", wordWrap=True)
         self.meta = QLabel("", objectName="Meta")
         self.synopsis = QLabel("", objectName="Synopsis", wordWrap=True)
+        for label in (self.kicker, self.title, self.meta, self.synopsis):
+            label.setTextFormat(Qt.TextFormat.PlainText)   # text from AniList
         self.synopsis.setMaximumWidth(620)
         self.title.setMaximumWidth(760)
         self.play = QPushButton("▶  Play", objectName="Primary", cursor=Qt.CursorShape.PointingHandCursor)

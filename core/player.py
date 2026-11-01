@@ -17,10 +17,20 @@ class PlayerError(RuntimeError):
     pass
 
 
+_IPC_DIR: str | None = None
+
+
 def default_ipc_path() -> str:
-    # macOS caps socket paths at 104 bytes; /tmp keeps it short and predictable.
-    base = "/tmp" if os.path.isdir("/tmp") else tempfile.gettempdir()
-    return os.path.join(base, f"anigui-{os.getuid()}-mpv.sock")
+    """The player's control socket, in a folder only this user can open.
+
+    macOS caps socket paths at 104 bytes, so it's under /tmp (short) but in a
+    fresh mkdtemp folder (mode 0700): nobody else can create or connect to it.
+    """
+    global _IPC_DIR
+    if _IPC_DIR is None or not os.path.isdir(_IPC_DIR):
+        base = "/tmp" if os.path.isdir("/tmp") else tempfile.gettempdir()
+        _IPC_DIR = tempfile.mkdtemp(prefix="anigui-", dir=base)   # created 0700
+    return os.path.join(_IPC_DIR, "mpv.sock")
 
 
 def build_player_command(kind: str, path: str, info: StreamInfo, title: str,

@@ -16,6 +16,7 @@ class Toast(QLabel):
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent, objectName="Toast")
         self.setWordWrap(True)
+        self.setTextFormat(Qt.TextFormat.PlainText)   # messages can quote show titles and server errors
         self.setMaximumWidth(560)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.hide()
