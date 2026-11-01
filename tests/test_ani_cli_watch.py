@@ -4,16 +4,18 @@ from __future__ import annotations
 
 import hashlib
 import shutil
-import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from core import setup
-from tools import ani_cli_watch as watch
-
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "tools"))
+
+from core import setup  # noqa: E402
+import ani_cli_watch as watch  # noqa: E402
 COMMIT = "a" * 40
 SHA = "b" * 64
 
