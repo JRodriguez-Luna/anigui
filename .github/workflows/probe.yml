@@ -1,0 +1,57 @@
+name: probe
+on:
+  push:
+    branches: [probe/stills]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe episode still sources
+        shell: python
+        run: |
+          import json, urllib.request, urllib.parse
+          def get(url, data=None, headers={}):
+              req = urllib.request.Request(url, data=data, headers={"User-Agent": "AniGUI", **headers})
+              try:
+                  with urllib.request.urlopen(req, timeout=30) as r:
+                      return r.status, r.headers.get("content-type"), r.read(), r.geturl()
+              except urllib.error.HTTPError as e:
+                  return e.code, e.headers.get("content-type"), e.read(), url
+              except Exception as e:
+                  return 0, str(e), b"", url
+          def note(t, m): print(f"::notice title={t}::{m}".replace("\n", " | "))
+          shows = {"MHA1": 21459, "OnePiece": 21, "Frieren": 154587, "Bebop": 1, "Naruto": 20, "DemonSlayer1": 101922}
+          q = "query($id:Int){Media(id:$id){idMal episodes streamingEpisodes{title thumbnail site}}}"
+          mal = {}
+          for name, aid in shows.items():
+              s, ct, body, _ = get("https://graphql.anilist.co", json.dumps({"query": q, "variables": {"id": aid}}).encode(), {"Content-Type": "application/json"})
+              m = json.loads(body)["data"]["Media"]; mal[name] = m["idMal"]
+              se = m["streamingEpisodes"]
+              sample = [f"{e['title'][:50]} @ {(e['thumbnail'] or '')[:80]} [{e['site']}]" for e in se[:2] + se[-2:]]
+              note(f"anilist {name}", f"mal={m['idMal']} eps={m['episodes']} streaming={len(se)} " + " || ".join(sample))
+              if se and se[0]["thumbnail"]:
+                  s, ct, b, u = get(se[0]["thumbnail"])
+                  note(f"anilist-img {name}", f"{s} {ct} {len(b)} bytes {b[:4]!r} final={u[:80]}")
+          for base in ("https://kitsu.app/api/edge", "https://kitsu.io/api/edge"):
+              for name in ("MHA1", "OnePiece", "Bebop"):
+                  url = base + "/mappings?" + urllib.parse.urlencode({"filter[externalSite]": "myanimelist/anime", "filter[externalId]": mal[name], "include": "item"})
+                  s, ct, body, fu = get(url, headers={"Accept": "application/vnd.api+json"})
+                  try:
+                      d = json.loads(body); inc = d.get("included") or []
+                      kid = inc[0]["id"] if inc else None
+                      note(f"kitsu-map {base[8:20]} {name}", f"{s} final={fu[:60]} data={len(d.get('data') or [])} kitsu_id={kid} type={inc[0]['type'] if inc else None}")
+                  except Exception as e:
+                      note(f"kitsu-map {base[8:20]} {name}", f"{s} {ct} {body[:200]!r} {e}"); continue
+                  if not kid: continue
+                  url = f"{base}/anime/{kid}/episodes?" + urllib.parse.urlencode({"page[limit]": 20, "page[offset]": 200 if name == "OnePiece" else 0, "sort": "number"})
+                  s, ct, body, fu = get(url, headers={"Accept": "application/vnd.api+json"})
+                  d = json.loads(body); eps = d.get("data") or []
+                  sample = [f"#{e['attributes'].get('number')} {str(e['attributes'].get('canonicalTitle'))[:30]} thumb={json.dumps(e['attributes'].get('thumbnail'))[:160]}" for e in eps[:2]]
+                  have = sum(1 for e in eps if (e['attributes'].get('thumbnail') or {}).get('original'))
+                  note(f"kitsu-eps {base[8:20]} {name}", f"{s} n={len(eps)} with_thumb={have} total={d.get('meta',{}).get('count')} " + " || ".join(sample))
+                  t = next(((e['attributes'].get('thumbnail') or {}).get('original') for e in eps if (e['attributes'].get('thumbnail') or {}).get('original')), None)
+                  if t:
+                      s, ct, b, u = get(t)
+                      note(f"kitsu-img {base[8:20]} {name}", f"{s} {ct} {len(b)} bytes {b[:4]!r} {t[:90]}")
