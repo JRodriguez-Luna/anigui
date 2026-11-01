@@ -433,16 +433,17 @@ class DetailPage(QScrollArea):
         )
 
     def _load_fillers(self) -> None:
-        """Which episodes are filler or recap (MyAnimeList), once per show."""
+        """Which episodes are filler (Anime Filler List), once per show."""
         guide = getattr(self.ctx, "fillers", None)
-        if guide is None or not self.media or not self.media.mal_id or not self.episodes:
+        if guide is None or not self.media or not self.episodes:
             return
-        key = (self.anime_id, self.media.mal_id)
+        key = (self.anime_id, self.media.anilist_id)
         if self._fillers_for == key:
             return
         self._fillers_for = key
-        gen, mal = self.gen, self.media.mal_id
-        self.ctx.runner.submit(guide.for_mal, mal, on_done=lambda info: gen == self.gen and self._on_fillers(info),
+        gen, titles = self.gen, [*self.media.all_titles, self.show_title]
+        self.ctx.runner.submit(guide.for_titles, titles,
+                               on_done=lambda info: gen == self.gen and self._on_fillers(info),
                                group="detail-fillers")
 
     def _on_fillers(self, info) -> None:

@@ -250,19 +250,17 @@ jobs:
               hosts = sorted({u.split("/")[2] for u in found.values()})
               print(f"::{level} title=stills::{'PASS' if level == 'notice' else 'LOW'} {name}: "
                     f"{len(found)}/{count} episodes have stills (from {', '.join(hosts) or 'nowhere'})")
-          from core.fillers import JIKAN_EPISODES, FillerGuide, _fetch
-          try:
-              r = _fetch(JIKAN_EPISODES.format(mal=20, page=1))
-              print(f"::notice title=fillers::Jikan answered HTTP {r.status}, {len(r.body)} bytes, "
-                    f"server={r.headers.get('server')}: {r.body[:160]!r}")
-          except OSError as exc:
-              print(f"::warning title=fillers::Jikan unreachable: {exc}")
-          info = FillerGuide().for_mal(20)   # Naruto: famous for its fillers
+          from core.fillers import FillerGuide
+          guide = FillerGuide()
           numbers = [str(n) for n in range(1, 221)]
-          ok = info.complete and len(info.skippable(numbers)) >= 60
-          print(f"::{'notice' if ok else 'warning'} title=fillers::{'PASS' if ok else 'LOW'} Naruto: "
-                f"{info.summary(numbers)} (complete={info.complete}, first fillers: "
-                f"{sorted((n for n in numbers if info.kind(n) == 'filler'), key=int)[:6]})")
+          for name, titles, want in (("Naruto", ["Naruto"], 60), ("Naruto Shippuden", ["Naruto: Shippuden"], 100),
+                                     ("Frieren", ["Frieren: Beyond Journey's End", "Sousou no Frieren"], 0)):
+              info = guide.for_titles(titles)
+              count = len(info.kinds)
+              ok = count >= want and (want or not count)
+              print(f"::{'notice' if ok else 'warning'} title=fillers::{'PASS' if ok else 'CHECK'} {name}: "
+                    f"{count} fillers (complete={info.complete}), {info.summary(numbers)}; "
+                    f"first: {sorted(info.kinds, key=float)[:6]}")
           PY
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7

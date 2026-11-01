@@ -159,7 +159,7 @@ class SettingsDialog(QDialog):
                        self._choice("quality", QUALITIES)),
             SettingRow("Auto-play next episode", "Counts down at the end of an episode, then plays the next one.",
                        self._check("autoplay")),
-            SettingRow("Skip fillers", "Up Next and auto-play jump over filler and recap episodes. "
+            SettingRow("Skip fillers", "Up Next and auto-play jump over filler episodes. "
                        "You can still click any episode to watch it.", self._check("skip_fillers")),
         ]
 

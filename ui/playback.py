@@ -348,8 +348,12 @@ class Session(QObject):
         aid, title = self.now.anime_id, self.now.title
 
         def find():
-            info = fillers.for_mal(self.ctx.catalog.mal_id(aid, title))
-            return {key for key in info.kinds}
+            try:
+                media = self.ctx.catalog.enrich(aid, title)
+            except Exception:  # noqa: BLE001 - AniList down: hianime's title still works
+                media = None
+            info = fillers.for_titles([*(media.all_titles if media else ()), title])
+            return set(info.kinds)
 
         self.ctx.runner.submit(find, on_done=lambda keys: aid == self.now.anime_id and setattr(self, "filler_keys", keys))
 

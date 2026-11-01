@@ -45,32 +45,6 @@ jobs:
           chmod +x "$HOME/.local/bin/ani-cli"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      - name: Probe filler sources (temporary)
-        if: runner.os == 'Linux'
-        continue-on-error: true
-        shell: python
-        run: |
-          import re, urllib.request
-          def get(u):
-              return urllib.request.urlopen(urllib.request.Request(u, headers={"User-Agent": "AniGUI/1.7"}), timeout=30).read().decode("utf-8", "replace")
-          h = get("https://www.animefillerlist.com/shows/naruto")
-          rows = re.findall(r"<tr[^>]*>.*?</tr>", h, re.S)
-          eprows = [r for r in rows if "Number" in r]
-          print(f"::notice title=afl rows::{len(rows)} rows, {len(eprows)} episode rows")
-          for r in eprows[24:27]:
-              print("::notice title=afl row::" + re.sub(r"\s+", " ", r)[:600])
-          i = h.find("Filler Episodes")
-          print("::notice title=afl summary::" + re.sub(r"\s+", " ", h[i-200:i+500]))
-          s = get("https://www.animefillerlist.com/shows")
-          links = re.findall(r'<a href="(/shows/[^"]+)"[^>]*>([^<]+)</a>', s)
-          print(f"::notice title=afl shows::{len(links)} links; sample {links[:3]} ... {[l for l in links if 'one-piece' in l[0] or 'bleach' in l[0]][:3]}")
-          j = s.find("/shows/naruto")
-          print("::notice title=afl shows html::" + re.sub(r"\s+", " ", s[j-300:j+200]))
-          try:
-              print("::notice title=jikan::" + get("https://api.jikan.moe/v4/anime/20")[:100])
-          except Exception as e:
-              print(f"::notice title=jikan::still failing: {e}")
-
       - name: Install Python dependencies
         run: pip install -r requirements.txt
 

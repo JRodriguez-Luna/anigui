@@ -1,8 +1,7 @@
-"""v1.7: filler and recap episodes (MyAnimeList via Jikan), Hide fillers, Skip fillers."""
+"""v1.7: filler episodes (Anime Filler List), Hide fillers, Skip fillers."""
 
 from __future__ import annotations
 
-import json
 import sys
 import time
 from pathlib import Path
@@ -37,85 +36,95 @@ def pump(cond=lambda: False, timeout: float = 5.0) -> bool:
     return cond()
 
 
-# -- the data -------------------------------------------------------------------------------
+# -- the data (shaped like the real animefillerlist.com pages) -------------------------------
 
-def jikan(pages: dict[int, list[tuple[int, bool, bool]]], statuses: dict[int, int] | None = None):
-    """Fake Jikan: pages[page] = [(episode, filler, recap), ...]."""
+SHOWS_PAGE = """<div class="Group"><h2>N</h2><ul>
+<li><a href="/shows/naruto">Naruto</a></li><li><a href="/shows/boruto-naruto-movie">Naruto Films</a></li>
+<li><a href="/shows/naruto-shippuden">Naruto Shippuden</a></li></ul></div>
+<li><a href="/shows/bleach-thousand-year-blood-war">Bleach: Thousand-Year Blood War (Bleach: Sennen Kessen-hen)</a></li>
+<li><a href="/shows/one-piece">One Piece</a></li><li><a href="/shows/attack-titan">Attack on Titan</a></li>"""
+
+
+def row(n, cls, label):
+    return (f'<tr class="{cls} {"odd" if n % 2 else "even"}" id="eps-{n}"><td class="Number">{n}</td>'
+            f'<td class="Title"><a href="/shows/naruto/x-{n}" rel="nofollow">Episode {n}</a></td>'
+            f'<td class="Type"><span>{label}</span></td><td class="Date">2003-04-02</td> </tr>')
+
+
+def naruto_page():
+    rows = []
+    for n in range(1, 221):
+        if n in (26, 97) or n >= 136:
+            rows.append(row(n, "filler", "Filler"))
+        elif n in (7, 27):
+            rows.append(row(n, "mixed_canon/filler", "Mixed Canon/Filler"))
+        elif n == 101:
+            rows.append(row(n, "anime_canon", "Anime Canon"))
+        else:
+            rows.append(row(n, "manga_canon", "Manga Canon"))
+    return "<html><table class=\"EpisodeList\"><tbody>" + "".join(rows) + "</tbody></table></html>"
+
+
+def site(pages=None, status=200):
+    pages = {"https://www.animefillerlist.com/shows": SHOWS_PAGE,
+             "https://www.animefillerlist.com/shows/naruto": naruto_page(), **(pages or {})}
     seen = []
 
     def fetch(url):
         seen.append(url)
-        assert url.startswith("https://api.jikan.moe/v4/anime/20/episodes?page=")
-        page = int(url.rsplit("=", 1)[1])
-        status = (statuses or {}).get(page, 200)
-        if status != 200:
-            return http.Response(status, {}, b"{}")
-        body = {"pagination": {"last_visible_page": max(pages), "has_next_page": page < max(pages)},
-                "data": [{"mal_id": n, "title": f"Ep {n}", "url": "https://myanimelist.net/x", "filler": f,
-                          "recap": r, "aired": "2002-10-03T00:00:00+00:00"} for n, f, r in pages[page]]}
-        return http.Response(200, {}, json.dumps(body).encode())
+        if status != 200 or url not in pages:
+            return http.Response(404 if status == 200 else status, {}, b"not found")
+        return http.Response(200, {}, pages[url].encode())
     return fetch, seen
 
 
-def naruto_pages():
-    p1 = [(n, n in range(26, 30) or n == 97, n == 15) for n in range(1, 101)]
-    p2 = [(n, n >= 136, False) for n in range(101, 221)]
-    return {1: p1, 2: p2}
-
-
-def test_reads_every_page_and_caches_only_what_it_needs(tmp_path):
+def test_reads_the_show_and_caches_only_what_it_parses(tmp_path):
     store = Store(tmp_path / "t.db")
-    fetch, seen = jikan(naruto_pages())
-    sleeps = []
-    guide = FillerGuide(store, fetch=fetch, sleep=sleeps.append)
-    info = guide.for_mal(20)
+    fetch, seen = site()
+    guide = FillerGuide(store, fetch=fetch)
+    info = guide.for_titles(["Naruto", "NARUTO"])
     assert info.complete
-    assert info.kind("26") == FILLER and info.kind("97") == FILLER and info.kind("15") == RECAP
-    assert info.kind("25") is None and info.kind("136") == FILLER and info.kind("136.0") == FILLER
-    assert len(seen) == 2 and sleeps == [0.4]                      # polite gap between pages
-    cached = store.cache_get_json("jikan:" + seen[0])
-    assert set(cached["data"][0]) == {"mal_id", "filler", "recap"}   # titles, URLs etc. not stored
-    assert guide.for_mal(20) == info and len(seen) == 2           # second time: all cached
+    assert info.kind("26") == FILLER and info.kind("97") == FILLER and info.kind("136.0") == FILLER
+    assert info.kind("27") is None and info.kind("101") is None and info.kind("25") is None   # mixed / anime canon
+    assert seen == ["https://www.animefillerlist.com/shows", "https://www.animefillerlist.com/shows/naruto"]
+    cached = store.cache_get_json("afl:https://www.animefillerlist.com/shows/naruto")
+    assert "<td" not in cached and cached.count("<tr") == 220                 # rows' opening tags only
+    assert guide.for_titles(["Naruto"]) == info and len(seen) == 2           # second time: all cached
+
+
+def test_titles_must_match_exactly():
+    fetch, _ = site()
+    guide = FillerGuide(fetch=fetch)
+    assert guide.find_show(["Naruto: Shippuden"]) == "naruto-shippuden"      # punctuation doesn't matter
+    assert guide.find_show(["Naruto"]) == "naruto"                            # never Shippuden or the films
+    assert guide.find_show(["Bleach: Sennen Kessen-hen"]) == "bleach-thousand-year-blood-war"   # the alt title
+    assert guide.find_show(["Attack on Titan Season 2"]) is None             # a later season: no borrowing
+    assert guide.find_show(["Frieren", None, ""]) is None
+    assert guide.find_show(["Some Show", "One Piece"]) == "one-piece"        # any of the titles
 
 
 def test_summary():
     numbers = [str(n) for n in range(1, 221)]
-    info = FillerGuide(fetch=jikan(naruto_pages())[0], sleep=lambda _s: None).for_mal(20)
-    assert info.summary(numbers) == "90 of 220 episodes are filler · 1 recap"
+    info = FillerGuide(fetch=site()[0]).for_titles(["Naruto"])
+    assert info.summary(numbers) == "87 of 220 episodes are filler"
     assert FillerInfo({"3": FILLER}, complete=True).summary(["1", "2", "3"]) == "1 of 3 episodes is filler"
+    assert FillerInfo({"3": FILLER, "2": RECAP}, complete=True).summary(["1", "2", "3"]) == \
+        "1 of 3 episodes is filler · 1 recap"
     assert FillerInfo({"3": FILLER}, complete=False).summary(["1", "2", "3"]) is None   # partial: no count
     assert FillerInfo({}, complete=True).summary(numbers) is None
-    assert info.skippable(["14", "15", "26", "30"]) == {"15", "26"}
+    assert info.skippable(["25", "26", "27", "30"]) == {"26"}
 
 
-def test_rate_limit_retry_and_failures():
-    pages = naruto_pages()
-    calls = {"n": 0}
-    fetch_ok, _ = jikan(pages)
-
-    def limited(url):
-        calls["n"] += 1
-        if calls["n"] == 1:
-            return http.Response(429, {}, b"{}")
-        return fetch_ok(url)
-
-    sleeps = []
-    assert FillerGuide(fetch=limited, sleep=sleeps.append).for_mal(20).complete
-    assert 1.5 in sleeps
-
-    fetch, _ = jikan(pages, statuses={2: 500})
-    info = FillerGuide(fetch=fetch, sleep=lambda _s: None).for_mal(20)
-    assert not info.complete and info.kind("26") == FILLER       # page 1 still used
-
-    fetch404, _ = jikan(pages, statuses={1: 404})
-    assert FillerGuide(fetch=fetch404, sleep=lambda _s: None).for_mal(20) == FillerInfo({}, complete=True)
+def test_failures_mean_no_fillers():
+    assert FillerGuide(fetch=site(status=503)[0]).for_titles(["Naruto"]) == FillerInfo()
+    assert FillerGuide(fetch=site({"https://www.animefillerlist.com/shows/naruto": "<html>"})[0]
+                       ).for_titles(["Naruto"]) == FillerInfo()
 
     def offline(_url):
         raise OSError("offline")
 
-    assert FillerGuide(fetch=offline).for_mal(20) == FillerInfo()
-    assert FillerGuide(fetch=offline).for_mal(None) == FillerInfo()
-    assert FillerGuide(fetch=lambda _u: http.Response(200, {}, b"<html>")).for_mal(20) == FillerInfo()
+    assert FillerGuide(fetch=offline).for_titles(["Naruto"]) == FillerInfo()
+    assert FillerGuide(fetch=lambda _u: http.Response(200, {}, b"\xff\xfe junk")).for_titles(["Naruto"]) == FillerInfo()
 
 
 # -- Up Next and auto-play -----------------------------------------------------------------
@@ -211,7 +220,7 @@ def test_hidden_fillers_still_show_up_next_and_jumps(win):
 
 
 def test_shows_without_fillers_get_no_switches(win, monkeypatch):
-    monkeypatch.setattr(win.ctx.fillers, "for_mal", lambda _mal: FillerInfo({}, complete=True))
+    monkeypatch.setattr(win.ctx.fillers, "for_titles", lambda _titles: FillerInfo({}, complete=True))
     open_show(win, STARFALL, "Starfall Academy")
     d = win.detail
     assert not d.pager.isVisible() and not d.filler_note.isVisible()

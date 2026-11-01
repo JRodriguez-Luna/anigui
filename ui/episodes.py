@@ -32,7 +32,7 @@ class EpisodeItem:
     playing: bool = False
     still: str | None = None  # thumbnail URL, if one was found
     hit: bool = False         # just jumped to
-    kind: str | None = None   # "filler" | "recap" (from MyAnimeList), None = story episode
+    kind: str | None = None   # "filler" | "recap" (Anime Filler List), None = story episode
 
 
 class EpisodeModel(QAbstractListModel):
@@ -389,9 +389,9 @@ class EpisodePager(QWidget):
         self.jump.textEdited.connect(lambda _t: self.set_error(""))
         self.error = QLabel("", objectName="JumpError")
         self.hide_fillers = Switch("Hide fillers")
-        self.hide_fillers.setToolTip("Leave filler and recap episodes out of this list")
+        self.hide_fillers.setToolTip("Leave filler episodes out of this list")
         self.skip_fillers = Switch("Skip fillers")
-        self.skip_fillers.setToolTip("Up Next and auto-play jump over filler and recap episodes "
+        self.skip_fillers.setToolTip("Up Next and auto-play jump over filler episodes "
                                      "(also in Settings → Playback)")
         row = QHBoxLayout(self)
         row.setContentsMargins(5, 0, 5, 0)

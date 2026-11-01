@@ -170,13 +170,14 @@ class FakeFillers:
     RECAPS = {143}
 
     def __init__(self) -> None:
-        self.calls: list[int | None] = []
+        self.calls: list[list] = []
 
-    def for_mal(self, mal_id):
+    def for_titles(self, titles):
         from core.fillers import FILLER, RECAP, FillerInfo
 
-        self.calls.append(mal_id)
-        if not mal_id:
+        titles = [t for t in titles if t]
+        self.calls.append(titles)
+        if not titles:
             return FillerInfo()
         kinds = {str(n): FILLER for n in self.FILLERS} | {str(n): RECAP for n in self.RECAPS}
         return FillerInfo(kinds, complete=True)
