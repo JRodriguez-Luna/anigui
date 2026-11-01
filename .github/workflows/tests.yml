@@ -48,27 +48,6 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r requirements.txt
 
-      - name: Probe ani.zip for shows without pictures (temporary)
-        if: runner.os == 'Linux'
-        continue-on-error: true
-        run: |
-          python - <<'PY'
-          import json
-          from core import http
-          from core.anilist import AniListClient
-          al = AniListClient()
-          want = ("Made in Abyss", "Laid-Off", "Ramparts of Ice", "Rascal Does Not", "Beerus", "Hello, I am a Witch", "Magic Repo Man")
-          for m in al.season("FALL", 2026, per_page=30):
-              if not any(w.lower() in m.display_title.lower() for w in want):
-                  continue
-              r = http.request(f"https://api.ani.zip/mappings?anilist_id={m.anilist_id}", timeout=20)
-              if r.status != 200:
-                  print(f"::notice title=az {m.display_title[:25]}::HTTP {r.status}"); continue
-              d = json.loads(r.body); eps = d.get("episodes") or {}
-              summ = [(k, (v or {}).get("episodeNumber"), (v or {}).get("absoluteEpisodeNumber"), bool((v or {}).get("image")), (v or {}).get("airDate")) for k, v in list(eps.items())[:8]]
-              print(f"::notice title=az {m.display_title[:25]}::next_ep={m.next_episode} eps={len(eps)} mappings={json.dumps(d.get('mappings'))[:160]} first={summ}")
-          PY
-
       - name: Run tests (offline; fake site, fake mpv, real ani-cli)
         run: pytest -q
 
