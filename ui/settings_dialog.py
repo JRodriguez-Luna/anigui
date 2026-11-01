@@ -207,7 +207,7 @@ class SettingsDialog(QDialog):
     def _updates(self) -> list[QWidget]:
         self.versions = QLabel(f"AniGUI {__version__}", objectName="Muted")
         return [
-            SettingRow("Check for updates automatically", "Looks for new versions of AniGUI and ani-cli once a day.",
+            SettingRow("Check for updates automatically", "Looks for new versions of AniGUI once a day. ani-cli comes with AniGUI updates, already tested.",
                        self._check("check_updates")),
             SettingRow("Check now", "", self._button("Check for Updates", self.checkUpdatesRequested.emit)),
             SettingRow("What's new", "See what changed in each version.",

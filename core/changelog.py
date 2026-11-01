@@ -32,8 +32,10 @@ RELEASES: tuple[Release, ...] = (
         Change("Safer playback", "Only plain web links from the streaming site ever reach IINA or mpv, so a "
                                  "hacked site can't slip in player options."),
         Change("Verified downloads", "Setup checks that IINA is really from IINA's developer and approved by "
-                                     "Apple before installing it, and ani-cli updates come only from its official "
-                                     "releases."),
+                                     "Apple before installing it."),
+        Change("ani-cli comes with AniGUI", "ani-cli updates now arrive inside AniGUI updates: each one is a "
+                                            "version that was tested with AniGUI and signed, instead of whatever "
+                                            "is newest online."),
         Change("Under the hood", "Text from websites is always shown as plain text, temporary files live in "
                                  "private folders, and the build pipeline is locked down and checked for "
                                  "vulnerable libraries every week."),

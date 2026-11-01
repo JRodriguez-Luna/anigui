@@ -143,6 +143,16 @@ def latest_ani_cli_tag(fetch: Fetch = _fetch) -> str:
     return m.group(1)
 
 
+def ensure_pinned_ani_cli(fetch: Fetch = _fetch) -> str | None:
+    """ani-cli updates arrive inside (signed) AniGUI updates: each AniGUI release pins a
+    tested, checksum-verified ani-cli. If AniGUI's own copy is older than this build's
+    pin, install the pin. Returns the new version, or None if nothing changed."""
+    current = managed_ani_cli_version()
+    if current is None or parse_version(current) >= parse_version(ANI_CLI_PIN_VERSION):
+        return None
+    return install_ani_cli(fetch=fetch)
+
+
 def latest_ani_cli(fetch: Fetch = _fetch) -> tuple[str, bytes]:
     """The script from ani-cli's newest *tagged release* (never the moving main branch).
 

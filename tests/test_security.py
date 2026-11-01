@@ -347,3 +347,17 @@ def test_sign_dialog_blocks_signing_when_something_is_off(tmp_path):
     assert ok.sign_btn.isEnabled() and not ok.problem.isVisibleTo(ok)
     bad = SignDialog(signer.Review(p, tmp_path / "a.dmg", "cd" * 32, ["The file doesn't match GitHub's checksum for it."]))
     assert not bad.sign_btn.isEnabled() and bad.problem.isVisibleTo(bad)
+
+
+def test_ani_cli_updates_arrive_with_anigui(tmp_path, monkeypatch):
+    """Option C: AniGUI brings its own copy up to the version this build pinned and tested."""
+    monkeypatch.setenv("ANIGUI_HOME", str(tmp_path / "home"))
+    installed = []
+    monkeypatch.setattr(setup, "install_ani_cli", lambda fetch=None: installed.append(1) or setup.ANI_CLI_PIN_VERSION)
+    assert setup.ensure_pinned_ani_cli() is None                      # no AniGUI copy (Terminal one is left alone)
+    target = setup.managed_ani_cli()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text('#!/bin/sh\nversion_number="5.0.0"\n')
+    assert setup.ensure_pinned_ani_cli() == setup.ANI_CLI_PIN_VERSION and installed == [1]
+    target.write_text(f'#!/bin/sh\nversion_number="{setup.ANI_CLI_PIN_VERSION}"\n')
+    assert setup.ensure_pinned_ani_cli() is None and installed == [1]   # already current

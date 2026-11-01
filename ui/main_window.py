@@ -338,30 +338,29 @@ class MainWindow(QMainWindow):
     # -- updates ------------------------------------------------------------------------
 
     def _check_updates(self, status: setup.SetupStatus) -> None:
+        # ani-cli comes with AniGUI: each release pins a tested copy. Bring ours up to it.
+        if status.ani_cli_managed:
+            self.ctx.runner.submit(setup.ensure_pinned_ani_cli, on_done=self._ani_cli_updated)
         if not self.ctx.pref("check_updates"):
             return
-        if status.ani_cli_managed:
-            self.ctx.runner.submit(updates.check_ani_cli, status.ani_cli_version, self.ctx.store,
-                                   on_done=self._offer_ani_cli_update)
         self.ctx.runner.submit(updates.check_anigui, self.ctx.store, on_done=self._offer_app_update)
+
+    def _ani_cli_updated(self, version: str | None) -> None:
+        if version:
+            self._set_versions(version)
+            self.toast.show_message(f"ani-cli updated to {version}, the version this AniGUI was tested with")
 
     def check_updates_now(self) -> None:
         """Menu / Settings: check both right away, and say so when nothing's new."""
         self.toast.show_message("Checking for updates…")
 
         def run():
-            status = setup.current_status()
-            ani = (updates.check_ani_cli(status.ani_cli_version, self.ctx.store, force=True)
-                   if status.ani_cli_managed and status.ani_cli_version else None)
-            return ani, updates.check_anigui(self.ctx.store, force=True)
+            return updates.check_anigui(self.ctx.store, force=True)
 
-        def done(result):
-            ani, app = result
+        def done(app):
             if app:
                 self._offer_app_update(app, manual=True)
-            if ani:
-                self._offer_ani_cli_update(ani, manual=True)
-            if not (ani or app):
+            else:
                 self.toast.show_message(f"You're up to date (AniGUI {__version__}"
                                         + (f", ani-cli {self._ani_cli_version})" if self._ani_cli_version else ")"))
 
@@ -380,23 +379,6 @@ class MainWindow(QMainWindow):
         box.exec()
         clicked = box.clickedButton()
         return "yes" if clicked is yes else ("skip" if clicked is skip else "later")
-
-    def _offer_ani_cli_update(self, update, manual: bool = False) -> None:
-        if not update or (not manual and self.ctx.pref("skip_ani_cli", "") == update.latest):
-            return
-        note = "" if update.compatible else (
-            "<br><br>This is a bigger update than AniGUI has been tested with; "
-            "AniGUI may need an update too.")
-        answer = self._ask(f"ani-cli {update.latest} is available",
-                           f"You have {html.escape(str(update.current))}. Updates usually fix searching and playback "
-                           f"when the site changes.{note}", "Update")
-        if answer == "skip":
-            self.ctx.set_pref("skip_ani_cli", update.latest)
-        elif answer == "yes":
-            self.ctx.runner.submit(setup.install_ani_cli, update.script,
-                                   on_done=lambda v: (self.toast.show_message(f"ani-cli updated to {v}"),
-                                                      self._set_versions(v)),
-                                   on_error=lambda msg: self.toast.show_message(f"ani-cli update failed: {msg}", error=True))
 
     def _offer_app_update(self, update, manual: bool = False) -> None:
         if not update or (not manual and self.ctx.pref("skip_anigui", "") == update.latest):
