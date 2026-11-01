@@ -48,6 +48,31 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r requirements.txt
 
+      - name: Probe stills for this season (temporary)
+        if: runner.os == 'Linux'
+        continue-on-error: true
+        run: |
+          python - <<'PY'
+          import collections
+          from core.anilist import AniListClient
+          from core.stills import EpisodeStills
+          al = AniListClient(); src = EpisodeStills(al)
+          shows = al.season("FALL", 2026, per_page=30)
+          total = got = 0; none = []; lines = []
+          for m in shows:
+              aired = (m.next_episode - 1) if m.next_episode else (m.episodes or 0)
+              if aired <= 0:
+                  continue
+              found = src.for_episodes(m.anilist_id, m.mal_id, [(str(i), None) for i in range(1, aired + 1)])
+              hosts = collections.Counter(u.split("/")[2] for u in found.values())
+              total += aired; got += len(found)
+              if not found: none.append(m.display_title[:30])
+              lines.append(f"{m.display_title[:28]} {len(found)}/{aired} {dict(hosts)}")
+          print(f"::notice title=season summary::{len(lines)} shows, {got}/{total} aired episodes have pictures; none at all: {none}")
+          for i in range(0, len(lines), 8):
+              print("::notice title=season " + str(i // 8) + "::" + " | ".join(lines[i:i + 8]))
+          PY
+
       - name: Run tests (offline; fake site, fake mpv, real ani-cli)
         run: pytest -q
 
