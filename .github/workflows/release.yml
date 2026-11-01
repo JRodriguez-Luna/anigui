@@ -250,6 +250,13 @@ jobs:
               hosts = sorted({u.split("/")[2] for u in found.values()})
               print(f"::{level} title=stills::{'PASS' if level == 'notice' else 'LOW'} {name}: "
                     f"{len(found)}/{count} episodes have stills (from {', '.join(hosts) or 'nowhere'})")
+          from core.fillers import FillerGuide
+          info = FillerGuide().for_mal(20)   # Naruto: famous for its fillers
+          numbers = [str(n) for n in range(1, 221)]
+          ok = info.complete and len(info.skippable(numbers)) >= 60
+          print(f"::{'notice' if ok else 'warning'} title=fillers::{'PASS' if ok else 'LOW'} Naruto: "
+                f"{info.summary(numbers)} (complete={info.complete}, first fillers: "
+                f"{sorted((n for n in numbers if info.kind(n) == 'filler'), key=int)[:6]})")
           PY
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7

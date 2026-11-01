@@ -25,6 +25,16 @@ class Release:
 
 
 RELEASES: tuple[Release, ...] = (
+    Release("1.7.0", "November 1, 2026", (
+        Change("Filler badges", "Episodes that aren't from the manga get a FILLER tag, and \"previously on\" "
+                                "episodes a RECAP tag. The show page also says how many there are, e.g. "
+                                "\"90 of 220 episodes are filler\"."),
+        Change("Hide fillers", "One switch above the episodes leaves fillers and recaps out of the list."),
+        Change("Skip fillers", "Up Next and auto-play jump straight to the next story episode. Turn it on above "
+                               "the episodes or in Settings → Playback; you can still click any filler to watch it."),
+        Change("Where it comes from", "MyAnimeList's episode list. Long shows like Naruto, Bleach and One Piece are "
+                                      "well covered; shows without filler simply don't show the switches."),
+    )),
     Release("1.6.0", "November 1, 2026", (
         Change("Episode pictures", "Episodes now show a still from the episode, with the title underneath. "
                                    "Hover one to see a play button and its full title. When there's no picture, "

@@ -31,6 +31,7 @@
 - **Home that feels like a streaming service:** a rotating spotlight of trending shows, plus rows for Continue Watching, Trending Now, This Season and My List.
 - **Search as you type** across everything ani-cli can stream, or browse with filters for genre, year, season, format and status.
 - **Rich show pages** with cover art, banners, scores, genres and next-episode countdowns from [AniList](https://anilist.co), plus Sub/Dub and quality choices.
+- **Filler guide:** FILLER and RECAP tags from MyAnimeList, a count on the show page, and switches to hide fillers or have Up Next and auto-play skip them.
 - **Episode stills:** every episode card shows a picture from the episode (from AniList and [Kitsu](https://kitsu.app)); long shows like One Piece get pages of 100 and a Jump to episode box.
 - **One click to play** in [IINA](https://iina.io) or [mpv](https://mpv.io).
 - **Real watch tracking** over mpv's IPC socket: your position saves as you watch, episodes count as watched past 90%, and Resume picks up exactly where you stopped.
@@ -199,6 +200,7 @@ anigui/
 │   ├── updates.py             once-a-day checks for new ani-cli / AniGUI versions
 │   ├── aniskip.py             intro / ending / recap times from AniSkip
 │   ├── stills.py              episode thumbnails (AniList, then Kitsu), checked against the show
+│   ├── fillers.py             filler / recap episodes from MyAnimeList (via Jikan)
 │   ├── alerts.py              new-episode checks (AniList airing + hianime)
 │   ├── changelog.py           release notes for the What's New window
 │   ├── stats.py               watch statistics (exact log + estimates)

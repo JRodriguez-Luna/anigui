@@ -24,6 +24,8 @@ DEFAULTS: dict[str, Any] = {
     "skip_intro": False,
     "skip_ending": False,
     "skip_recap": False,
+    "skip_fillers": False,       # Up Next and auto-play jump over filler / recap episodes
+    "hide_fillers": False,       # leave them out of the episode grid
     "alerts": True,              # look for new episodes
     "alerts_scope": "library",   # library | library+continue
     "notify": True,              # Mac notifications for new episodes
@@ -47,12 +49,14 @@ class AppContext:
     settings: QSettings
     events: PrefEvents = field(default_factory=PrefEvents)
     stills: Any = None      # core.stills.EpisodeStills; None = numbered tiles only
+    fillers: Any = None     # core.fillers.FillerGuide; None = no filler info
 
     @classmethod
     def create(cls) -> "AppContext":
         from core.cli_bridge import CliBridge
         from core.player import Player
 
+        from core.fillers import FillerGuide
         from core.stills import EpisodeStills
 
         store = Store()
@@ -66,6 +70,7 @@ class AppContext:
             player=Player(),
             settings=QSettings("AniGUI", "AniGUI"),
             stills=EpisodeStills(catalog.anilist, store),
+            fillers=FillerGuide(store),
         )
 
     # Preferences (QSettings). `default` falls back to DEFAULTS for known keys.

@@ -119,6 +119,7 @@ QLineEdit#JumpBox {{
 }}
 QLineEdit#JumpBox:focus {{ border-color: {ACCENT}; }}
 #JumpError {{ color: #FF8A80; font-size: 12px; }}
+#FillerNote {{ color: #E9B44C; font-size: 13px; font-weight: 600; }}
 QComboBox {{
     background: {SURFACE_2}; border: 1px solid {BORDER}; border-radius: {RADIUS}px;
     padding: 8px 12px; font-weight: 700;

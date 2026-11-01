@@ -45,6 +45,8 @@ class DetailPage(QScrollArea):
         self.play_target: str | None = None
         self.autoplay = False
         self._related_for: int | None = None
+        self.fillers = None                # core.fillers.FillerInfo for this show
+        self._fillers_for = None
         self.page: int | None = None       # None = pick the page with Up Next
         self.jumped_to: str | None = None
         self.stills: dict[str, str] = {}
@@ -62,8 +64,10 @@ class DetailPage(QScrollArea):
         self.title = QLabel("", objectName="DetailTitle", wordWrap=True)
         self.meta = QLabel("", objectName="Meta", wordWrap=True)
         self.airing = QLabel("", objectName="Kicker")
+        self.filler_note = QLabel("", objectName="FillerNote")
+        self.filler_note.setVisible(False)
         self.synopsis = QLabel("", objectName="Synopsis", wordWrap=True)
-        for label in (self.kicker, self.title, self.meta, self.airing, self.synopsis):
+        for label in (self.kicker, self.title, self.meta, self.airing, self.filler_note, self.synopsis):
             label.setTextFormat(Qt.TextFormat.PlainText)   # text from AniList / hianime
         self.synopsis.setMaximumWidth(720)
         self.synopsis.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
@@ -105,6 +109,7 @@ class DetailPage(QScrollArea):
         info.addWidget(self.title)
         info.addWidget(self.meta)
         info.addWidget(self.airing)
+        info.addWidget(self.filler_note)
         info.addSpacing(2)
         info.addWidget(self.synopsis)
         info.addSpacing(10)
@@ -136,6 +141,10 @@ class DetailPage(QScrollArea):
         self.pager.pageChosen.connect(self._go_page)
         self.pager.jumpRequested.connect(self._jump)
         self.pager.setVisible(False)
+        self.pager.hide_fillers.setChecked(bool(ctx.pref("hide_fillers")))
+        self.pager.skip_fillers.setChecked(bool(ctx.pref("skip_fillers")))
+        self.pager.hide_fillers.toggled.connect(lambda on: ctx.set_pref("hide_fillers", on))
+        self.pager.skip_fillers.toggled.connect(lambda on: ctx.set_pref("skip_fillers", on))
         self.grid = EpisodeGrid(ctx.images)
         self.grid.episodeClicked.connect(self.play)
         self.grid.markRequested.connect(self._mark)
@@ -219,6 +228,8 @@ class DetailPage(QScrollArea):
         self.grid.model_.set_items([])
         self.grid.set_tile_color(None)
         self.page, self.jumped_to, self.stills, self._stills_asked = None, None, {}, set()
+        self.fillers, self._fillers_for = None, None
+        self.filler_note.setVisible(False)
         self.pager.setVisible(False)
         self.pager.jump.clear()
         self.pager.set_error("")
@@ -245,6 +256,7 @@ class DetailPage(QScrollArea):
         self.grid.set_tile_color(media.cover_color)
         self._load_related(media)
         self._load_stills()
+        self._load_fillers()
 
     def _load_related(self, media: Media) -> None:
         if getattr(self, "_related_for", None) == media.anilist_id:
@@ -309,6 +321,7 @@ class DetailPage(QScrollArea):
         self.ep_count.setText(f"{len(episodes):,}")
         self._refresh_episode_states()
         self._load_stills()
+        self._load_fillers()
         if self.autoplay and self.play_target:
             self.autoplay = False
             self.play(self.play_target)
@@ -324,32 +337,40 @@ class DetailPage(QScrollArea):
         if not self.anime_id or not self.episodes:
             return
         progress = self.ctx.store.show_progress(self.anime_id)
-        target, kind = self.ctx.catalog.resume_episode(self.anime_id, self.episodes)
+        numbers = [ep.number for ep in self.episodes]
+        fillers = self.fillers
+        skippable = fillers.skippable(numbers) if fillers else set()
+        skip = skippable if self.ctx.pref("skip_fillers") else set()
+        target, kind = self.ctx.catalog.resume_episode(self.anime_id, self.episodes, skip=skip)
         self.play_target = target.number if target else None
         busy = self.playback.active
         playing = self.playback.now_playing
-        numbers = [ep.number for ep in self.episodes]
         pages = page_ranges(numbers)
         if self.page is None:  # first time: open on the page with Up Next
             at = numbers.index(target.number) if target and target.number in numbers else 0
             self.page = at // PER_PAGE
         self.page = max(0, min(self.page, len(pages) - 1))
         first, last, _label = pages[self.page]
-        self.pager.setVisible(len(pages) > 1)
+        self.pager.configure(paged=len(pages) > 1, fillers=bool(skippable))
         if len(pages) > 1:
             self.pager.set_pages([label for _a, _b, label in pages], self.page)
+        hide = bool(skippable) and self.ctx.pref("hide_fillers")
         items = []
         for ep in self.episodes[first:last]:
             p = progress.get(ep.number)
             state = "watched" if p and p.completed else ("progress" if p else "new")
-            items.append(EpisodeItem(
+            item = EpisodeItem(
                 number=ep.number, title=ep.title, state=state, fraction=p.fraction if p else 0.0,
                 up_next=bool(target and kind in ("next", "resume") and ep.number == target.number),
                 busy=None,
                 playing=bool(playing and playing == (self.anime_id, ep.number)),
                 still=self.stills.get(ep.number),
                 hit=ep.number == self.jumped_to,
-            ))
+                kind=fillers.kind(ep.number) if fillers else None,
+            )
+            if hide and item.kind and not (item.up_next or item.playing or item.hit):
+                continue   # Hide fillers (but never the episode you're on or just jumped to)
+            items.append(item)
         self.grid.model_.set_items(items)
         if busy and busy[0] == self.anime_id:
             self.grid.model_.set_busy(busy[1], "Starting…")
@@ -370,6 +391,7 @@ class DetailPage(QScrollArea):
         self.pager.set_error("")
         self._refresh_episode_states()
         self._load_stills()
+        self._load_fillers()
 
     def _jump(self, text: str) -> None:
         numbers = [ep.number for ep in self.episodes]
@@ -381,6 +403,7 @@ class DetailPage(QScrollArea):
         self.pager.set_error("")
         self._refresh_episode_states()
         self._load_stills()
+        self._load_fillers()
         QTimer.singleShot(0, lambda n=numbers[at]: self._scroll_to(n))
 
     def _scroll_to(self, number: str) -> None:
@@ -408,6 +431,26 @@ class DetailPage(QScrollArea):
             on_done=lambda found: gen == self.gen and self._on_stills(found),
             group=f"detail-stills-{self.page}",
         )
+
+    def _load_fillers(self) -> None:
+        """Which episodes are filler or recap (MyAnimeList), once per show."""
+        guide = getattr(self.ctx, "fillers", None)
+        if guide is None or not self.media or not self.media.mal_id or not self.episodes:
+            return
+        key = (self.anime_id, self.media.mal_id)
+        if self._fillers_for == key:
+            return
+        self._fillers_for = key
+        gen, mal = self.gen, self.media.mal_id
+        self.ctx.runner.submit(guide.for_mal, mal, on_done=lambda info: gen == self.gen and self._on_fillers(info),
+                               group="detail-fillers")
+
+    def _on_fillers(self, info) -> None:
+        self.fillers = info
+        note = info.summary([ep.number for ep in self.episodes])
+        self.filler_note.setText(note or "")
+        self.filler_note.setVisible(bool(note))
+        self._refresh_episode_states()
 
     def _on_stills(self, found: dict[str, str]) -> None:
         self.stills.update(found)
@@ -481,7 +524,15 @@ class DetailPage(QScrollArea):
         self.libraryChanged.emit()
 
     def _pref_changed(self, key: str, _value) -> None:
-        """Keep the Sub/Dub and quality controls in step with Settings."""
+        """Keep the Sub/Dub, quality and filler controls in step with Settings."""
+        if key in ("hide_fillers", "skip_fillers"):
+            switch = self.pager.hide_fillers if key == "hide_fillers" else self.pager.skip_fillers
+            switch.blockSignals(True)
+            switch.setChecked(bool(self.ctx.pref(key)))
+            switch.blockSignals(False)
+            switch.update()
+            self._refresh_episode_states()
+            return
         if key == "dub":
             btn = self.dub_btn if self.ctx.pref("dub") else self.sub_btn
             if not btn.isChecked():

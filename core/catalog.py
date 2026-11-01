@@ -255,15 +255,23 @@ class Catalog:
             return media.cover
         return None
 
-    def resume_episode(self, anime_id: str, episodes: list[Episode]) -> tuple[Episode | None, str]:
-        """What the main Play button should do: ("play" | "resume" | "next" | "rewatch")."""
+    def resume_episode(self, anime_id: str, episodes: list[Episode],
+                       skip: set[str] | frozenset[str] = frozenset()) -> tuple[Episode | None, str]:
+        """What the main Play button should do: ("play" | "resume" | "next" | "rewatch").
+
+        `skip`: episode numbers to step over when moving on (Skip fillers). An episode
+        you're partway through still resumes, filler or not.
+        """
         if not episodes:
             return None, "play"
         progress = self.store.show_progress(anime_id)
         if not progress:
-            return episodes[0], "play"
+            return next((e for e in episodes if e.number not in skip), episodes[0]), "play"
         last = max(progress.values(), key=lambda p: p.updated_at)
         nxt = self.next_episode(ContinueItem(show=None, last=last), episodes)  # type: ignore[arg-type]
+        if nxt is not None and nxt.number != last.episode and nxt.number in skip:
+            i = episodes.index(nxt)
+            nxt = next((e for e in episodes[i:] if e.number not in skip), None)
         if nxt is None:
             return episodes[0], "rewatch"
         return nxt, ("resume" if nxt.number == last.episode else "next")

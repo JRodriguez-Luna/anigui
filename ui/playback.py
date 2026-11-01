@@ -23,6 +23,7 @@ from core.ani_cli import StreamInfo, is_web_url
 from core.catalog import CatalogError
 from core.mpv_ipc import MpvIpc
 from core.player import PLAYER_NAMES
+from core.stills import number_key
 
 from .context import AppContext
 
@@ -164,6 +165,7 @@ class Session(QObject):
         self.ctx, self.resolver, self.kind = ctx, resolver, kind
         self.now = _Now(anime_id, title, episode)
         self.episodes: list[str] | None = None
+        self.filler_keys: set[str] = set()  # filler / recap episodes (number keys), for Skip fillers
         self.next_job: ResolveJob | None = None
         self.next_info: StreamInfo | None = None
         self.advance_when_ready = False
@@ -182,6 +184,11 @@ class Session(QObject):
         self.ipc.event.connect(self._on_event)
         self.ipc.start(IPC_TIMEOUT_MS)
         self._load_episode_list()
+        ctx.events.changed.connect(self._pref_changed)
+
+    def _pref_changed(self, key: str, value) -> None:
+        if key == "skip_fillers" and value and not self.filler_keys:
+            self._load_fillers()
 
     @property
     def alive(self) -> bool:
@@ -197,7 +204,7 @@ class Session(QObject):
         self._cancel_next()
         self.now = _Now(anime_id, title, episode)
         if not same_show:
-            self.episodes = None
+            self.episodes, self.filler_keys = None, set()
             self._load_episode_list()
         self.loading = True
         self.ipc.command("set_property", "options/referrer", info.referrer or "")
@@ -327,17 +334,33 @@ class Session(QObject):
     # -- auto-next ----------------------------------------------------------------------
 
     def _load_episode_list(self) -> None:
+        self._load_fillers()
         anime_id = self.now.anime_id
         self.ctx.runner.submit(
             self.ctx.catalog.episodes, anime_id,
             on_done=lambda eps, aid=anime_id: aid == self.now.anime_id and setattr(self, "episodes", [e.number for e in eps]),
         )
 
+    def _load_fillers(self) -> None:
+        fillers = getattr(self.ctx, "fillers", None)
+        if fillers is None or not self.ctx.pref("skip_fillers"):
+            return
+        aid, title = self.now.anime_id, self.now.title
+
+        def find():
+            info = fillers.for_mal(self.ctx.catalog.mal_id(aid, title))
+            return {key for key in info.kinds}
+
+        self.ctx.runner.submit(find, on_done=lambda keys: aid == self.now.anime_id and setattr(self, "filler_keys", keys))
+
     def _next_number(self) -> str | None:
         if not self.episodes or self.now.episode not in self.episodes:
             return None
         i = self.episodes.index(self.now.episode)
-        return self.episodes[i + 1] if i + 1 < len(self.episodes) else None
+        rest = self.episodes[i + 1:]
+        if self.ctx.pref("skip_fillers"):
+            rest = [n for n in rest if number_key(n) not in self.filler_keys]
+        return rest[0] if rest else None
 
     def _maybe_prefetch(self) -> None:
         n = self.now

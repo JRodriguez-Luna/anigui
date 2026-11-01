@@ -1,4 +1,4 @@
-"""The show page's episode grid: still cards, pages for long shows, Jump to episode."""
+"""The show page's episode grid: still cards, filler badges, pages for long shows, Jump to episode."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from dataclasses import dataclass, replace
 from PySide6.QtCore import QAbstractListModel, QModelIndex, QPointF, QRectF, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QIntValidator, QPainter, QPainterPath, QPen, QPolygonF
 from PySide6.QtWidgets import (
-    QHBoxLayout, QLabel, QLineEdit, QListView, QMenu, QPushButton, QSizePolicy, QStyle,
+    QAbstractButton, QHBoxLayout, QLabel, QLineEdit, QListView, QMenu, QPushButton, QSizePolicy, QStyle,
     QStyledItemDelegate, QWidget,
 )
 
@@ -17,6 +17,8 @@ from .images import ImageLoader
 
 EP_ROLE = Qt.ItemDataRole.UserRole + 2
 PER_PAGE = 100          # shows with more episodes than this get page tabs
+FILLER_BG, FILLER_TEXT = "#E9B44C", "#2B1D04"
+RECAP_BG, RECAP_TEXT = "#4A4A58", "#E4E4EC"
 
 
 @dataclass(frozen=True)
@@ -30,6 +32,7 @@ class EpisodeItem:
     playing: bool = False
     still: str | None = None  # thumbnail URL, if one was found
     hit: bool = False         # just jumped to
+    kind: str | None = None   # "filler" | "recap" (from MyAnimeList), None = story episode
 
 
 class EpisodeModel(QAbstractListModel):
@@ -47,7 +50,8 @@ class EpisodeModel(QAbstractListModel):
         if role == EP_ROLE:
             return item
         if role == Qt.ItemDataRole.ToolTipRole:
-            return f"Episode {item.number}" + (f": {item.title}" if has_title(item) else "")
+            note = {"filler": " (filler)", "recap": " (recap)"}.get(item.kind or "", "")
+            return f"Episode {item.number}" + (f": {item.title}" if has_title(item) else "") + note
         return None
 
     def set_items(self, items: list[EpisodeItem]) -> None:
@@ -173,6 +177,8 @@ class EpisodeDelegate(QStyledItemDelegate):
         still = QRectF(r.left(), r.top(), r.width(), self.STILL_H - 1)
         if watched and not item.playing:
             p.setOpacity(0.42)
+        elif item.kind and not (item.playing or item.up_next):
+            p.setOpacity(0.8)      # fillers step back a little so story episodes stand out
         pm = self.images.pixmap(item.still, self.W - 2, self.STILL_H - 1) if (self.images and item.still) else None
         if pm is not None:
             p.drawPixmap(still.toRect(), pm)
@@ -185,6 +191,9 @@ class EpisodeDelegate(QStyledItemDelegate):
             p.fillRect(bar, QColor(255, 255, 255, 60))
             p.fillRect(QRectF(bar.left(), bar.top(), bar.width() * max(0.04, min(1.0, item.fraction)), 3),
                        QColor(theme.ACCENT))
+
+        if item.kind in ("filler", "recap"):
+            self._kind_badge(p, still, item.kind)
 
         if hover and not item.busy:
             p.fillRect(still, QColor(0, 0, 0, 90))
@@ -230,6 +239,18 @@ class EpisodeDelegate(QStyledItemDelegate):
         p.setFont(self.big)
         p.setPen(base.lighter(150) if base.lightness() < 140 else base)
         p.drawText(rect, Qt.AlignmentFlag.AlignCenter, number)
+
+    def _kind_badge(self, p: QPainter, still: QRectF, kind: str) -> None:
+        text = kind.upper()
+        bg, fg = (FILLER_BG, FILLER_TEXT) if kind == "filler" else (RECAP_BG, RECAP_TEXT)
+        p.setFont(self.small)
+        w = p.fontMetrics().horizontalAdvance(text) + 12
+        pill = QRectF(still.left() + 8, still.top() + 8, w, 19)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor(bg))
+        p.drawRoundedRect(pill, 5, 5)
+        p.setPen(QColor(fg))
+        p.drawText(pill, Qt.AlignmentFlag.AlignCenter, text)
 
     @staticmethod
     def _play_button(p: QPainter, center: QPointF) -> None:
@@ -312,8 +333,46 @@ class EpisodeGrid(QListView):
         self.setFixedHeight(rows * (d.H + gap) + 4)
 
 
+class Switch(QAbstractButton):
+    """A pill with a small on/off track and a label, like the toggles in the concept."""
+
+    def __init__(self, text: str, parent=None) -> None:
+        super().__init__(parent)
+        self.setText(text)
+        self.setCheckable(True)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.font_ = theme.font(12, QFont.Weight.DemiBold)
+        self.setFont(self.font_)
+
+    def sizeHint(self) -> QSize:
+        return QSize(self.fontMetrics().horizontalAdvance(self.text()) + 58, 30)
+
+    def paintEvent(self, _event) -> None:
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        r = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+        hover = self.underMouse()
+        p.setPen(QPen(QColor(theme.FAINT if (hover or self.hasFocus()) else theme.BORDER), 1))
+        p.setBrush(QColor(theme.SURFACE))
+        p.drawRoundedRect(r, 7, 7)
+        track = QRectF(r.left() + 10, r.center().y() - 7.5, 26, 15)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor(theme.ACCENT if self.isChecked() else "#3A3A48"))
+        p.drawRoundedRect(track, 7.5, 7.5)
+        p.setBrush(QColor(theme.TEXT))
+        knob_x = track.right() - 7.5 if self.isChecked() else track.left() + 7.5
+        p.drawEllipse(QPointF(knob_x, track.center().y()), 5.5, 5.5)
+        p.setPen(QColor(theme.TEXT if (hover or self.isChecked()) else theme.MUTED))
+        p.setFont(self.font_)
+        p.drawText(QRectF(track.right() + 8, r.top(), r.width(), r.height()),
+                   Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, self.text())
+        p.end()
+
+
 class EpisodePager(QWidget):
-    """Page tabs (1–100 · 101–200 · …) and a Jump to episode box, for long shows."""
+    """Above the grid: page tabs (1–100 · 101–200 · …) and Jump to episode for long shows,
+    and the Hide fillers / Skip fillers switches for shows with fillers."""
 
     pageChosen = Signal(int)
     jumpRequested = Signal(str)
@@ -329,14 +388,31 @@ class EpisodePager(QWidget):
         self.jump.returnPressed.connect(lambda: self.jump.text().strip() and self.jumpRequested.emit(self.jump.text()))
         self.jump.textEdited.connect(lambda _t: self.set_error(""))
         self.error = QLabel("", objectName="JumpError")
+        self.hide_fillers = Switch("Hide fillers")
+        self.hide_fillers.setToolTip("Leave filler and recap episodes out of this list")
+        self.skip_fillers = Switch("Skip fillers")
+        self.skip_fillers.setToolTip("Up Next and auto-play jump over filler and recap episodes "
+                                     "(also in Settings → Playback)")
         row = QHBoxLayout(self)
         row.setContentsMargins(5, 0, 5, 0)
         row.setSpacing(10)
         row.addLayout(self.tabs)
         row.addStretch(1)
         row.addWidget(self.error)
+        row.addWidget(self.hide_fillers)
+        row.addWidget(self.skip_fillers)
         row.addWidget(self.jump)
         self.buttons: dict[int, QPushButton] = {}
+
+    def configure(self, paged: bool, fillers: bool) -> None:
+        """Show only what applies: tabs and jump for long shows, switches for shows with fillers."""
+        self.jump.setVisible(paged)
+        self.error.setVisible(paged)
+        self.hide_fillers.setVisible(fillers)
+        self.skip_fillers.setVisible(fillers)
+        if not paged:
+            self.set_pages([], 0)
+        self.setVisible(paged or fillers)
 
     def set_pages(self, labels: list[str], current: int) -> None:
         while self.tabs.count():

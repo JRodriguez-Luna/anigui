@@ -163,6 +163,25 @@ class FakeStills:
         return {n: f"fake://still/{i}?ep={n}" for n in numbers if int(float(n)) % 7 != 3}
 
 
+class FakeFillers:
+    """Every show: episodes 5-7 and 136-141 are filler, 143 is a recap."""
+
+    FILLERS = {5, 6, 7, *range(136, 142)}
+    RECAPS = {143}
+
+    def __init__(self) -> None:
+        self.calls: list[int | None] = []
+
+    def for_mal(self, mal_id):
+        from core.fillers import FILLER, RECAP, FillerInfo
+
+        self.calls.append(mal_id)
+        if not mal_id:
+            return FillerInfo()
+        kinds = {str(n): FILLER for n in self.FILLERS} | {str(n): RECAP for n in self.RECAPS}
+        return FillerInfo(kinds, complete=True)
+
+
 def fake_art(url: str) -> bytes:
     kind, _, idx = url.removeprefix("fake://").partition("/")
     i = int(idx.split("?")[0])
@@ -313,5 +332,5 @@ def fake_context(root: Path, with_history: bool = True) -> AppContext:
     return AppContext(
         store=store, catalog=catalog, runner=TaskRunner(),
         images=ImageLoader(CoverCache(root / "covers", fetcher=fake_art)),
-        bridge=FakeBridge(hianime), player=FakePlayer(), settings=settings, stills=FakeStills(),
+        bridge=FakeBridge(hianime), player=FakePlayer(), settings=settings, stills=FakeStills(), fillers=FakeFillers(),
     )
