@@ -1,0 +1,184 @@
+name: ani-cli watch
+
+# Once a week: is there a newer ani-cli? If so, run AniGUI's tests against it and
+# open a pull request (into `next`) that pins it. If the tests fail, open an issue
+# instead, so a breaking ani-cli change never reaches anyone silently.
+#
+# The new ani-cli is third-party code, so it only runs in the `test` job, which has
+# a read-only token. The jobs that write (branch, PR, issue) never run it.
+
+on:
+  schedule:
+    - cron: "17 16 * * 1"   # Mondays 16:17 UTC (8:17 AM Pacific)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ani-cli-watch
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      new: ${{ steps.check.outputs.new == 'true' && steps.seen.outputs.seen == 'false' }}
+      version: ${{ steps.check.outputs.version }}
+      commit: ${{ steps.check.outputs.commit }}
+      sha256: ${{ steps.check.outputs.sha256 }}
+      pinned: ${{ steps.check.outputs.pinned }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
+        with:
+          ref: next
+          persist-credentials: false
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+        with:
+          python-version: "3.13"
+
+      - name: Newest ani-cli vs. AniGUI's pin
+        id: check
+        run: python tools/ani_cli_watch.py check
+
+      - name: Already proposed?
+        id: seen
+        if: steps.check.outputs.new == 'true'
+        env:
+          VERSION: ${{ steps.check.outputs.version }}
+          REPO: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          if git ls-remote --exit-code "$REPO" "refs/heads/ani-cli/$VERSION" >/dev/null; then
+            echo "::notice title=ani-cli::$VERSION already has a branch (ani-cli/$VERSION); nothing to do"
+            echo "seen=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice title=ani-cli::ani-cli $VERSION is out; testing it"
+            echo "seen=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  test:
+    needs: check
+    if: needs.check.outputs.new == 'true'
+    runs-on: macos-latest
+    env:
+      QT_QPA_PLATFORM: offscreen
+      VERSION: ${{ needs.check.outputs.version }}
+      COMMIT: ${{ needs.check.outputs.commit }}
+      SHA256: ${{ needs.check.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
+        with:
+          ref: next
+          persist-credentials: false
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Pin the new ani-cli
+        run: python tools/ani_cli_watch.py bump "$VERSION" "$COMMIT" "$SHA256"
+
+      - name: Install it (checksum-verified)
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSL "https://raw.githubusercontent.com/pystardust/ani-cli/$COMMIT/ani-cli" -o "$HOME/.local/bin/ani-cli"
+          echo "$SHA256  $HOME/.local/bin/ani-cli" | shasum -a 256 -c -
+          chmod +x "$HOME/.local/bin/ani-cli"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run AniGUI's tests with it
+        run: pytest -q
+
+  propose:
+    needs: [check, test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ needs.check.outputs.version }}
+      COMMIT: ${{ needs.check.outputs.commit }}
+      SHA256: ${{ needs.check.outputs.sha256 }}
+      PINNED: ${{ needs.check.outputs.pinned }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
+        with:
+          ref: next
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+        with:
+          python-version: "3.13"
+
+      - name: Commit the new pin to a branch
+        run: |
+          python tools/ani_cli_watch.py bump "$VERSION" "$COMMIT" "$SHA256"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "ani-cli/$VERSION"
+          git commit -am "Pin ani-cli $VERSION" -m "ani-cli commit $COMMIT
+          sha256 $SHA256
+          AniGUI's tests passed with it on macOS."
+          git push origin "ani-cli/$VERSION"
+
+      - name: Open a pull request (or an issue if PRs from Actions are turned off)
+        run: |
+          cat > body.md <<EOF
+          A new ani-cli is out and **AniGUI's tests pass with it** on macOS.
+
+          | | |
+          |---|---|
+          | Version | $VERSION (AniGUI currently ships $PINNED) |
+          | Commit | [\`${COMMIT:0:7}\`](https://github.com/pystardust/ani-cli/commit/$COMMIT) |
+          | SHA-256 | \`$SHA256\` |
+          | What changed | [ani-cli commits](https://github.com/pystardust/ani-cli/commits/master) |
+
+          **To ship it:** merge this into \`next\`, try the test build, then release as usual.
+          Existing AniGUI users get the new ani-cli automatically when they update AniGUI.
+
+          <sub>Opened by the weekly ani-cli watch. GitHub doesn't run the usual test workflow on
+          pull requests opened by Actions; the watch already ran the full suite on macOS.</sub>
+          EOF
+          if gh pr create --base next --head "ani-cli/$VERSION" \
+               --title "ani-cli $VERSION is out (tests pass)" --body-file body.md; then
+            exit 0
+          fi
+          echo "::warning::Couldn't open a PR. Turn on Settings → Actions → General → 'Allow GitHub Actions to create and approve pull requests'. Opening an issue instead."
+          {
+            cat body.md
+            echo
+            echo "The change is on the branch [\`ani-cli/$VERSION\`]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/compare/next...ani-cli/$VERSION): open a pull request from it."
+          } > issue.md
+          gh issue create --title "ani-cli $VERSION is out (tests pass)" --body-file issue.md
+
+  report-failure:
+    needs: [check, test]
+    if: always() && needs.check.outputs.new == 'true' && needs.test.result == 'failure'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      VERSION: ${{ needs.check.outputs.version }}
+      COMMIT: ${{ needs.check.outputs.commit }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Open an issue (once per version)
+        run: |
+          TITLE="ani-cli $VERSION is out, but AniGUI's tests fail with it"
+          if gh issue list --state all --search "\"$TITLE\" in:title" --json number --jq '.[0].number' | grep -q .; then
+            echo "::notice::Already reported: $TITLE"
+            exit 0
+          fi
+          gh issue create --title "$TITLE" --body "ani-cli [$VERSION](https://github.com/pystardust/ani-cli/commit/$COMMIT) changed something AniGUI depends on, so it was **not** pinned. People keep the current, working ani-cli.
+
+          See the failing tests: $RUN_URL
+
+          Once AniGUI is fixed, run the **ani-cli watch** workflow again (Actions → ani-cli watch → Run workflow)."

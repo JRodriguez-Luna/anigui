@@ -271,7 +271,7 @@ Found a problem? Please open an issue (or contact the maintainer privately for a
 | "This show isn't on hianime yet" | The title differs too much between AniList and hianime; use Search with another title. |
 | Something else | Check `~/Library/Logs/AniGUI/anigui.log`, then open an issue with the log. |
 
-AniGUI is tested against ani-cli **5.1.6** and installs exactly that version. When a newer ani-cli comes out, AniGUI offers to update it (and warns if the new version is beyond what it's tested with).
+AniGUI is tested against ani-cli **5.1.6** and installs exactly that version. A weekly check runs AniGUI's tests against each new ani-cli; when they pass, the new version ships in the next AniGUI update.
 
 ## Disclaimer
 
