@@ -6,6 +6,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Read-only: tests never need to change the repository.
+permissions:
+  contents: read
+
 jobs:
   test:
     name: ${{ matrix.os }}
@@ -19,9 +23,11 @@ jobs:
       # ani-cli 5.1.6, the version AniGUI's parser is verified against
       ANI_CLI_COMMIT: 0301d67d5768d332b049821a30082ad43d9a215a
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
         with:
           python-version: "3.13"
           cache: pip
@@ -44,3 +50,9 @@ jobs:
 
       - name: Run tests (offline; fake site, fake mpv, real ani-cli)
         run: pytest -q
+
+      - name: Known vulnerabilities in dependencies
+        if: runner.os == 'Linux'
+        run: |
+          pip install pip-audit
+          pip-audit -r requirements.txt
