@@ -45,6 +45,15 @@ jobs:
           chmod +x "$HOME/.local/bin/ani-cli"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
+      - name: Probe filler sources (temporary)
+        continue-on-error: true
+        run: |
+          for u in "https://api.jikan.moe/v4/anime/20/episodes?page=1" "https://api.jikan.moe/v4/anime/20" "https://www.animefillerlist.com/shows/naruto"; do
+            out=$(curl -sS -m 60 -A "AniGUI/1.7" -o /tmp/b -w "%{http_code} %{time_total}s %{remote_ip}" "$u" 2>&1 || true)
+            echo "::notice title=probe ${{ runner.os }}::$u -> $out $(head -c 150 /tmp/b 2>/dev/null | tr -d '\n\r')"
+          done
+          grep -o 'class="filler"' /tmp/b | wc -l | xargs -I{} echo "::notice title=probe ${{ runner.os }}::animefillerlist filler rows: {}"
+
       - name: Install Python dependencies
         run: pip install -r requirements.txt
 
