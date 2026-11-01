@@ -37,6 +37,9 @@ IINA_RELEASES = "https://api.github.com/repos/iina/iina/releases/latest"
 IINA_RELEASES_WEB = "https://github.com/iina/iina/releases/latest"
 IINA_ASSETS_WEB = "https://github.com/iina/iina/releases/expanded_assets/{tag}"
 IINA_SITE = "https://iina.io/"
+# IINA's Apple Developer team. Setup refuses an IINA.app signed by anyone else.
+# (The release build prints the team of the IINA it installs, so a change shows up.)
+IINA_TEAM_IDS = {"67CQ77V27R"}
 WARP_URL = "https://one.one.one.one/"
 CONTROL_URL = "https://www.apple.com/library/test/success.html"
 PROBE_QUERY = "one+piece"   # always has results; a block page never parses as results
@@ -121,12 +124,37 @@ def install_ani_cli(script: bytes | None = None, *, fetch: Fetch = _fetch,
     return version
 
 
+ANI_CLI_RELEASES = "https://api.github.com/repos/pystardust/ani-cli/releases/latest"
+ANI_CLI_RELEASES_WEB = "https://github.com/pystardust/ani-cli/releases/latest"
+_ANI_TAG_IN_PAGE = re.compile(r"/pystardust/ani-cli/releases/tag/(v?[\d.]+)")
+
+
+def latest_ani_cli_tag(fetch: Fetch = _fetch) -> str:
+    """ani-cli's newest official release tag (API first, the release page if rate-limited)."""
+    try:
+        tag = str(json.loads(fetch(ANI_CLI_RELEASES)).get("tag_name") or "")
+        if tag:
+            return tag
+    except (SetupError, ValueError):
+        pass
+    m = _ANI_TAG_IN_PAGE.search(fetch(ANI_CLI_RELEASES_WEB).decode("utf-8", "replace"))
+    if not m:
+        raise SetupError("Couldn't find ani-cli's latest release.")
+    return m.group(1)
+
+
 def latest_ani_cli(fetch: Fetch = _fetch) -> tuple[str, bytes]:
-    """The current ani-cli script on GitHub (what `ani-cli -U` would install)."""
-    script = fetch(ANI_CLI_RAW.format(ref="master"))
+    """The script from ani-cli's newest *tagged release* (never the moving main branch).
+
+    The version written inside the script must match the release tag.
+    """
+    tag = latest_ani_cli_tag(fetch)
+    if not re.fullmatch(r"v?\d+(\.\d+){1,3}", tag):
+        raise SetupError(f"ani-cli's latest release has an unexpected name ({tag[:40]}).")
+    script = fetch(ANI_CLI_RAW.format(ref=tag))
     version = script_version(script)
-    if not version:
-        raise SetupError("Couldn't read the latest ani-cli version.")
+    if not version or version != tag.lstrip("v") or not script.startswith(b"#!"):
+        raise SetupError(f"The ani-cli script for {tag} doesn't match its release, so it wasn't offered.")
     return version, script
 
 
@@ -158,6 +186,8 @@ def install_iina(*, fetch: Fetch = _fetch, run=subprocess.run, progress: Progres
             app = next((p for p in mount.iterdir() if p.suffix == ".app"), None)
             if app is None:
                 raise SetupError("The IINA download didn't contain IINA.app.")
+            progress("Checking IINA's signature…")
+            verify_iina(app, run)
             dest_dir = applications_dir()
             dest_dir.mkdir(parents=True, exist_ok=True)
             dest = dest_dir / app.name
@@ -171,6 +201,30 @@ def install_iina(*, fetch: Fetch = _fetch, run=subprocess.run, progress: Progres
         return dest
     finally:
         shutil.rmtree(work, ignore_errors=True)
+
+
+def signing_team(app: Path, run=subprocess.run) -> str | None:
+    """The Apple Developer team that signed an app, from `codesign -dv`."""
+    info = run(["codesign", "-dv", "--verbose=2", str(app)], capture_output=True, text=True)
+    m = re.search(r"^TeamIdentifier=(\w+)", (info.stderr or "") + (info.stdout or ""), re.MULTILINE)
+    return m.group(1) if m else None
+
+
+def verify_iina(app: Path, run=subprocess.run) -> None:
+    """IINA.app must be intact, signed by IINA's own team, and accepted by Gatekeeper."""
+    check = run(["codesign", "--verify", "--deep", "--strict", str(app)], capture_output=True, text=True)
+    if check.returncode != 0:
+        raise SetupError("The IINA download's signature is broken, so it wasn't installed. You can download "
+                         "IINA yourself from iina.io.")
+    team = signing_team(app, run)
+    if team not in IINA_TEAM_IDS:
+        raise SetupError(f"The IINA download is signed by someone else (team {team or 'none'}), so it wasn't "
+                         "installed. You can download IINA yourself from iina.io.")
+    gate = run(["spctl", "--assess", "--type", "execute", "-vv", str(app)], capture_output=True, text=True)
+    verdict = (gate.stderr or "") + (gate.stdout or "")
+    if gate.returncode != 0 and "override" not in verdict:   # "override": Gatekeeper is switched off here
+        raise SetupError("macOS Gatekeeper didn't accept the IINA download, so it wasn't installed. You can "
+                         "download IINA yourself from iina.io.")
 
 
 _TAG_IN_PAGE = re.compile(r"/iina/iina/releases/(?:expanded_assets|tag)/([\w.\-]+)")

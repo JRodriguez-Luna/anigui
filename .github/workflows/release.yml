@@ -128,7 +128,11 @@ jobs:
           except Exception as exc:
               report(False, f"IINA web fallback: {exc}")
           try:
+              import glob
+              for existing in glob.glob("/Applications/IINA.app"):
+                  print(f"::notice title=iina::Team of the IINA already on this Mac: {setup.signing_team(existing)}")
               app = setup.install_iina(progress=print)
+              print(f"::notice title=iina::Installed IINA signed by team {setup.signing_team(app)}")
               found = setup.find_player("iina")
               report(bool(found) and (app / "Contents" / "MacOS" / "iina-cli").exists(), f"IINA installed at {app}; found {found}")
           except Exception as exc:

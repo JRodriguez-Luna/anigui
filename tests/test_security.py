@@ -91,3 +91,53 @@ def test_theme_images_not_in_shared_temp():
     import tempfile
     from ui import theme
     assert not theme._chevron_path().startswith(tempfile.gettempdir())
+
+
+# -- 3-4. Third-party downloads ---------------------------------------------------------------
+
+import json  # noqa: E402
+
+from core import setup  # noqa: E402
+
+
+class _Run:
+    def __init__(self, team="67CQ77V27R", verify=0, gate=0, gate_text="accepted\nsource=Notarized Developer ID"):
+        self.team, self.verify, self.gate, self.gate_text = team, verify, gate, gate_text
+
+    def __call__(self, cmd, **_kw):
+        import subprocess
+        if cmd[:2] == ["codesign", "--verify"]:
+            return subprocess.CompletedProcess(cmd, self.verify, "", "")
+        if cmd[:2] == ["codesign", "-dv"]:
+            return subprocess.CompletedProcess(cmd, 0, "", f"TeamIdentifier={self.team}\n" if self.team else "")
+        if cmd[0] == "spctl":
+            return subprocess.CompletedProcess(cmd, self.gate, "", self.gate_text)
+        raise AssertionError(cmd)
+
+
+def test_verify_iina_requires_iinas_team_and_gatekeeper(tmp_path):
+    app = tmp_path / "IINA.app"
+    setup.verify_iina(app, _Run())                                   # the real thing passes
+    for bad, why in ((_Run(team="EVIL123456"), "someone else"), (_Run(team=None), "someone else"),
+                     (_Run(verify=1), "broken"), (_Run(gate=3, gate_text="rejected"), "Gatekeeper")):
+        with pytest.raises(setup.SetupError, match=why):
+            setup.verify_iina(app, bad)
+    setup.verify_iina(app, _Run(gate=3, gate_text="accepted (override=security disabled)"))  # Gatekeeper off
+
+
+def test_ani_cli_updates_come_from_tagged_releases():
+    script = b'#!/bin/sh\nversion_number="5.2.0"\n'
+    urls = []
+
+    def fetch(url):
+        urls.append(url)
+        if url == setup.ANI_CLI_RELEASES:
+            raise setup.SetupError("HTTP 403")                       # rate-limited: use the release page
+        if url == setup.ANI_CLI_RELEASES_WEB:
+            return b'<a href="/pystardust/ani-cli/releases/tag/v5.2.0">v5.2.0</a>'
+        return script
+
+    assert setup.latest_ani_cli(fetch) == ("5.2.0", script)
+    assert urls[-1] == setup.ANI_CLI_RAW.format(ref="v5.2.0") and not any("master" in u for u in urls)
+    with pytest.raises(setup.SetupError, match="unexpected name"):
+        setup.latest_ani_cli(lambda url: json.dumps({"tag_name": "main; rm -rf"}).encode())

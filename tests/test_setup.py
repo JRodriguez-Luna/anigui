@@ -162,11 +162,13 @@ def test_install_iina(tmp_path, monkeypatch):
         return json.dumps(release).encode() if url == setup.IINA_RELEASES else b"DMGBYTES"
 
     class Done:
-        def __init__(self, code=0):
-            self.returncode, self.stdout, self.stderr = code, "", ""
+        def __init__(self, code=0, stderr=""):
+            self.returncode, self.stdout, self.stderr = code, "", stderr
 
     def run(cmd, **_kw):
         calls.append(cmd[0])
+        if cmd[:2] == ["codesign", "-dv"]:
+            return Done(stderr="Identifier=com.colliderli.iina\nTeamIdentifier=67CQ77V27R\n")
         if cmd[:2] == ["hdiutil", "attach"]:
             mnt = Path(cmd[cmd.index("-mountpoint") + 1])
             (mnt / "IINA.app" / "Contents" / "MacOS").mkdir(parents=True)
@@ -179,7 +181,7 @@ def test_install_iina(tmp_path, monkeypatch):
     assert dest == apps / "IINA.app"
     assert (dest / "Contents" / "MacOS" / "iina-cli").exists()
     assert fetched == [setup.IINA_RELEASES, "https://dl.example/IINA.dmg"]
-    assert calls == ["hdiutil", "ditto", "hdiutil"]  # attach, copy, detach
+    assert calls == ["hdiutil", "codesign", "codesign", "spctl", "ditto", "hdiutil"]  # verified before copying
 
 
 def test_install_iina_without_dmg_asset():
@@ -220,17 +222,32 @@ def test_latest_iina_both_routes_down_points_to_website():
 
 # -- Updates -------------------------------------------------------------------------------
 
+def released(script: bytes, tag: str | None = None):
+    """A fake GitHub: the latest release is `tag` (the script's own version by default)."""
+    version = setup.script_version(script)
+    tag = tag or f"v{version}"
+
+    def fetch(url):
+        if url == setup.ANI_CLI_RELEASES:
+            return json.dumps({"tag_name": tag}).encode()
+        assert url == setup.ANI_CLI_RAW.format(ref=tag), url     # the tagged file, never master
+        return script
+    return fetch
+
+
 def test_ani_cli_update_checks(tmp_path):
     store = Store(tmp_path / "u.db")
     newer = b'#!/bin/sh\nversion_number="5.1.7"\n'
-    upd = updates.check_ani_cli("5.1.6", store, fetch=lambda url: newer)
+    upd = updates.check_ani_cli("5.1.6", store, fetch=released(newer))
     assert (upd.current, upd.latest, upd.compatible) == ("5.1.6", "5.1.7", True)
     assert upd.script == newer
-    assert updates.check_ani_cli("5.1.6", store, fetch=lambda url: newer) is None  # checked today already
+    assert updates.check_ani_cli("5.1.6", store, fetch=released(newer)) is None  # checked today already
     major = b'#!/bin/sh\nversion_number="5.2.0"\n'
-    assert updates.check_ani_cli("5.1.6", None, fetch=lambda url: major).compatible is False
-    assert updates.check_ani_cli("5.1.6", None, fetch=lambda url: SCRIPT) is None   # same version
-    assert updates.check_ani_cli(None, None, fetch=lambda url: newer) is None
+    assert updates.check_ani_cli("5.1.6", None, fetch=released(major)).compatible is False
+    assert updates.check_ani_cli("5.1.6", None, fetch=released(SCRIPT)) is None   # same version
+    assert updates.check_ani_cli(None, None, fetch=released(newer)) is None
+    # The script inside a release must say the release's version
+    assert updates.check_ani_cli("5.1.6", None, fetch=released(newer, tag="v5.1.8")) is None
 
 
 def test_anigui_update_checks(tmp_path):
