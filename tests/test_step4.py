@@ -61,7 +61,7 @@ def start_playing(w, anime_id, title, episode):
     w.detail.play(episode)
     assert pump(lambda: w.ctx.player.launched and w.playback.session and w.playback.session.alive), "session never connected"
     mpv = w.ctx.player.mpv
-    assert pump(lambda: len(mpv.named("observe_property")) == 3)
+    assert pump(lambda: len(mpv.named("observe_property")) == 4)
     return mpv
 
 
@@ -244,3 +244,36 @@ def test_settings_persist_and_sync(win):
     win.detail.quality.setCurrentIndex(win.detail.quality.findData("720"))
     assert dlg.controls["quality"].currentData() == "720"
     dlg.close()
+
+
+def test_auto_next_when_the_player_keeps_open(win):
+    """IINA stays on the last frame (keep-open): mpv then reports eof-reached, not end-file."""
+    mpv = start_playing(win, LANTERN, "The Lantern Keeper", "5")
+    assert any(c[0] == "observe_property" and c[-1] == "eof-reached" for c in mpv.commands)
+    assert pump(lambda: win.playback.session.episodes)
+    mpv.set_prop("duration", 1440.0)
+    mpv.set_prop("time-pos", 1439.0)
+    mpv.set_prop("eof-reached", True)
+    assert pump(lambda: mpv.named("loadfile"))
+    assert win.playback.session.now.episode == "6"
+    assert win.ctx.store.get_progress(LANTERN, "5").completed
+
+
+def test_end_of_episode_reported_twice_advances_once(win):
+    mpv = start_playing(win, LANTERN, "The Lantern Keeper", "5")
+    assert pump(lambda: win.playback.session.episodes)
+    mpv.set_prop("duration", 1440.0)
+    mpv.set_prop("eof-reached", True)
+    mpv.send_event("end-file", reason="eof")
+    assert pump(lambda: mpv.named("loadfile"))
+    pump(timeout=0.5)
+    assert len(mpv.named("loadfile")) == 1 and win.playback.session.now.episode == "6"
+
+
+def test_iina_is_asked_to_keep_its_window_open():
+    from core.ani_cli import StreamInfo
+    from core.player import build_player_command
+
+    info = StreamInfo("https://cdn.example/ep.m3u8", "https://ref.example/", "T", None, None, ())
+    cmd = build_player_command("iina", "/x/iina-cli", info, "T", ipc_path="/tmp/s")
+    assert "--mpv-keep-open=yes" in cmd and cmd[-1] == "https://cdn.example/ep.m3u8"

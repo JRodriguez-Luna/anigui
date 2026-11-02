@@ -52,7 +52,12 @@ class PosterWidget(QWidget):
         self.color: str | None = None
         self.label = ""
         self.setFixedSize(w, h)
-        images.loaded.connect(lambda url: url == self.url and self.update())
+        # A bound method (not a lambda) is disconnected automatically when this widget is deleted.
+        images.loaded.connect(self._on_loaded)
+
+    def _on_loaded(self, url: str) -> None:
+        if url == self.url:
+            self.update()
 
     def set_cover(self, url: str | None, color: str | None = None, label: str = "") -> None:
         self.url, self.color, self.label = url, color, label

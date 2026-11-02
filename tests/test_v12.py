@@ -123,7 +123,7 @@ def start_playing(w, anime_id, title, episode):
     w.detail.play(episode)
     assert pump(lambda: w.ctx.player.launched and w.playback.session and w.playback.session.alive)
     mpv = w.ctx.player.mpv
-    assert pump(lambda: len(mpv.named("observe_property")) == 3)
+    assert pump(lambda: len(mpv.named("observe_property")) == 4)
     return mpv
 
 

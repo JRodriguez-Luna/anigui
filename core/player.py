@@ -56,7 +56,8 @@ def build_player_command(kind: str, path: str, info: StreamInfo, title: str,
         def esc(value: str) -> str:  # mpv splits file lists on ':'
             return value.replace(":", "\\:")
 
-        cmd = [path, "--no-stdin", "--keep-running"]
+        # keep-open: stay on the last frame at the end, so auto-next loads into this window
+        cmd = [path, "--no-stdin", "--keep-running", "--mpv-keep-open=yes"]
         if info.audio_url:
             cmd.append(f"--mpv-audio-files={esc(info.audio_url)}")
         if info.subtitle_url:

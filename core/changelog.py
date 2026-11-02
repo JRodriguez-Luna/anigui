@@ -25,6 +25,12 @@ class Release:
 
 
 RELEASES: tuple[Release, ...] = (
+    Release("1.7.2", "November 2, 2026", (
+        Change("Auto-play next works in IINA", "IINA stays on the last frame when an episode ends, and AniGUI missed "
+                                               "that, so the next episode never started. It now notices either way, "
+                                               "and IINA keeps its window open so the next episode plays right there."),
+        Change("Quieter log", "Fixed a harmless error that filled the log after leaving a show page."),
+    )),
     Release("1.7.1", "November 1, 2026", (
         Change("Pictures for new shows", "Shows that started this season now get episode pictures too, from a "
                                          "third source (TheTVDB, through ani.zip) that has them days earlier."),

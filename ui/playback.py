@@ -148,6 +148,7 @@ class _Now:
     paused: bool = False
     skips: list[aniskip.Segment] | None = None   # None until looked up
     skipped: set[str] = field(default_factory=set)
+    ended: bool = False                           # reached the end (auto-next started once)
 
 
 class Session(QObject):
@@ -235,7 +236,9 @@ class Session(QObject):
     # -- IPC events ---------------------------------------------------------------------
 
     def _on_connected(self) -> None:
-        for name in ("time-pos", "duration", "pause"):
+        # eof-reached: IINA keeps the window open at the end of a file (mpv's keep-open), and
+        # then mpv reports the end through this property instead of an end-file event.
+        for name in ("time-pos", "duration", "pause", "eof-reached"):
             self.ipc.observe(name)
 
     def _on_gave_up(self) -> None:
@@ -272,6 +275,8 @@ class Session(QObject):
             n.paused = value is True
             if n.paused:
                 self.save()
+        elif name == "eof-reached" and value is True and not self.loading:
+            self._on_eof()
 
     def _on_event(self, name: str, msg: dict) -> None:
         if name == "file-loaded":
@@ -282,16 +287,26 @@ class Session(QObject):
         elif name == "end-file":
             reason = msg.get("reason")
             if reason == "eof":
-                if self.now.duration:
-                    self.now.position = self.now.duration  # count the credits as watched
-                self.save()
-                self._advance()
+                self._on_eof()
             elif reason == "error" and not self.loading:
                 self.notice.emit("The player couldn't play this stream.", True)
             elif not self.loading:
                 self.save()
         elif name == "shutdown":
             self._on_closed()
+
+    def _on_eof(self) -> None:
+        """The episode played to the end (end-file, or eof-reached when the player keeps open)."""
+        n = self.now
+        if n.ended:
+            return
+        n.ended = True
+        print(f"playback: episode {n.episode} finished; auto-play {'on' if self.ctx.pref('autoplay', True) else 'off'}, "
+              f"next {self._next_number()}", flush=True)
+        if n.duration:
+            n.position = n.duration  # count the credits as watched
+        self.save()
+        self._advance()
 
     # -- skipping (AniSkip times, applied through the control socket) -------------------
 
@@ -393,6 +408,7 @@ class Session(QObject):
             self._play_next()
 
     def _next_failed(self, episode: str, message: str) -> None:
+        print(f"playback: couldn't get episode {episode} ready: {message}", flush=True)
         self.next_job = None
         if self.advance_when_ready:
             self.advance_when_ready = False
