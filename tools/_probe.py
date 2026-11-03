@@ -5,13 +5,21 @@ from core.hianime import HianimeClient
 from core.anilist import AniListClient
 from core.stills import EpisodeStills
 def note(m): print(f"::notice title=probe::{m}"[:3000])
-env = {**os.environ, "ANI_CLI_PLAYER": "debug", "ANI_CLI_HIST_DIR": "/tmp/h"}
+os.makedirs("/tmp/stub", exist_ok=True)
+open("/tmp/stub/fzf", "w").write("#!/bin/sh\nhead -n 1\n")
+os.chmod("/tmp/stub/fzf", 0o755)
+env = {**os.environ, "ANI_CLI_PLAYER": "debug", "ANI_CLI_HIST_DIR": "/tmp/h", "PATH": "/tmp/stub:" + os.environ["PATH"]}
 for query, ep, mode in (("my hero academia season 5", "1", "dub"), ("my hero academia season 5", "2", "dub"),
                         ("my hero academia season 6", "1", "dub"), ("my hero academia season 6", "4", "dub")):
     args = ["ani-cli", "-S", "1", "-e", ep] + (["--dub"] if mode == "dub" else []) + [query]
     p = subprocess.run(args, capture_output=True, text=True, timeout=120, env=env)
     out = (p.stdout + " | ERR: " + p.stderr).replace("\n", " ")
     note(f"{query} ep {ep} {mode}: rc={p.returncode} {out[:900]}")
+import json
+from core.hianime import EPISODES_URL
+raw = c_raw = HianimeClient().fetch(EPISODES_URL.format("961")).body
+k = raw.find("Keishu")
+note("S6 raw around ep 4 title: " + repr(raw[max(0, k - 60):k + 60]))
 c = HianimeClient()
 al = AniListClient()
 eps = c.episodes("my-hero-academia-season-6-961")
