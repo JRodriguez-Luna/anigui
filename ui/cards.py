@@ -32,6 +32,8 @@ class Card:
     progress: float | None = None   # 0..1 bar along the bottom of the poster
     badge: str | None = None        # e.g. "★ 89" or "EP 4"
     payload: Any = None             # Media, SearchResult, Show... whatever the page needs
+    mature: bool = False            # 18+: red badge in the corner
+    blur: bool = False              # 18+ and Hide 18+ shows is on (your own shows only)
 
     @property
     def is_skeleton(self) -> bool:
@@ -110,16 +112,22 @@ class CardDelegate(QStyledItemDelegate):
         clip.addRoundedRect(poster, theme.RADIUS, theme.RADIUS)
         p.setClipPath(clip)
 
-        pm = None if card.is_skeleton else self.images.pixmap(card.cover, self.W, self.H)
+        load = self.images.blurred if card.blur else self.images.pixmap
+        pm = None if card.is_skeleton else load(card.cover, self.W, self.H)
         if pm is not None:
             p.drawPixmap(poster.toRect(), pm)
         else:
             self._placeholder(p, poster, card)
+        if card.blur:
+            p.fillRect(poster, QColor(0, 0, 0, 70))
+            self._eye_off(p, poster.center())
 
         if hover:
             p.fillRect(poster, QColor(255, 255, 255, 16))
         if card.badge:
             self._badge(p, poster, card.badge)
+        if card.mature:
+            self._mature(p, poster)
         if card.progress is not None:
             bar = QRectF(poster.left(), poster.bottom() - 4, poster.width(), 4)
             p.fillRect(bar, QColor(255, 255, 255, 70))
@@ -163,6 +171,29 @@ class CardDelegate(QStyledItemDelegate):
         p.setFont(self.title_font)
         p.drawText(rect.adjusted(12, 12, -12, -12),
                    Qt.AlignmentFlag.AlignCenter | Qt.TextFlag.TextWordWrap, card.title)
+
+    def _mature(self, p: QPainter, poster: QRectF) -> None:
+        p.setFont(self.badge_font)
+        w = p.fontMetrics().horizontalAdvance("18+") + 12
+        pill = QRectF(poster.right() - w - 8, poster.top() + 8, w, 20)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor(theme.MATURE))
+        p.drawRoundedRect(pill, 5, 5)
+        p.setPen(QColor("#FFFFFF"))
+        p.drawText(pill, Qt.AlignmentFlag.AlignCenter, "18+")
+
+    @staticmethod
+    def _eye_off(p: QPainter, c) -> None:
+        """A closed eye: 'hidden'."""
+        p.setPen(QPen(QColor(255, 255, 255, 230), 2.2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        eye = QPainterPath()
+        eye.moveTo(c.x() - 14, c.y())
+        eye.quadTo(c.x(), c.y() - 12, c.x() + 14, c.y())
+        eye.quadTo(c.x(), c.y() + 12, c.x() - 14, c.y())
+        p.drawPath(eye)
+        p.drawEllipse(c, 3.5, 3.5)
+        p.drawLine(int(c.x() - 13), int(c.y() + 11), int(c.x() + 13), int(c.y() - 11))
 
     def _badge(self, p: QPainter, poster: QRectF, text: str) -> None:
         p.setFont(self.badge_font)

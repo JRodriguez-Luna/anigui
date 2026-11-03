@@ -21,6 +21,7 @@ ACCENT = "#FF6B3D"
 ACCENT_HOVER = "#FF8559"
 ACCENT_PRESSED = "#E85A2E"
 GOOD = "#3DD68C"
+MATURE = "#C0392B"
 
 RADIUS = 8
 
@@ -120,6 +121,15 @@ QLineEdit#JumpBox {{
 QLineEdit#JumpBox:focus {{ border-color: {ACCENT}; }}
 #JumpError {{ color: #FF8A80; font-size: 12px; }}
 #FillerNote {{ color: #E9B44C; font-size: 13px; font-weight: 600; }}
+QWidget#StickyBar {{ background: rgba(14, 14, 20, 0.97); border-bottom: 1px solid {BORDER}; }}
+#StickyTitle {{ font-size: 15px; font-weight: 800; }}
+#MatureBadge {{ background: {MATURE}; color: #FFFFFF; font-size: 11px; font-weight: 800; padding: 2px 7px; border-radius: 5px; }}
+#ContentPill {{ background: {SURFACE_3}; color: #D6D6E0; font-size: 12px; padding: 3px 9px; border-radius: 6px; }}
+#ContentLabel {{ color: {MUTED}; font-size: 13px; font-weight: 600; }}
+#MatureTitle {{ font-size: 18px; font-weight: 800; }}
+#MatureText {{ color: #C9C9D6; font-size: 13px; }}
+#HiddenNote {{ color: {MUTED}; font-size: 13px; }}
+QDialog#MatureDialog {{ background: {SURFACE}; }}
 QComboBox {{
     background: {SURFACE_2}; border: 1px solid {BORDER}; border-radius: {RADIUS}px;
     padding: 8px 12px; font-weight: 700;

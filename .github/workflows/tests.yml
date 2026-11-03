@@ -48,24 +48,6 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r requirements.txt
 
-      - name: Probe hianime 18+ marker (temporary)
-        if: runner.os == 'macOS'
-        continue-on-error: true
-        run: |
-          python - <<'PY'
-          import re
-          from core.hianime import HianimeClient, SEARCH_URL, normalize_query
-          hi = HianimeClient()
-          for q in ("dark summoner", "high school dxd", "frieren", "redo of healer"):
-              r = hi.fetch(SEARCH_URL.format(normalize_query(q)))
-              page = r.body if isinstance(r.body, str) else r.body.decode("utf-8", "replace")
-              page = page.replace("\n", " ")
-              i = page.find('<div class="film-detail">')
-              chunk = re.sub(r"\s+", " ", page[max(0, i - 900):i + 500])
-              ticks = sorted(set(re.findall(r'class="(tick[^"]*)"[^>]*>([^<]{0,20})<', page)))[:12]
-              print(f"::notice title=hianime {q}::status={r.status} ticks={ticks} || {chunk[:1300]}")
-          PY
-
       - name: Run tests (offline; fake site, fake mpv, real ani-cli)
         run: pytest -q
 

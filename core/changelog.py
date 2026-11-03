@@ -25,6 +25,20 @@ class Release:
 
 
 RELEASES: tuple[Release, ...] = (
+    Release("1.8.0", "November 2, 2026", (
+        Change("18+ shows", "Shows with heavy nudity or sexual content get a red 18+ badge. Hide 18+ shows "
+                            "(Settings → Content, on by default) keeps them out of Home, Search, the Calendar and "
+                            "Related; Search says how many it hid. Shows you added yourself stay, with blurred "
+                            "posters, and ask before opening (you can say not to ask again for a show)."),
+        Change("Content notes", "Show pages list what's in a show, like Nudity, Sexual themes, Gore or Disturbing "
+                                "themes, from AniList's community tags. Spoiler tags are never shown."),
+        Change("Back is always there", "Scroll down a show page and a slim bar stays at the top with Back, the "
+                                       "title, where you are, and Play."),
+        Change("Coming soon", "Airing shows end their episode list with the next episode and when it airs."),
+        Change("Dubs without mismatched subtitles", "Subtitles are made for the Japanese audio, so with a dub "
+                                                    "they're off by default (still in the player's Subtitles menu). "
+                                                    "Settings → Playback → Subtitles with dubs turns them back on."),
+    )),
     Release("1.7.2", "November 2, 2026", (
         Change("Auto-play next works in IINA", "IINA stays on the last frame when an episode ends, and AniGUI missed "
                                                "that, so the next episode never started. It now notices either way, "

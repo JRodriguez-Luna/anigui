@@ -62,6 +62,12 @@ CREATE TABLE IF NOT EXISTS watch_log (
     seconds  REAL NOT NULL,       -- time actually spent playing (seeks and skips don't count)
     PRIMARY KEY (day, anime_id, episode)
 );
+CREATE TABLE IF NOT EXISTS mature_flags (
+    anilist_id INTEGER PRIMARY KEY,
+    mature     INTEGER NOT NULL,      -- 18+ (core/maturity.py)
+    notes      TEXT NOT NULL,         -- content notes, joined with '|'
+    allowed    INTEGER NOT NULL DEFAULT 0   -- "Don't ask again for this show"
+);
 CREATE TABLE IF NOT EXISTS cache (
     key        TEXT PRIMARY KEY,
     value      TEXT NOT NULL,
@@ -474,6 +480,30 @@ class Store:
     def cache_delete(self, key: str) -> None:
         with self._tx() as c:
             c.execute("DELETE FROM cache WHERE key = ?", (key,))
+
+    # -- 18+ flags (by AniList id, so they work before a show is linked to hianime) -----
+
+    def set_maturity(self, anilist_id: int, mature: bool, notes: tuple[str, ...]) -> None:
+        with self._tx() as c:
+            c.execute("""INSERT INTO mature_flags (anilist_id, mature, notes) VALUES (?, ?, ?)
+                         ON CONFLICT(anilist_id) DO UPDATE SET mature = excluded.mature, notes = excluded.notes""",
+                      (int(anilist_id), int(bool(mature)), "|".join(notes)))
+
+    def maturity(self, anilist_id: int | None) -> tuple[bool, tuple[str, ...], bool] | None:
+        """(mature, notes, allowed) or None if this show hasn't been looked at yet."""
+        if not anilist_id:
+            return None
+        row = self._conn().execute("SELECT mature, notes, allowed FROM mature_flags WHERE anilist_id = ?",
+                                   (int(anilist_id),)).fetchone()
+        if row is None:
+            return None
+        return bool(row[0]), tuple(n for n in row[1].split("|") if n), bool(row[2])
+
+    def allow_mature(self, anilist_id: int, allowed: bool = True) -> None:
+        with self._tx() as c:
+            c.execute("""INSERT INTO mature_flags (anilist_id, mature, notes, allowed) VALUES (?, 1, '', ?)
+                         ON CONFLICT(anilist_id) DO UPDATE SET allowed = excluded.allowed""",
+                      (int(anilist_id), int(bool(allowed))))
 
     def cache_get_json(self, key: str) -> Any | None:
         raw = self.cache_get(key)

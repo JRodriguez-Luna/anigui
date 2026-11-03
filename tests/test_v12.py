@@ -507,7 +507,7 @@ def test_show_page_rows_and_back_between_shows(win):
     assert pump(lambda: d.related_row.isVisible() and d.recs_row.isVisible())
     first = d.related_row.model().index(0, 0).data(CARD_ROLE)
     assert first.badge == "PREQUEL" and first.title == "The Lantern Keeper"
-    assert d.recs_row.model().rowCount() == 5
+    assert d.recs_row.model().rowCount() == 4                  # 504-508, minus 18+ 508 (hidden)
 
     d.related_row.view.cardActivated.emit(first)                 # open the prequel from Starfall's page
     assert pump(lambda: d.title.text() == "The Lantern Keeper" and d.anime_id)

@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 
 from core.anilist import GENRES
 
+from .mature import decorate_all, hiding, visible
 from .cards import Card, CardGrid, media_card
 from .context import AppContext
 from .widgets import empty_state
@@ -156,6 +157,11 @@ class SearchPage(QWidget):
         self.filter_bar.changed.connect(self._search)
         self.status = QLabel("", objectName="Muted")
         self.status.setTextFormat(Qt.TextFormat.PlainText)
+        self.hidden_note = QLabel("", objectName="HiddenNote")
+        self.hidden_note.setTextFormat(Qt.TextFormat.RichText)   # only our own text and link
+        self.hidden_note.setTextInteractionFlags(Qt.TextInteractionFlag.LinksAccessibleByMouse)
+        self.hidden_note.linkActivated.connect(lambda _link: self._show_hidden())
+        self.hidden_note.setVisible(False)
 
         self.grid = CardGrid(ctx.images)
         self.grid.cardActivated.connect(lambda card: self.openItem.emit(card.payload))
@@ -177,6 +183,7 @@ class SearchPage(QWidget):
         top.addWidget(self.box)
         top.addWidget(self.filter_bar)
         top.addWidget(self.status)
+        top.addWidget(self.hidden_note)
         col.addLayout(top)
         col.addWidget(self.results, 1)
 
@@ -209,7 +216,7 @@ class SearchPage(QWidget):
         self.status.setText(f"Searching for “{query}”…")
         self.stack.setCurrentWidget(self.grid)
         self.grid.cards.set_loading(12)
-        self.ctx.runner.submit(self.ctx.catalog.hianime.search, query,
+        self.ctx.runner.submit(self.ctx.catalog.search_rated, query,
                                on_done=lambda results, q=query: self._show(q, results),
                                on_error=self._error, group="search")
 
@@ -226,6 +233,9 @@ class SearchPage(QWidget):
         )
 
     def _show_browse(self, query: str, what: str, items) -> None:
+        self._last_browse = (query, what, items)
+        items, hidden = visible(self.ctx, items)
+        self._set_hidden(hidden)
         if not items:
             self.status.setText("")
             self.empty.setText("Nothing matches these filters. Try fewer of them.")
@@ -233,20 +243,44 @@ class SearchPage(QWidget):
             return
         self.status.setText(f"{len(items)} show{'s' if len(items) != 1 else ''} · {what}{f' · “{query}”' if query else ''}  "
                             "(from AniList; a few may not be on hianime)")
-        self.grid.cards.set_cards([media_card(m) for m in items])
+        self.grid.cards.set_cards(decorate_all(self.ctx, [media_card(m) for m in items]))
         self.stack.setCurrentWidget(self.grid)
 
     def _show(self, query: str, results) -> None:
+        self._last_text = (query, results)
+        rated = list(results)
+        if hiding(self.ctx):
+            results = [r for r in rated if not self.ctx.catalog.is_mature(r)]
+        hidden = len(rated) - len(results)
+        self._set_hidden(hidden)
         if not results:
             self.status.setText("")
-            self.empty.setText(html.escape(f"No results for “{query}”. Try the Japanese title or fewer words."))
+            self.empty.setText(html.escape(f"Every result for “{query}” is 18+, and your setting hides those."
+                                           if hidden else
+                                           f"No results for “{query}”. Try the Japanese title or fewer words."))
             self.stack.setCurrentWidget(self.empty)
             return
         self.status.setText(f"{len(results)} results for “{query}”")
-        self.grid.cards.set_cards([
+        self.grid.cards.set_cards(decorate_all(self.ctx, [
             Card(key=f"show:{r.anime_id}", title=r.title, cover=r.poster, payload=r) for r in results
-        ])
+        ]))
         self.stack.setCurrentWidget(self.grid)
+
+    def _set_hidden(self, count: int) -> None:
+        if count:
+            self.hidden_note.setText(f"{count} result{'s' if count != 1 else ''} hidden by your 18+ setting · "
+                                     "<a href='#show' style='color:#FF8559'>Show them</a>")
+        self.hidden_note.setVisible(bool(count))
+
+    def _show_hidden(self) -> None:
+        self.ctx.set_pref("hide_mature", False)
+
+    def apply_content_filter(self) -> None:
+        """Hide 18+ shows changed: redo the results on screen."""
+        if self.filter_bar.filters().active and getattr(self, "_last_browse", None):
+            self._show_browse(*self._last_browse)
+        elif getattr(self, "_last_text", None):
+            self._show(*self._last_text)
 
     def _error(self, message: str) -> None:
         self._last_key = None  # allow retrying the same search

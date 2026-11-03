@@ -33,6 +33,7 @@ class EpisodeItem:
     still: str | None = None  # thumbnail URL, if one was found
     hit: bool = False         # just jumped to
     kind: str | None = None   # "filler" | "recap" (Anime Filler List), None = story episode
+    upcoming: str | None = None  # "Thu 9:30 PM · in 3d 4h": the next episode, not out yet
 
 
 class EpisodeModel(QAbstractListModel):
@@ -85,6 +86,22 @@ class EpisodeModel(QAbstractListModel):
             url = stills.get(item.number)
             if url and url != item.still:
                 self._change(row, still=url)
+
+
+def coming_soon(number: int, airing_at: int, now: float | None = None) -> EpisodeItem | None:
+    """The faded 'Coming soon' card for the next episode of an airing show."""
+    import datetime as dt
+    import time
+
+    left = airing_at - (time.time() if now is None else now)
+    if left <= 0:
+        return None
+    when = dt.datetime.fromtimestamp(airing_at)
+    hour = when.strftime("%I:%M %p").lstrip("0")
+    days, rest = divmod(int(left), 86400)
+    hours, minutes = rest // 3600, rest % 3600 // 60
+    soon = f"in {days}d {hours}h" if days else (f"in {hours}h {minutes}m" if hours else f"in {max(1, minutes)}m")
+    return EpisodeItem(number=str(number), title="Coming soon", upcoming=f"{when:%a} {hour} · {soon}")
 
 
 def has_title(item: EpisodeItem) -> bool:
@@ -162,6 +179,9 @@ class EpisodeDelegate(QStyledItemDelegate):
         if item is None:
             return
         r = QRectF(option.rect.x(), option.rect.y(), self.W, self.H).adjusted(1, 1, -1, -1)
+        if item.upcoming:
+            self._paint_upcoming(p, r, item)
+            return
         hover = bool(option.state & QStyle.StateFlag.State_MouseOver)
         watched = item.state == "watched"
         lit = item.up_next or item.playing or bool(item.busy)
@@ -248,6 +268,42 @@ class EpisodeDelegate(QStyledItemDelegate):
         p.setFont(self.big)
         p.drawText(rect, Qt.AlignmentFlag.AlignCenter, number)
 
+    def _paint_upcoming(self, p: QPainter, r: QRectF, item: EpisodeItem) -> None:
+        """A faded card with a dashed border: the next episode and when it airs."""
+        p.save()
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        card = QPainterPath()
+        card.addRoundedRect(r, self.RADIUS, self.RADIUS)
+        p.fillPath(card, QColor(theme.BG))
+        p.setClipPath(card)
+        still = QRectF(r.left(), r.top(), r.width(), self.STILL_H - 1)
+        p.setOpacity(0.35)
+        self._tile(p, still, item.number)
+        p.setOpacity(1.0)
+        p.setFont(self.small)
+        p.setPen(QColor(theme.ACCENT_HOVER))
+        pill_text = "COMING SOON"
+        w = p.fontMetrics().horizontalAdvance(pill_text) + 14
+        pill = QRectF(still.center().x() - w / 2, still.bottom() - 30, w, 20)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor(10, 10, 15, 200))
+        p.drawRoundedRect(pill, 6, 6)
+        p.setPen(QColor(theme.ACCENT_HOVER))
+        p.drawText(pill, Qt.AlignmentFlag.AlignCenter, pill_text)
+        inner = QRectF(r.left() + 11, still.bottom() + 7, r.width() - 22, self.TEXT_H - 12)
+        p.setPen(QColor(theme.FAINT))
+        p.drawText(QRectF(inner.left(), inner.top(), inner.width(), 15), Qt.AlignmentFlag.AlignLeft, f"EP {item.number}")
+        p.setFont(self.title)
+        p.setPen(QColor(theme.MUTED))
+        text = p.fontMetrics().elidedText(item.upcoming or "", Qt.TextElideMode.ElideRight, int(inner.width()))
+        p.drawText(QRectF(inner.left(), inner.top() + 16, inner.width(), 18),
+                   Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, text)
+        p.setClipping(False)
+        p.setPen(QPen(QColor(theme.FAINT), 1, Qt.PenStyle.DashLine))
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawRoundedRect(r.adjusted(0.5, 0.5, -0.5, -0.5), self.RADIUS, self.RADIUS)
+        p.restore()
+
     def _kind_badge(self, p: QPainter, still: QRectF, kind: str) -> None:
         text = kind.upper()
         bg, fg = (FILLER_BG, FILLER_TEXT) if kind == "filler" else (RECAP_BG, RECAP_TEXT)
@@ -298,12 +354,17 @@ class EpisodeGrid(QListView):
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.viewport().setCursor(Qt.CursorShape.PointingHandCursor)
-        self.clicked.connect(lambda idx: self.episodeClicked.emit(idx.data(EP_ROLE).number))
+        self.clicked.connect(self._clicked)
         self.model_.modelReset.connect(self._fit)
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._menu)
         if images is not None:
             images.loaded.connect(lambda _url: self.viewport().update())
+
+    def _clicked(self, idx) -> None:
+        item: EpisodeItem = idx.data(EP_ROLE)
+        if item is not None and not item.upcoming:   # Coming soon isn't playable yet
+            self.episodeClicked.emit(item.number)
 
     def set_tile_color(self, color: str | None, art: str | None = None) -> None:
         self.delegate.tile_color = QColor(color) if color and QColor(color).isValid() else QColor(theme.SURFACE_2)
@@ -315,6 +376,8 @@ class EpisodeGrid(QListView):
         if not index.isValid():
             return
         item: EpisodeItem = index.data(EP_ROLE)
+        if item.upcoming:
+            return
         menu = QMenu(self)
         if item.state == "watched":
             menu.addAction("Mark as unwatched", lambda: self.markRequested.emit(item.number, "unwatched"))

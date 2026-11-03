@@ -51,6 +51,7 @@ class PosterWidget(QWidget):
         self.url: str | None = None
         self.color: str | None = None
         self.label = ""
+        self.blur = False          # 18+ poster while Hide 18+ shows is on
         self.setFixedSize(w, h)
         # A bound method (not a lambda) is disconnected automatically when this widget is deleted.
         images.loaded.connect(self._on_loaded)
@@ -70,9 +71,11 @@ class PosterWidget(QWidget):
         path = QPainterPath()
         path.addRoundedRect(rect, 10, 10)
         p.setClipPath(path)
-        pm = self.images.pixmap(self.url, self.width(), self.height())
+        pm = (self.images.blurred if self.blur else self.images.pixmap)(self.url, self.width(), self.height())
         if pm is not None:
             p.drawPixmap(self.rect(), pm)
+            if self.blur:
+                p.fillRect(rect, QColor(0, 0, 0, 70))
         else:
             grad = QLinearGradient(rect.topLeft(), rect.bottomRight())
             grad.setColorAt(0, QColor(self.color or theme.SURFACE_3).darker(130))

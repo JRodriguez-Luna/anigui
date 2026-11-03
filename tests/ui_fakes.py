@@ -39,6 +39,11 @@ SHOWS = [
     ("Galaxy Noodle Express", "Ginga Ramen Kyuko", "TV", 12, 75, 2026, ["Comedy", "Sci-Fi"], "#f0874a"),
 ]
 
+MATURE = 8   # Pocket Dungeon Diaries
+MATURE_TAGS = [{"name": "Nudity", "rank": 88, "isAdult": False}, {"name": "Hypersexuality", "rank": 65, "isAdult": True},
+               {"name": "Gore", "rank": 62, "isAdult": False},
+               {"name": "Torture", "rank": 70, "isAdult": False, "isMediaSpoiler": True}]
+
 SYNOPSIS = ("When a meteor shower opens a gate above the academy, a first-year with no magic "
             "discovers she can hear the stars. Now every faction on campus wants her voice, and "
             "the only person she trusts is the rival who tried to expel her on day one.")
@@ -58,6 +63,8 @@ def media_json(i: int) -> dict:
         "description": SYNOPSIS, "episodes": eps, "status": "RELEASING" if year == 2026 else "FINISHED",
         "format": fmt, "genres": genres, "averageScore": score, "season": "FALL", "seasonYear": year,
         "nextAiringEpisode": {"episode": 5, "airingAt": 4102444800} if i == 0 else None,
+        # One 18+ show (tags shaped like AniList's), so Hide 18+ shows has something to hide
+        "tags": MATURE_TAGS if i == MATURE else [{"name": "Found Family", "rank": 70, "isAdult": False}],
     }
 
 

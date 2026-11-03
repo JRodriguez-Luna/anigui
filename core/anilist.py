@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Protocol
 
 from . import http
+from .maturity import Maturity, Tag, assess
 
 API_URL = "https://graphql.anilist.co"
 
@@ -44,8 +45,9 @@ fragment f on Media {
   coverImage { extraLarge large color }
   bannerImage
   description(asHtml: false)
-  episodes status format genres averageScore season seasonYear popularity
+  episodes status format genres averageScore season seasonYear popularity isAdult
   nextAiringEpisode { episode airingAt }
+  tags { name rank isAdult isMediaSpoiler isGeneralSpoiler }
 }
 """
 
@@ -178,6 +180,13 @@ class Media:
     next_episode: int | None = None
     next_airing_at: int | None = None
     popularity: int | None = None
+    is_adult: bool = False
+    tags: tuple[Tag, ...] = ()
+
+    @property
+    def maturity(self) -> Maturity:
+        """18+ or not, and content notes (core/maturity.py)."""
+        return assess(self.is_adult, self.genres, self.tags)
 
     @property
     def display_title(self) -> str:
@@ -217,6 +226,8 @@ class Media:
             next_episode=nxt.get("episode"),
             next_airing_at=nxt.get("airingAt"),
             popularity=d.get("popularity"),
+            is_adult=bool(d.get("isAdult")),
+            tags=tuple(Tag.from_json(t) for t in d.get("tags") or () if isinstance(t, dict) and t.get("name")),
         )
 
 

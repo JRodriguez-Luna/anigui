@@ -109,9 +109,21 @@ class Catalog:
         self.store = store
         self.hianime = hianime or HianimeClient()
         self.anilist = anilist or AniListClient(cache=store)
+        self._mature_by_anime: dict[str, int] = {}   # search result -> AniList id (this session)
 
     # hianime -> AniList (artwork and details for something the user found or watched)
     def enrich(self, anime_id: str, title: str, poster: str | None = None) -> Media | None:
+        media = self._enrich(anime_id, title, poster)
+        if media is not None:
+            self.remember_maturity(media)
+        return media
+
+    def remember_maturity(self, media: Media) -> None:
+        """Save 18+ / content notes, so cards for saved shows know without asking AniList."""
+        m = media.maturity
+        self.store.set_maturity(media.anilist_id, m.mature, m.notes)
+
+    def _enrich(self, anime_id: str, title: str, poster: str | None = None) -> Media | None:
         self.store.upsert_show(anime_id, title, poster)
         show = self.store.get_show(anime_id)
         if show and show.anilist_id:
@@ -126,6 +138,32 @@ class Catalog:
             return media
         self.store.cache_put(miss_key, "1", NO_MATCH_TTL)
         return None
+
+    def search_rated(self, query: str) -> list[SearchResult]:
+        """hianime's results for a search, with 18+ looked up on AniList (one extra request):
+        each result is matched to AniList's results for the same words, and saved."""
+        results = self.hianime.search(query)
+        if not results:
+            return results
+        try:
+            candidates = self.anilist.search(query, per_page=25)
+        except Exception:  # noqa: BLE001 - AniList down: results still show, just unrated
+            return results
+        for r in results:
+            media, score = best_media_match(r.title, candidates)
+            if media is not None and score >= AUTO_MATCH:
+                self.remember_maturity(media)
+                self._mature_by_anime[r.anime_id] = media.anilist_id
+        return results
+
+    def is_mature(self, item) -> bool:
+        """18+ for a search result or saved show, from what's been looked up so far."""
+        anilist_id = self._mature_by_anime.get(getattr(item, "anime_id", ""))
+        if anilist_id is None:
+            show = self.store.get_show(getattr(item, "anime_id", "")) if getattr(item, "anime_id", None) else None
+            anilist_id = show.anilist_id if show else None
+        flags = self.store.maturity(anilist_id)
+        return bool(flags and flags[0])
 
     def link_manually(self, anime_id: str, anilist_id: int) -> None:
         self.store.set_anilist_match(anime_id, anilist_id, 1.0, manual=True)

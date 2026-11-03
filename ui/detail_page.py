@@ -14,13 +14,44 @@ from core.hianime import Episode
 from core.store import episode_key
 
 from .cards import CardRow, media_card
+from .mature import decorate_all, hiding, visible
 from .context import AppContext
-from .episodes import PER_PAGE, EpisodeGrid, EpisodeItem, EpisodePager, find_episode, page_ranges
+from .episodes import PER_PAGE, EpisodeGrid, EpisodeItem, EpisodePager, coming_soon, find_episode, page_ranges
 from .hero import Backdrop, airing_note, media_meta, truncate
 from .playback import PlaybackController
 from .widgets import PosterWidget
 
 QUALITIES = [("Best", "best"), ("1080p", "1080"), ("720p", "720"), ("480p", "480")]
+
+
+class StickyBar(QWidget):
+    """Pinned to the top of the show page once its header has scrolled away:
+    Back, a tiny poster, the title, where you are, and Play."""
+
+    def __init__(self, images, parent=None) -> None:
+        super().__init__(parent)
+        self.setObjectName("StickyBar")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.back = QPushButton("‹  Back", objectName="Back", cursor=Qt.CursorShape.PointingHandCursor)
+        self.poster = PosterWidget(images, 26, 38)
+        self.title = QLabel("", objectName="StickyTitle")
+        self.where = QLabel("", objectName="Muted")
+        for label in (self.title, self.where):
+            label.setTextFormat(Qt.TextFormat.PlainText)
+        self.play = QPushButton("▶  Play", objectName="Primary", cursor=Qt.CursorShape.PointingHandCursor)
+        text = QVBoxLayout()
+        text.setSpacing(0)
+        text.addWidget(self.title)
+        text.addWidget(self.where)
+        row = QHBoxLayout(self)
+        row.setContentsMargins(44, 10, 44, 10)
+        row.setSpacing(14)
+        row.addWidget(self.back)
+        row.addWidget(self.poster)
+        row.addLayout(text, 1)
+        row.addWidget(self.play)
+        self.setFixedHeight(62)
+        self.hide()
 
 
 class DetailPage(QScrollArea):
@@ -66,6 +97,19 @@ class DetailPage(QScrollArea):
         self.airing = QLabel("", objectName="Kicker")
         self.filler_note = QLabel("", objectName="FillerNote")
         self.filler_note.setVisible(False)
+        self.mature_badge = QLabel("18+", objectName="MatureBadge")
+        self.mature_badge.setVisible(False)
+        self.content_label = QLabel("Content:", objectName="ContentLabel")
+        self.content_pills = QHBoxLayout()
+        self.content_pills.setSpacing(6)
+        self.content_row = QWidget()
+        content = QHBoxLayout(self.content_row)
+        content.setContentsMargins(0, 0, 0, 0)
+        content.setSpacing(8)
+        content.addWidget(self.content_label)
+        content.addLayout(self.content_pills)
+        content.addStretch(1)
+        self.content_row.setVisible(False)
         self.synopsis = QLabel("", objectName="Synopsis", wordWrap=True)
         for label in (self.kicker, self.title, self.meta, self.airing, self.filler_note, self.synopsis):
             label.setTextFormat(Qt.TextFormat.PlainText)   # text from AniList / hianime
@@ -107,9 +151,14 @@ class DetailPage(QScrollArea):
         info.addStretch(1)
         info.addWidget(self.kicker)
         info.addWidget(self.title)
-        info.addWidget(self.meta)
+        meta_row = QHBoxLayout()
+        meta_row.setSpacing(10)
+        meta_row.addWidget(self.mature_badge)
+        meta_row.addWidget(self.meta, 1)
+        info.addLayout(meta_row)
         info.addWidget(self.airing)
         info.addWidget(self.filler_note)
+        info.addWidget(self.content_row)
         info.addSpacing(2)
         info.addWidget(self.synopsis)
         info.addSpacing(10)
@@ -180,6 +229,11 @@ class DetailPage(QScrollArea):
         col.addLayout(episodes, 1)
         self.setWidget(body)
 
+        self.sticky = StickyBar(ctx.images, self)
+        self.sticky.back.clicked.connect(self.backRequested)
+        self.sticky.play.clicked.connect(lambda: self.play_target and self.play(self.play_target))
+        self.verticalScrollBar().valueChanged.connect(lambda _v: self._update_sticky())
+
         playback.busy.connect(self._on_busy)
         playback.started.connect(self._on_started)
         playback.failed.connect(self._on_failed)
@@ -223,6 +277,8 @@ class DetailPage(QScrollArea):
         self.autoplay = autoplay
         for w in (self.kicker, self.meta, self.airing, self.synopsis, self.message, self.ep_count):
             w.setText("")
+        self._show_content(None)
+        self._related = None
         self.airing.setVisible(False)
         self.message.setVisible(False)
         self.grid.model_.set_items([])
@@ -254,9 +310,67 @@ class DetailPage(QScrollArea):
             self.poster.set_cover(media.cover, media.cover_color, media.display_title)
         self.header.set_image(media.banner, media.cover, media.cover_color)
         self.grid.set_tile_color(media.cover_color, media.banner or media.cover)
+        self.ctx.catalog.remember_maturity(media)
+        self._show_content(media)
+        if self.episodes:
+            self._refresh_episode_states()   # Coming soon needs the airing info
         self._load_related(media)
         self._load_stills()
         self._load_fillers()
+
+    # -- sticky bar ---------------------------------------------------------------------
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._update_sticky()
+
+    def _update_sticky(self) -> None:
+        """Show the bar once the big header (and its Back button) is out of view."""
+        bar = self.sticky
+        vp = self.viewport().geometry()
+        bar.setGeometry(vp.x(), vp.y(), vp.width(), bar.height())
+        scrolled_past = self.verticalScrollBar().value() > self.header.height() - bar.height()
+        if scrolled_past:
+            bar.title.setText(self.title.text())
+            bar.poster.set_cover(self.poster.url, self.poster.color, self.title.text())
+            bar.poster.blur = self.poster.blur
+            bar.play.setText(self._short_play_text())
+            bar.play.setEnabled(self.play_btn.isEnabled())
+            bar.where.setText(self._where_text())
+            bar.raise_()
+        bar.setVisible(scrolled_past)
+
+    def _short_play_text(self) -> str:
+        text = self.play_btn.text().split("  ·  ")[0]
+        return text.replace("Episode ", "")
+
+    def _where_text(self) -> str:
+        bits = []
+        if self.episodes and len(self.episodes) > PER_PAGE and self.page is not None:
+            first, last, label = page_ranges([e.number for e in self.episodes])[self.page]
+            bits.append(f"Episodes {label}")
+        if self.play_target:
+            bits.append(f"Up next: {self.play_target}")
+        return " · ".join(bits)
+
+    def _show_content(self, media: Media | None) -> None:
+        """18+ badge and the Content line (nudity, gore…) from AniList's tags."""
+        m = media.maturity if media else None
+        self.mature_badge.setVisible(bool(m and m.mature))
+        while self.content_pills.count():
+            w = self.content_pills.takeAt(0).widget()
+            if w is not None:
+                w.deleteLater()
+        for note in (m.notes if m else ()):
+            pill = QLabel(note, objectName="ContentPill")
+            pill.setTextFormat(Qt.TextFormat.PlainText)
+            self.content_pills.addWidget(pill)
+        self.content_row.setVisible(bool(m and m.notes))
+
+    def apply_content_filter(self) -> None:
+        """Hide 18+ shows changed: the Related rows follow it."""
+        if getattr(self, "_related", None):
+            self._show_related(*self._related)
 
     def _load_related(self, media: Media) -> None:
         if getattr(self, "_related_for", None) == media.anilist_id:
@@ -268,12 +382,17 @@ class DetailPage(QScrollArea):
                                group="detail-related")
 
     def _show_related(self, related, recs) -> None:
+        self._related = (related, recs)
+        hide = hiding(self.ctx)
         cards = []
         for r in related:
+            if hide and r.media.maturity.mature:
+                continue
             card = media_card(r.media)
             cards.append(replace(card, badge=r.label.upper()))
-        self.related_row.set_cards(cards)
-        self.recs_row.set_cards([media_card(m) for m in recs])
+        self.related_row.set_cards(decorate_all(self.ctx, cards))
+        recs, _hidden = visible(self.ctx, recs)
+        self.recs_row.set_cards(decorate_all(self.ctx, [media_card(m) for m in recs]))
 
     def _on_found(self, gen: int, result) -> None:
         if gen != self.gen:
@@ -371,6 +490,10 @@ class DetailPage(QScrollArea):
             if hide and item.kind and not (item.up_next or item.playing or item.hit):
                 continue   # Hide fillers (but never the episode you're on or just jumped to)
             items.append(item)
+        if self.page == len(pages) - 1:
+            soon = self._coming_soon(numbers)
+            if soon:
+                items.append(soon)
         self.grid.model_.set_items(items)
         if busy and busy[0] == self.anime_id:
             self.grid.model_.set_busy(busy[1], "Starting…")
@@ -383,6 +506,20 @@ class DetailPage(QScrollArea):
             text += f"  ·  {mins}:{secs:02d}"
         self.play_btn.setText(text)
         self.play_btn.setEnabled(target is not None)
+        self._update_sticky()
+
+    def _coming_soon(self, numbers: list[str]) -> EpisodeItem | None:
+        """The next episode of an airing show, if it's the one right after the last listed."""
+        m = self.media
+        if not m or not m.next_episode or not m.next_airing_at or str(m.next_episode) in numbers:
+            return None
+        try:
+            last = max(int(float(n)) for n in numbers)
+        except ValueError:
+            return None
+        if m.next_episode != last + 1:
+            return None
+        return coming_soon(m.next_episode, m.next_airing_at)
 
     # -- pages, jump, stills ------------------------------------------------------------
 

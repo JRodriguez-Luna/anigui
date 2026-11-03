@@ -5,6 +5,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QStackedLayout, QVBoxLayout, QWidget
 
+from .mature import decorate_all
 from .cards import CardGrid
 from .context import AppContext
 from .home_page import show_card
@@ -45,7 +46,7 @@ class LibraryPage(QWidget):
     def refresh(self) -> None:
         shows = self.ctx.store.library()
         self.count.setText(str(len(shows)) if shows else "")
-        self.grid.cards.set_cards([show_card(s) for s in shows])
+        self.grid.cards.set_cards(decorate_all(self.ctx, [show_card(s) for s in shows]))
         self.stack.setCurrentWidget(self.grid if shows else self.empty)
         for show in shows:
             if not show.poster:

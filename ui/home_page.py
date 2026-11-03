@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QMenu, QMessageBox, QScrollArea, QVBoxLayout, QWid
 from core.anilist import current_season
 from core.store import ContinueItem, NewEpisodes, Show
 
+from .mature import decorate_all, visible
 from .cards import Card, CardRow, media_card
 from .context import AppContext
 from .hero import HeroBanner
@@ -98,17 +99,18 @@ class HomePage(QScrollArea):
                                on_done=self._on_trending, on_error=lambda msg: self._on_error(self.trending_row, msg),
                                group="home-trending")
         self.ctx.runner.submit(self.ctx.catalog.anilist.season, per_page=24,
-                               on_done=lambda items: self.season_row.set_cards([media_card(m) for m in items]),
+                               on_done=self._on_season,
                                on_error=lambda msg: self._on_error(self.season_row, msg),
                                group="home-season")
 
     def refresh_local(self) -> None:
         fresh = self.ctx.store.new_episodes() if self.ctx.pref("alerts") else []
         new_by_id = {n.show.anime_id: n for n in fresh}
-        self.new_row.set_cards([new_card(n) for n in fresh])
+        self.new_row.set_cards(decorate_all(self.ctx, [new_card(n) for n in fresh]))
         items = self.ctx.store.continue_watching(limit=20)
-        self.continue_row.set_cards([continue_card(i) for i in items])
-        self.library_row.set_cards([show_card(s, new_by_id.get(s.anime_id)) for s in self.ctx.store.library()])
+        self.continue_row.set_cards(decorate_all(self.ctx, [continue_card(i) for i in items]))
+        self.library_row.set_cards(decorate_all(self.ctx, [show_card(s, new_by_id.get(s.anime_id))
+                                                           for s in self.ctx.store.library()]))
         self._lookup_missing_covers(items)
 
     # -- history ------------------------------------------------------------------------
@@ -153,8 +155,23 @@ class HomePage(QScrollArea):
             window.toast.show_message(text)
 
     def _on_trending(self, items) -> None:
-        self.trending_row.set_cards([media_card(m) for m in items])
-        self.hero.set_items(items)
+        self._trending = items
+        shown, _hidden = visible(self.ctx, items)
+        self.trending_row.set_cards(decorate_all(self.ctx, [media_card(m) for m in shown]))
+        self.hero.set_items(shown)
+
+    def _on_season(self, items) -> None:
+        self._season = items
+        shown, _hidden = visible(self.ctx, items)
+        self.season_row.set_cards(decorate_all(self.ctx, [media_card(m) for m in shown]))
+
+    def apply_content_filter(self) -> None:
+        """Hide 18+ shows changed: redo the rows from what's already loaded."""
+        if getattr(self, "_trending", None) is not None:
+            self._on_trending(self._trending)
+        if getattr(self, "_season", None) is not None:
+            self._on_season(self._season)
+        self.refresh_local()
 
     def _on_error(self, row: CardRow, message: str) -> None:
         row.set_cards([], hide_when_empty=True)

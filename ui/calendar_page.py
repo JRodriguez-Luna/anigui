@@ -188,6 +188,8 @@ class CalendarPage(QScrollArea):
                 if item.widget():
                     item.widget().deleteLater()
             entries = week.days[i]
+            if not self.mine and self.ctx.pref("hide_mature"):
+                entries = [e for e in entries if not getattr(e.media, "maturity", None) or not e.media.maturity.mature]
             if not entries:
                 none = QLabel("—", objectName="CalEmpty")
                 col.insertWidget(1, none)

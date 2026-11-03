@@ -16,6 +16,7 @@ from core import __version__
 from core import self_update, setup, updates
 
 from .alerts import AlertsController, describe
+from .mature import confirm_open
 from .context import AppContext
 from .detail_page import DetailPage
 from .home_page import HomePage
@@ -136,6 +137,7 @@ class MainWindow(QMainWindow):
         self.alerts.found.connect(self._on_new_episodes)
         self.alerts.notifier.clicked.connect(self._show_from_notification)
         ctx.events.changed.connect(self._pref_changed)
+        self.mature_ask = None   # tests answer the "Show anyway?" window with this
 
         self.nav_buttons[self.home].setChecked(True)
         self._build_menus()
@@ -177,6 +179,8 @@ class MainWindow(QMainWindow):
         self.go(self.home, remember=False)
 
     def open_item(self, item, autoplay: bool = False) -> None:
+        if not confirm_open(self.ctx, item, self, ask=self.mature_ask):
+            return
         if self.stack.currentWidget() is self.detail and self.detail.current_item is not None:
             self.show_history.append(self.detail.current_item)
             del self.show_history[:-30]
@@ -259,6 +263,13 @@ class MainWindow(QMainWindow):
             self.home.refresh_local()
         elif key == "import_history":
             self._import_terminal_history()
+        elif key == "hide_mature":
+            self.home.apply_content_filter()
+            self.search.apply_content_filter()
+            self.library.refresh()
+            if self.stack.currentWidget() is self.calendar:
+                self.calendar.refresh()
+            self.detail.apply_content_filter()
 
     # -- new episodes ---------------------------------------------------------------------
 

@@ -63,7 +63,7 @@ def test_stylesheet_parses(app):
 def test_home_loads_rows_and_hero(win):
     pump(lambda: not win.home.trending_row.model().is_loading() and win.home.season_row.model().cards())
     trending = win.home.trending_row.model().cards()
-    assert len(trending) == len(ui_fakes.SHOWS)
+    assert len(trending) == len(ui_fakes.SHOWS) - 1        # the 18+ one is hidden by default
     assert trending[0].badge == "★ 88" and trending[0].subtitle == "TV · 24 eps · 2026"
     assert win.home.hero.title.text() == "Starfall Academy"
     cont = win.home.continue_row.model().cards()

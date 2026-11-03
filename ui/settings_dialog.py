@@ -50,7 +50,7 @@ class SettingsDialog(QDialog):
     checkEpisodesRequested = Signal()
     whatsNewRequested = Signal()
 
-    SECTIONS = ("Playback", "Skipping", "New Episodes", "History", "Connection", "Updates")
+    SECTIONS = ("Playback", "Skipping", "Content", "New Episodes", "History", "Connection", "Updates")
 
     def __init__(self, ctx: AppContext, parent=None, section: str | None = None) -> None:
         super().__init__(parent)
@@ -64,7 +64,7 @@ class SettingsDialog(QDialog):
         self.nav.setFixedWidth(190)
         self.nav.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.pages = QStackedWidget()
-        for name, build in zip(self.SECTIONS, (self._playback, self._skipping, self._episodes,
+        for name, build in zip(self.SECTIONS, (self._playback, self._skipping, self._content, self._episodes,
                                                self._history, self._connection, self._updates)):
             self.nav.addItem(QListWidgetItem(name))
             self.pages.addWidget(self._page(name, build()))
@@ -175,6 +175,14 @@ class SettingsDialog(QDialog):
             self._note("Skip times come from <a href='https://aniskip.com' style='color:#FF8559'>AniSkip</a>, "
                        "a community database. Episodes nobody has timed yet play normally. "
                        "Works with IINA and mpv; nothing extra to install."),
+        ]
+
+    def _content(self) -> list[QWidget]:
+        return [
+            SettingRow("Hide 18+ shows", "Keeps them out of Home, Search, the Calendar and Related. Shows you added "
+                       "yourself stay, with blurred posters, and ask before opening.", self._check("hide_mature")),
+            self._note("A show counts as 18+ when AniList's community rates nudity or sexual violence as a big part "
+                       "of it. Violence and gore alone don't, but they're listed under Content on the show page."),
         ]
 
     def _episodes(self) -> list[QWidget]:

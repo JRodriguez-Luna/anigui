@@ -31,6 +31,7 @@
 - **Home that feels like a streaming service:** a rotating spotlight of trending shows, plus rows for Continue Watching, Trending Now, This Season and My List.
 - **Search as you type** across everything ani-cli can stream, or browse with filters for genre, year, season, format and status.
 - **Rich show pages** with cover art, banners, scores, genres and next-episode countdowns from [AniList](https://anilist.co), plus Sub/Dub and quality choices.
+- **18+ shows handled:** a red 18+ badge, a Hide 18+ shows setting (on by default) that keeps them out of suggestions and blurs the ones you added, a quick check before opening one, and Content notes (nudity, gore…) on every show page.
 - **Filler guide:** FILLER tags from [Anime Filler List](https://www.animefillerlist.com), a count on the show page, and switches to hide fillers or have Up Next and auto-play skip them.
 - **Episode stills:** every episode card shows a picture from the episode (from AniList, [Kitsu](https://kitsu.app) and [ani.zip](https://ani.zip)/TheTVDB); long shows like One Piece get pages of 100 and a Jump to episode box.
 - **One click to play** in [IINA](https://iina.io) or [mpv](https://mpv.io).
@@ -201,6 +202,7 @@ anigui/
 │   ├── aniskip.py             intro / ending / recap times from AniSkip
 │   ├── stills.py              episode thumbnails (AniList, Kitsu, ani.zip), checked against the show
 │   ├── fillers.py             filler episodes from Anime Filler List, matched by exact title
+│   ├── maturity.py            18+ and content notes from AniList's genres and tags
 │   ├── alerts.py              new-episode checks (AniList airing + hianime)
 │   ├── changelog.py           release notes for the What's New window
 │   ├── stats.py               watch statistics (exact log + estimates)
@@ -212,6 +214,7 @@ anigui/
 │   ├── settings_dialog.py · whats_new.py · alerts.py
 │   ├── home_page.py · search_page.py · library_page.py · detail_page.py · stats_page.py · calendar_page.py
 │   ├── episodes.py            the show page's episode cards, pages and Jump to episode
+│   ├── mature.py              18+ filtering, blurred posters and the Show anyway? window
 │   ├── playback.py            resolve → play → track → skip → auto-next
 │   ├── setup_dialog.py        the Setup assistant
 │   ├── cards.py · hero.py · widgets.py · images.py · theme.py

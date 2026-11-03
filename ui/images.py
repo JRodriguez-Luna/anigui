@@ -63,6 +63,26 @@ class ImageLoader(QObject):
         )
         return None
 
+    def blurred(self, url: str | None, w: int, h: int) -> QPixmap | None:
+        """The same image, heavily blurred (for 18+ posters). Shrinking to a few pixels and
+        scaling back up with smoothing is a cheap, strong blur."""
+        pm = self.pixmap(url, w, h)
+        if pm is None:
+            return None
+        key = (f"blur:{url}", int(w), int(h))
+        hit = self._cache.get(key)
+        if hit is not None:
+            return hit
+        img = pm.toImage()
+        tiny = img.scaled(max(1, img.width() // 18), max(1, img.height() // 18),
+                          Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        soft = tiny.scaled(img.width(), img.height(), Qt.AspectRatioMode.IgnoreAspectRatio,
+                           Qt.TransformationMode.SmoothTransformation)
+        out = QPixmap.fromImage(soft)
+        out.setDevicePixelRatio(pm.devicePixelRatio())
+        self._cache[key] = out
+        return out
+
     def prefetch(self, url: str | None, w: int, h: int) -> None:
         self.pixmap(url, w, h)
 

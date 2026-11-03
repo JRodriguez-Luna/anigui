@@ -254,6 +254,13 @@ jobs:
               level = level if loads == min(4, len(found)) else "warning"
               print(f"::{level} title=stills::{'PASS' if level == 'notice' else 'LOW'} {name}: "
                     f"{len(found)}/{count} episodes have stills (from {', '.join(hosts) or 'nowhere'})")
+          al = AniListClient()
+          for name, aid, want in (("I'm Dating a Dark Summoner", 208025, True), ("Frieren", 154587, False),
+                                  ("Chainsaw Man", 127230, False), ("Attack on Titan", 16498, False)):
+              m = al.media(aid).maturity
+              ok = m.mature is want
+              print(f"::{'notice' if ok else 'warning'} title=18+::{'PASS' if ok else 'CHECK'} {name}: "
+                    f"18+={m.mature} (expected {want}), content={list(m.notes)}")
           from core.fillers import FillerGuide
           guide = FillerGuide()
           numbers = [str(n) for n in range(1, 221)]
