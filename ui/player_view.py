@@ -10,6 +10,7 @@ players use, so progress, skips and auto-play work exactly as before (ui/playbac
 from __future__ import annotations
 
 import math
+import random
 import time
 
 from PySide6.QtCore import QPoint, QPointF, QRect, QRectF, Qt, QTimer, Signal
@@ -248,6 +249,33 @@ class PlayerControls(QWidget):
         self._fade.timeout.connect(self._fade_step)
         self._msg_timer = QTimer(self, singleShot=True)
         self._msg_timer.timeout.connect(self._clear_message)
+        # Holiday: snow drifts over the picture while it's paused (and settles on the bar)
+        self.flakes: list[list[float]] = []
+        self._snow = QTimer(self, interval=33)
+        self._snow.timeout.connect(self._snow_step)
+
+    def set_paused(self, paused: bool) -> None:
+        self.paused = paused
+        wanted = paused and theme.HOLIDAY and festive_on("player_snow") and self.mode != "mini"
+        if wanted and not reduce_motion():
+            self._snow.start()
+        else:
+            self._snow.stop()
+            self.flakes = []
+        self.update()
+
+    def _snow_step(self) -> None:
+        w, h = self.width(), self.height()
+        if len(self.flakes) < 70:
+            self.flakes.append([random.uniform(0, w), -4.0, random.uniform(1.2, 2.8), random.uniform(0.6, 1.5),
+                                random.uniform(0, 6.3)])
+        for f in self.flakes:
+            f[1] += f[3]
+            f[4] += 0.04
+            f[0] += math.sin(f[4]) * 0.5
+        floor = h - 92
+        self.flakes = [f for f in self.flakes if f[1] < floor]
+        self.update()
 
     # -- state ------------------------------------------------------------------------
 
@@ -311,6 +339,11 @@ class PlayerControls(QWidget):
         mini = self.mode == "mini"
         if theme.HOLIDAY and self.mode != "full":
             self._snow_cap(p, r)
+        if self.flakes:
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(QColor(255, 255, 255, 210))
+            for x, y, rad, _v, _d in self.flakes:
+                p.drawEllipse(QPointF(x, y), rad, rad)
         a = self.alpha
         if a > 0.01:
             p.save()
@@ -607,6 +640,8 @@ class PlayerControls(QWidget):
             return
         was_hidden = self.alpha < 0.3
         self.poke()
+        if self.parentWidget() is not None:
+            self.parentWidget().setFocus()          # keys (space, arrows, F) go to the player
         hit = self._hit(e.position())
         if hit == "bar":
             self.dragging = True
@@ -778,7 +813,7 @@ class PlayerHost(QWidget):
         elif name == "duration" and isinstance(value, (int, float)):
             c.duration = float(value)
         elif name == "pause":
-            c.paused = value is True
+            c.set_paused(value is True)
             if c.paused:
                 c.poke()
         elif name == "mute":

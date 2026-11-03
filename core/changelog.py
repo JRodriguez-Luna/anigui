@@ -30,6 +30,18 @@ class Release:
 
 
 RELEASES: tuple[Release, ...] = (
+    Release("1.11.0", "November 3, 2026", (
+        Change("Play right here", "Episodes can now play inside AniGUI: the video on the show's page with the "
+                                  "episode list beside it, a mini-player in the corner when you look around, and "
+                                  "full screen with F. Skip intro, Up next, audio and subtitle tracks and speed are "
+                                  "all in the player. Settings › Playback › Player switches between AniGUI, IINA "
+                                  "and mpv."),
+        Change("Because you watched", "Home now suggests shows based on what you've watched the most."),
+        Change("Holidays: coming December 1", "Before December the Holidays page shows a countdown (and can "
+                                              "remind you), and badges only count from December 1."),
+        Change("Holiday player", "In the holiday season the built-in player gets lights, a garland, a bow and "
+                                 "snow while paused. Switch any of it off in the player's ⚙ menu."),
+    )),
     Release("1.10.0", "November 3, 2026", (
         Change("Holidays", "A new 🎄 Holidays page while the holiday theme is on. An advent calendar with a "
                            "Christmas episode behind every door from December 1 to 24 (missed one? it stays open), "

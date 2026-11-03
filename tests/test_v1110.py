@@ -229,3 +229,30 @@ def test_new_installs_play_inside(win):
     win.ctx.set_pref("setup_done", False)
     win._offer_built_in_player()
     assert win.ctx.pref("player") == "anigui"
+
+
+def test_snow_while_paused_in_the_holidays(win, monkeypatch):
+    from ui import theme, motion
+    monkeypatch.setattr(theme, "HOLIDAY", True)
+    monkeypatch.setattr(motion, "_reduce", False)
+    mpv = play_inside(win)
+    c = win.player_host.controls
+    mpv.set_prop("pause", True)
+    assert pump(lambda: c.paused and c._snow.isActive())
+    assert pump(lambda: len(c.flakes) > 3)
+    mpv.set_prop("pause", False)
+    assert pump(lambda: not c.paused and not c._snow.isActive() and not c.flakes)
+
+
+def test_keys_control_the_player(win):
+    from PySide6.QtCore import QEvent, Qt
+    from PySide6.QtGui import QKeyEvent
+    from PySide6.QtWidgets import QApplication
+    mpv = play_inside(win)
+    host = win.player_host
+    for key in (Qt.Key.Key_Space, Qt.Key.Key_Right, Qt.Key.Key_Left, Qt.Key.Key_M):
+        QApplication.sendEvent(host, QKeyEvent(QEvent.Type.KeyPress, key, Qt.KeyboardModifier.NoModifier))
+    assert pump(lambda: ["cycle", "mute"] in mpv.commands)
+    assert ["cycle", "pause"] in mpv.commands and ["seek", "10", "relative"] in mpv.commands
+    QApplication.sendEvent(host, QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_F, Qt.KeyboardModifier.NoModifier))
+    assert host.mode == "full"
