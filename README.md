@@ -39,7 +39,10 @@
 - **Auto-play next:** the next episode is fetched in the background and starts in the same player window after a short countdown.
 - **Skips intros, endings and recaps** using [AniSkip](https://aniskip.com)'s community timings, in IINA or mpv, with nothing extra to install.
 - **New episode alerts:** when a show in My List gets a new episode, it shows up at the top of Home with a NEW badge, plus a Mac notification.
-- **More like this:** every show page lists sequels, prequels and movies, plus shows other fans recommend.
+- **Seasons on one page:** every season of a series in order on its show page, with your progress in each and its movies and specials; finish a season and Up next (or auto-play) moves on to the next one.
+- **More like this:** every show page lists related shows, plus shows other fans recommend.
+- **Smooth and calm:** pages and pictures fade in, posters lift on hover, loading placeholders shimmer; macOS's Reduce motion keeps it to gentle fades.
+- **Holiday theme:** snow, red-and-green colors and a Christmas anime shelf from the day after Thanksgiving to New Year's Day (or from Nov 1 with Settings › Appearance › Early).
 - **Airing calendar:** this week's episodes for the shows you follow, in your time zone, with what's already watchable, plus a Trending view of the hottest airing shows.
 - **Your Stats:** time watched, episodes, daily streak, a 12-week chart, top genres and most-watched shows.
 - **Your history, your call:** clear all of it, or remove one show from Continue Watching with a right-click.

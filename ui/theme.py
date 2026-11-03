@@ -149,6 +149,13 @@ QPushButton#ExtraPill {{ background: {SURFACE_2}; border: 1px solid {BORDER}; co
 QPushButton#ExtraPill:hover {{ background: {SURFACE_3}; color: {TEXT}; }}
 QFrame#UpNextCard {{ background: {SURFACE}; border: 1px solid {BORDER}; border-radius: 12px; }}
 #UpNextTitle {{ font-size: 15px; font-weight: 700; }}
+QFrame#HolidayBanner {{ background: #12261C; border: 1px solid #1F3D2C; border-radius: 12px; }}
+#HolidayTitle {{ font-size: 15px; font-weight: 700; }}
+#HolidayText {{ color: #B9C9BE; }}
+QPushButton#HolidayOn {{ background: #D93A3A; border: none; color: white; padding: 8px 16px; font-weight: 700; }}
+QPushButton#HolidayOn:hover {{ background: #E8484A; }}
+QPushButton#HolidayWait {{ background: rgba(255, 255, 255, 0.08); border: none; padding: 8px 16px; }}
+QPushButton#HolidayWait:hover {{ background: rgba(255, 255, 255, 0.14); }}
 QDialog#MatureDialog {{ background: {SURFACE}; }}
 QComboBox {{
     background: {SURFACE_2}; border: 1px solid {BORDER}; border-radius: {RADIUS}px;
@@ -271,6 +278,34 @@ QMessageBox QLabel {{ color: {TEXT}; }}
 """
 
 
+# The holiday theme swaps the orange accent for red, and the small kickers above titles for
+# pine green. Painted widgets read theme.ACCENT when they paint, so changing these module
+# values and repainting is enough; the stylesheet is rebuilt by apply_theme().
+NORMAL_COLORS = {"ACCENT": "#FF6B3D", "ACCENT_HOVER": "#FF8559", "ACCENT_PRESSED": "#E85A2E", "KICKER": "#FF6B3D"}
+HOLIDAY_COLORS = {"ACCENT": "#E0403C", "ACCENT_HOVER": "#EC5A55", "ACCENT_PRESSED": "#C13431", "KICKER": "#3FAE6A"}
+HOLIDAY = False
+KICKER = NORMAL_COLORS["KICKER"]
+
+
+def set_holiday(on: bool) -> None:
+    """Switch the colors (call apply_theme() after, and repaint)."""
+    global HOLIDAY, ACCENT, ACCENT_HOVER, ACCENT_PRESSED, KICKER
+    colors = HOLIDAY_COLORS if on else NORMAL_COLORS
+    HOLIDAY = on
+    ACCENT, ACCENT_HOVER, ACCENT_PRESSED, KICKER = (colors[k] for k in ("ACCENT", "ACCENT_HOVER", "ACCENT_PRESSED", "KICKER"))
+
+
+def stylesheet() -> str:
+    sheet = STYLESHEET.replace("__CHEVRON__", _chevron_path()).replace("__CHECK__", _check_path())
+    normal = NORMAL_COLORS
+    sheet = sheet.replace(f"#Kicker {{ color: {normal['ACCENT']};", "#Kicker { color: __KICKER__;")
+    for key in ("ACCENT_HOVER", "ACCENT_PRESSED", "ACCENT"):
+        sheet = sheet.replace(normal[key], f"__{key}__")
+    for key in ("ACCENT_HOVER", "ACCENT_PRESSED", "ACCENT", "KICKER"):
+        sheet = sheet.replace(f"__{key}__", globals()[key])
+    return sheet
+
+
 def apply_theme(app: QApplication) -> None:
     app.setStyle("Fusion")
     pal = QPalette()
@@ -284,7 +319,7 @@ def apply_theme(app: QApplication) -> None:
     ]:
         pal.setColor(role, QColor(color))
     app.setPalette(pal)
-    app.setStyleSheet(STYLESHEET.replace("__CHEVRON__", _chevron_path()).replace("__CHECK__", _check_path()))
+    app.setStyleSheet(stylesheet())
 
 
 def _asset_dir() -> Path:

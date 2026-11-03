@@ -333,3 +333,103 @@ def test_hover_lift_eases_in_and_out(win):
     pump(timeout=0.2)
     assert grid.lift(1) == 0.0                                          # Reduce motion: no lift
     motion.set_reduce_motion(None)
+
+
+# -- holiday theme -------------------------------------------------------------------------------
+
+import datetime as dt  # noqa: E402
+
+from core import holiday  # noqa: E402
+
+
+@pytest.fixture
+def plain_theme(monkeypatch):
+    """Restyling every widget the test run has ever made is slow, so these tests check the
+    logic and leave the stylesheet alone (test_colors_switch_and_switch_back covers it)."""
+    from ui import theme
+    applied = []
+    monkeypatch.setattr(theme, "apply_theme", lambda app: applied.append(theme.HOLIDAY))
+    yield applied
+    theme.set_holiday(False)
+
+
+def test_thanksgiving_and_the_season():
+    assert [holiday.thanksgiving(y).day for y in (2024, 2025, 2026, 2027)] == [28, 27, 26, 25]
+    assert not holiday.is_on("auto", dt.date(2026, 11, 26))                 # Thanksgiving itself
+    assert holiday.is_on("auto", dt.date(2026, 11, 27))                     # the day after
+    assert holiday.is_on("auto", dt.date(2026, 12, 31)) and holiday.is_on("auto", dt.date(2027, 1, 1))
+    assert not holiday.is_on("auto", dt.date(2027, 1, 2))
+    assert holiday.is_on("early", dt.date(2026, 11, 1)) and not holiday.is_on("early", dt.date(2026, 10, 31))
+    assert not holiday.is_on("off", dt.date(2026, 12, 25))
+
+
+def test_the_november_offer():
+    nov3 = dt.date(2026, 11, 3)
+    assert holiday.offer_early("auto", "", nov3)
+    assert not holiday.offer_early("auto", "2026", nov3)                    # answered this year
+    assert holiday.offer_early("auto", "2025", nov3)                        # but asked again next year
+    assert not holiday.offer_early("early", "", nov3)                       # already on
+    assert not holiday.offer_early("auto", "", dt.date(2026, 11, 27))       # it has started anyway
+    assert not holiday.offer_early("auto", "", dt.date(2026, 10, 20))
+
+
+def test_colors_switch_and_switch_back(plain_theme):
+    from ui import theme
+    normal = theme.stylesheet()
+    theme.set_holiday(True)
+    sheet = theme.stylesheet()
+    assert theme.ACCENT == theme.HOLIDAY_COLORS["ACCENT"] and theme.NORMAL_COLORS["ACCENT"] not in sheet
+    assert "#Kicker { color: #3FAE6A" in sheet and theme.MATURE == "#C0392B"     # 18+ keeps its own red
+    theme.set_holiday(False)
+    assert theme.stylesheet() == normal
+
+
+def test_app_turns_festive_in_december(win, plain_theme):
+    from ui import theme
+    win.apply_holiday(today=dt.date(2026, 12, 5), animate=False)
+    assert plain_theme == [True]                                            # restyled once
+    assert theme.HOLIDAY and theme.HOLIDAY_COLORS["ACCENT"] in win.brand.text()
+    assert "Happy holidays" in win.footer.text()
+    assert win.home.hero_snow is not None and win.home.hero_snow.running
+    assert pump(lambda: win.home.xmas_row.isVisible())
+    win.apply_holiday(today=dt.date(2027, 1, 2), animate=False)
+    assert not theme.HOLIDAY and not win.home.xmas_row.isVisible() and not win.home.hero_snow.running
+
+
+def test_november_banner_turn_on_now(win, plain_theme):
+    from ui import theme
+    win.apply_holiday(today=dt.date(2026, 11, 3), animate=False)
+    banner = win.home.holiday_banner
+    assert not banner.isHidden() and not theme.HOLIDAY
+    banner.on_btn.click()
+    assert win.ctx.pref("holiday_theme") == "early" and win.ctx.pref("holiday_banner_seen") == str(dt.date.today().year)
+    assert theme.HOLIDAY                                                    # on right away
+    assert pump(lambda: banner.isHidden(), 2)
+
+
+def test_november_banner_wait(win, plain_theme):
+    from ui import theme
+    win.ctx.set_pref("holiday_banner_seen", "")
+    win.apply_holiday(today=dt.date(2026, 11, 3), animate=False)
+    win.home.holiday_banner.wait_btn.click()
+    assert win.ctx.pref("holiday_theme") == "auto" and not theme.HOLIDAY
+    assert pump(lambda: win.home.holiday_banner.isHidden(), 2)
+
+
+def test_setting_has_the_three_choices(win, plain_theme):
+    from ui.settings_dialog import SettingsDialog
+    dlg = SettingsDialog(win.ctx, section="Appearance")
+    combo = dlg.controls["holiday_theme"]
+    assert [combo.itemData(i) for i in range(combo.count())] == ["auto", "early", "off"]
+    combo.setCurrentIndex(2)
+    assert win.ctx.pref("holiday_theme") == "off"
+    dlg.close()
+
+
+def test_dock_icon_gets_a_hat():
+    from PySide6.QtGui import QIcon, QPixmap
+    from ui.holiday import holiday_icon
+    base = QPixmap(64, 64)
+    base.fill()
+    icon = holiday_icon(QIcon(base))
+    assert icon.pixmap(64, 64).toImage() != base.toImage()

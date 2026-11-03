@@ -30,6 +30,18 @@ class Release:
 
 
 RELEASES: tuple[Release, ...] = (
+    Release("1.9.0", "November 3, 2026", (
+        Change("Seasons on one page", "A show's page now lists every season of the series in order, with how far "
+                                      "you've got in each, plus its movies and specials. Finish a season and Up next "
+                                      "offers the next one; auto-play rolls right into it."),
+        Change("Smoother everywhere", "Pages fade in, pictures fade in as they load, the Home banner crossfades, "
+                                      "posters lift when you hover them, and loading placeholders shimmer. With "
+                                      "Reduce motion on in macOS, it keeps to gentle fades."),
+        Change("Holiday theme", "Snow on Home, red-and-green colors, a Christmas anime shelf and a festive Dock icon. "
+                                "It turns on by itself the day after Thanksgiving and off after New Year's Day. "
+                                "Can't wait? Settings › Appearance › Early."),
+        Change("Minor fixes", "Small fixes and improvements."),
+    )),
     Release("1.8.8", "November 3, 2026", (
         Change("Minor fixes", "Small fixes and improvements."),
     )),

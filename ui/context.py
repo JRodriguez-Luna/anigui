@@ -33,6 +33,8 @@ DEFAULTS: dict[str, Any] = {
     "notify": True,              # Mac notifications for new episodes
     "import_history": False,     # bring in shows watched with ani-cli in Terminal (asked in Setup)
     "check_updates": True,
+    "holiday_theme": "auto",     # auto (day after Thanksgiving to Jan 1) | early (from Nov 1) | off
+    "holiday_banner_seen": "",   # the year November's "holiday theme is ready" banner was answered
 }
 
 

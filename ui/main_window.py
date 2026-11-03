@@ -21,6 +21,9 @@ from .context import AppContext
 from .detail_page import DetailPage
 from .home_page import HomePage
 from .icons import nav_icon
+from . import theme
+from .holiday import Brand, holiday_icon
+from .holiday import is_on as holiday_on
 from .motion import crossfade
 from .library_page import LibraryPage
 from .playback import PlaybackController
@@ -67,8 +70,8 @@ class MainWindow(QMainWindow):
         side = QVBoxLayout(sidebar)
         side.setContentsMargins(14, 26, 14, 16)
         side.setSpacing(4)
-        brand = QLabel("Ani<span style='color:#FF6B3D'>GUI</span>", objectName="Brand")
-        side.addWidget(brand)
+        self.brand = Brand()
+        side.addWidget(self.brand)
         for label, icon, page, keys in (("Home", "home", self.home, "Ctrl+1"), ("Search", "search", self.search, "Ctrl+2"),
                                         ("My List", "heart", self.library, "Ctrl+3"), ("Stats", "stats", self.stats, "Ctrl+4"),
                                         ("Calendar", "calendar", self.calendar, "Ctrl+5")):
@@ -144,6 +147,11 @@ class MainWindow(QMainWindow):
         self.alerts.notifier.clicked.connect(self._show_from_notification)
         ctx.events.changed.connect(self._pref_changed)
         self.mature_ask = None   # tests answer the "Show anyway?" window with this
+        self._base_icon = None
+        self._footer_ani_cli: str | None = None
+        self._holiday_timer = QTimer(self, interval=60 * 60 * 1000)   # the date can change while open
+        self._holiday_timer.timeout.connect(lambda: self.apply_holiday())
+        self.home.holidayAnswered.connect(self._holiday_answer)
 
         self.nav_buttons[self.home].setChecked(True)
         self._build_menus()
@@ -292,6 +300,8 @@ class MainWindow(QMainWindow):
         elif key == "maturity_found":          # saved shows just got their 18+ status
             self.home.refresh_local()
             self.library.refresh()
+        elif key == "holiday_theme":
+            self.apply_holiday()
         elif key == "hide_mature":
             self.home.apply_content_filter()
             self.search.apply_content_filter()
@@ -300,6 +310,32 @@ class MainWindow(QMainWindow):
                 self.calendar.refresh()
             self.detail.apply_content_filter()
 
+    # -- holiday theme --------------------------------------------------------------------
+
+    def apply_holiday(self, today=None, animate: bool = True) -> None:
+        """Switch the holiday colors on or off to match the setting and the date. The app
+        eases into the new colors (a snapshot of the old look fades away)."""
+        on = holiday_on(self.ctx, today)
+        if on != theme.HOLIDAY:
+            app = QApplication.instance()
+            if animate and self.isVisible():
+                crossfade(self.centralWidget(), ms=520)
+            theme.set_holiday(on)
+            theme.apply_theme(app)
+            if self._base_icon is None:
+                self._base_icon = app.windowIcon()
+            app.setWindowIcon(holiday_icon(self._base_icon) if on else self._base_icon)
+            for w in app.allWidgets():
+                QWidget.update(w)        # (some dialogs keep data in an attribute called `update`)
+        self.brand.refresh()
+        self._set_footer()
+        self.home.set_holiday(on, today)
+
+    def _set_footer(self) -> None:
+        ani_cli = self._footer_ani_cli
+        text = f"AniGUI {__version__}" + (f"  ·  ani-cli {ani_cli}" if ani_cli else "")
+        self.footer.setText(text + ("\nHappy holidays ❄" if theme.HOLIDAY else ""))
+
     # -- new episodes ---------------------------------------------------------------------
 
     def _on_new_episodes(self, items) -> None:
@@ -307,6 +343,12 @@ class MainWindow(QMainWindow):
             self.toast.show_message(f"New: {items[0].show.title} · {describe(items[0])}")
         else:
             self.toast.show_message(f"New episodes for {len(items)} shows. They're at the top of Home.")
+
+    def _holiday_answer(self, turn_on: bool) -> None:
+        import datetime as dt
+        self.ctx.set_pref("holiday_banner_seen", str(dt.date.today().year))
+        if turn_on:
+            self.ctx.set_pref("holiday_theme", "early")
 
     def _show_from_notification(self) -> None:
         self.showNormal()
@@ -321,6 +363,8 @@ class MainWindow(QMainWindow):
     # -- startup ------------------------------------------------------------------------
 
     def start(self) -> None:
+        self.apply_holiday(animate=False)
+        self._holiday_timer.start()
         self.home.load_remote()
         self.home.refresh_local()
         self.alerts.start()
@@ -336,7 +380,8 @@ class MainWindow(QMainWindow):
 
     def _set_versions(self, ani_cli: str | None) -> None:
         self._ani_cli_version = ani_cli
-        self.footer.setText(f"AniGUI {__version__}" + (f"  ·  ani-cli {ani_cli}" if ani_cli else ""))
+        self._footer_ani_cli = ani_cli
+        self._set_footer()
         if self._settings:
             self._settings.set_versions(ani_cli)
 

@@ -22,6 +22,9 @@ SCOPES = [("My List", "library"), ("My List and Continue Watching", "library+con
 VPN_LABELS = {"warp": "Cloudflare WARP", "own": "Your own VPN", "none": "No VPN"}
 
 
+HOLIDAY_MODES = [("Auto", "auto"), ("Early (from Nov 1)", "early"), ("Off", "off")]
+
+
 class SettingRow(QWidget):
     """Title and explanation on the left, a control on the right."""
 
@@ -51,7 +54,7 @@ class SettingsDialog(QDialog):
     checkEpisodesRequested = Signal()
     whatsNewRequested = Signal()
 
-    SECTIONS = ("Playback", "Skipping", "Content", "New Episodes", "History", "Connection", "Updates")
+    SECTIONS = ("Playback", "Skipping", "Content", "Appearance", "New Episodes", "History", "Connection", "Updates")
 
     def __init__(self, ctx: AppContext, parent=None, section: str | None = None) -> None:
         super().__init__(parent)
@@ -65,7 +68,8 @@ class SettingsDialog(QDialog):
         self.nav.setFixedWidth(190)
         self.nav.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.pages = QStackedWidget()
-        for name, build in zip(self.SECTIONS, (self._playback, self._skipping, self._content, self._episodes,
+        for name, build in zip(self.SECTIONS, (self._playback, self._skipping, self._content, self._appearance,
+                                               self._episodes,
                                                self._history, self._connection, self._updates)):
             self.nav.addItem(QListWidgetItem(name))
             self.pages.addWidget(self._page(name, build()))
@@ -187,6 +191,19 @@ class SettingsDialog(QDialog):
                        "violence (60+) as a big part of it. Fan service, violence and gore alone don't, but they're "
                        "listed under Content on the show page, and nudity is listed from 60. Hover a tag there to see its "
                        "rating and where the 18+ line is."),
+        ]
+
+    def _appearance(self) -> list[QWidget]:
+        import datetime as dt
+
+        from core import holiday
+        first = holiday.season_start("auto", dt.date.today().year)
+        start = f"{first:%b} {first.day}"
+        return [
+            SettingRow("Holiday theme", "Red-and-green colors, snow on Home and a few festive touches. "
+                       f"Auto starts the day after Thanksgiving ({start}); Early starts Nov 1. Both end after "
+                       "New Year's Day.",
+                       self._choice("holiday_theme", HOLIDAY_MODES)),
         ]
 
     def _episodes(self) -> list[QWidget]:

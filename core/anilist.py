@@ -87,7 +87,7 @@ query ($ids: [Int], $perPage: Int) {
 BROWSE_ARGS = {
     "search": ("String", "search"), "genres": ("[String]", "genre_in"), "year": ("Int", "seasonYear"),
     "season": ("MediaSeason", "season"), "formats": ("[MediaFormat]", "format_in"),
-    "status": ("MediaStatus", "status"), "sort": ("[MediaSort]", "sort"),
+    "status": ("MediaStatus", "status"), "sort": ("[MediaSort]", "sort"), "tags": ("[String]", "tag_in"),
 }
 
 
@@ -310,7 +310,8 @@ class AniListClient:
 
     def browse(self, *, search: str | None = None, genres: list[str] | None = None, year: int | None = None,
                season: str | None = None, formats: list[str] | None = None, status: str | None = None,
-               sort: str | None = None, page: int = 1, per_page: int = 50) -> list[Media]:
+               sort: str | None = None, tags: list[str] | None = None, page: int = 1,
+               per_page: int = 50) -> list[Media]:
         """Filtered search. Any argument left as None isn't filtered on.
 
         sort: AniList MediaSort, e.g. POPULARITY_DESC. None means best match when
@@ -320,7 +321,7 @@ class AniListClient:
         order = [sort] if sort else (["SEARCH_MATCH", "POPULARITY_DESC"] if search else ["POPULARITY_DESC"])
         variables = {"search": search, "genres": list(genres) if genres else None, "year": year,
                      "season": season, "formats": list(formats) if formats else None, "status": status,
-                     "sort": order, "page": page, "perPage": per_page}
+                     "sort": order, "tags": list(tags) if tags else None, "page": page, "perPage": per_page}
         variables = {k: v for k, v in variables.items() if v is not None}
         data = self._query(browse_query(variables), variables, TTL_BROWSE)
         return [Media.from_json(m) for m in data["Page"]["media"]]

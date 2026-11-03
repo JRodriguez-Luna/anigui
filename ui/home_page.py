@@ -5,13 +5,16 @@ from __future__ import annotations
 from PySide6.QtCore import QPoint, Qt, QTimer, Signal
 from PySide6.QtWidgets import QMenu, QMessageBox, QScrollArea, QVBoxLayout, QWidget
 
+from core import holiday
 from core.anilist import current_season
 from core.store import ContinueItem, NewEpisodes, Show
 
 from .mature import decorate_all, visible
 from .cards import Card, CardRow, media_card
 from .context import AppContext
+from . import theme
 from .hero import HeroBanner
+from .holiday import HolidayBanner, SnowLayer
 
 MAX_COVER_LOOKUPS = 12
 
@@ -45,6 +48,7 @@ class HomePage(QScrollArea):
     openItem = Signal(object)   # Media | Show
     playItem = Signal(object)   # Media (open details and start playing)
     historyChanged = Signal()
+    holidayAnswered = Signal(bool)   # November's banner: Turn on now (True) / Wait (False)
 
     def __init__(self, ctx: AppContext, parent=None) -> None:
         super().__init__(parent)
@@ -68,11 +72,20 @@ class HomePage(QScrollArea):
         self.trending_row = CardRow("Trending Now", ctx.images)
         self.season_row = CardRow(f"{season.title()} {year}", ctx.images)
         self.library_row = CardRow("My List", ctx.images)
-        self.rows = [self.new_row, self.continue_row, self.trending_row, self.season_row, self.library_row]
+        self.xmas_row = CardRow("Christmas anime ❄", ctx.images)     # while the holiday theme is on
+        self.rows = [self.new_row, self.continue_row, self.xmas_row, self.trending_row, self.season_row,
+                     self.library_row]
+
+        self.holiday_banner = HolidayBanner()
+        self.holiday_banner.turnOn.connect(lambda: self.holidayAnswered.emit(True))
+        self.holiday_banner.wait.connect(lambda: self.holidayAnswered.emit(False))
+        self.hero_snow: SnowLayer | None = None
+        self._xmas = None
 
         rows = QVBoxLayout()
         rows.setContentsMargins(44, 0, 44, 40)
         rows.setSpacing(34)
+        rows.addWidget(self.holiday_banner)
         for row in self.rows:
             row.cardActivated.connect(lambda card: self.openItem.emit(card.payload))
             rows.addWidget(row)
@@ -88,6 +101,7 @@ class HomePage(QScrollArea):
         self.new_row.setVisible(False)
         self.continue_row.setVisible(False)
         self.library_row.setVisible(False)
+        self.xmas_row.setVisible(False)
 
     # -- data ---------------------------------------------------------------------------
 
@@ -180,8 +194,44 @@ class HomePage(QScrollArea):
         if found:
             self.ctx.events.changed.emit("maturity_found", found)
 
+    # -- holiday theme --------------------------------------------------------------------
+
+    def set_holiday(self, on: bool, today=None) -> None:
+        """Snow on the banner and the Christmas shelf while the theme is on; November's
+        'theme is ready' banner once a year before it starts."""
+        if on:
+            if self.hero_snow is None:
+                self.hero_snow = SnowLayer(self.hero)
+            self.hero_snow.start()
+            if self._xmas is None:
+                self.xmas_row.set_loading()
+                self.xmas_row.setVisible(True)
+                self.ctx.runner.submit(self.ctx.catalog.anilist.browse, tags=["Christmas"], sort="POPULARITY_DESC",
+                                       per_page=24, on_done=self._on_xmas,
+                                       on_error=lambda _m: self.xmas_row.setVisible(False), group="home-xmas")
+            else:
+                self._on_xmas(self._xmas)
+        else:
+            if self.hero_snow is not None:
+                self.hero_snow.stop()
+            self.xmas_row.setVisible(False)
+        offer = holiday.offer_early(str(self.ctx.pref("holiday_theme", "auto")),
+                                    str(self.ctx.pref("holiday_banner_seen", "")), today)
+        if offer and self.holiday_banner.isHidden():
+            self.holiday_banner.appear()
+        elif not offer and not self.holiday_banner.isHidden() and self.holiday_banner.on_btn.isEnabled():
+            self.holiday_banner.setVisible(False)
+
+    def _on_xmas(self, items) -> None:
+        self._xmas = items
+        shown, _hidden = visible(self.ctx, items)
+        self.xmas_row.set_cards(decorate_all(self.ctx, [media_card(m) for m in shown]))
+        self.xmas_row.setVisible(bool(shown) and theme.HOLIDAY)
+
     def apply_content_filter(self) -> None:
         """Hide 18+ shows changed: redo the rows from what's already loaded."""
+        if self._xmas is not None and theme.HOLIDAY:
+            self._on_xmas(self._xmas)
         if getattr(self, "_trending", None) is not None:
             self._on_trending(self._trending)
         if getattr(self, "_season", None) is not None:
