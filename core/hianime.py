@@ -8,6 +8,7 @@ flags ani-cli uses, so Cloudflare sees identical traffic from both.
 from __future__ import annotations
 
 import html
+import json
 import re
 import subprocess
 from dataclasses import dataclass
@@ -184,8 +185,21 @@ def parse_search(page: str) -> list[SearchResult]:
     return results
 
 
+def _episode_html(page: str) -> str:
+    """The episode list comes as JSON ({"status": true, "html": "…"}). Decode it properly, so
+    escapes like \\u014d become 'ō' (stripping the backslashes, as ani-cli's sed does,
+    turned 'Keishū' into 'Keishu014d'). Anything else falls back to ani-cli's way."""
+    try:
+        data = json.loads(page)
+    except ValueError:
+        return page.replace("\\", "")
+    if isinstance(data, dict) and isinstance(data.get("html"), str):
+        return data["html"].replace("\n", " ")
+    return page.replace("\\", "")
+
+
 def parse_episodes(page: str, anime_id: str) -> list[Episode]:
-    chunks = page.replace("\\", "").split("ep-item")
+    chunks = _episode_html(page).split("ep-item")
     pattern = re.compile(
         r'data-number="([^"]*)".*data-id="([0-9]+)".*/watch/' + re.escape(anime_id) + r"[?]ep="
     )

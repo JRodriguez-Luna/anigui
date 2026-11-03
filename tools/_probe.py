@@ -1,34 +1,26 @@
 """Temporary CI probe (removed in the next commit)."""
-import os, subprocess, sys
+import os, re, subprocess, sys
 sys.path.insert(0, ".")
-from core.hianime import HianimeClient
-from core.anilist import AniListClient
-from core.stills import EpisodeStills
 def note(m): print(f"::notice title=probe::{m}"[:3000])
 os.makedirs("/tmp/stub", exist_ok=True)
 open("/tmp/stub/fzf", "w").write("#!/bin/sh\nhead -n 1\n")
 os.chmod("/tmp/stub/fzf", 0o755)
-env = {**os.environ, "ANI_CLI_PLAYER": "debug", "ANI_CLI_HIST_DIR": "/tmp/h", "PATH": "/tmp/stub:" + os.environ["PATH"]}
-for query, ep, mode in (("my hero academia season 5", "1", "dub"), ("my hero academia season 5", "2", "dub"),
-                        ("my hero academia season 6", "1", "dub"), ("my hero academia season 6", "4", "dub")):
-    args = ["ani-cli", "-S", "1", "-e", ep] + (["--dub"] if mode == "dub" else []) + [query]
-    p = subprocess.run(args, capture_output=True, text=True, timeout=120, env=env)
-    out = (p.stdout + " | ERR: " + p.stderr).replace("\n", " ")
-    note(f"{query} ep {ep} {mode}: rc={p.returncode} {out[:900]}")
-import json
-from core.hianime import EPISODES_URL
-raw = c_raw = HianimeClient().fetch(EPISODES_URL.format("961")).body
-k = raw.find("Keishu")
-note("S6 raw around ep 4 title: " + repr(raw[max(0, k - 60):k + 60]))
-c = HianimeClient()
-al = AniListClient()
-eps = c.episodes("my-hero-academia-season-6-961")
-note("S6 hianime titles: " + " | ".join(f"{e.number}: {e.title}" for e in eps[:8]))
-m = [x for x in al.search("My Hero Academia Season 6", per_page=3)]
-note("S6 anilist: " + str([(x.anilist_id, x.mal_id, x.display_title) for x in m]))
-aid, mal = m[0].anilist_id, m[0].mal_id
-se = al.streaming_episodes(aid)
-note("S6 streamingEpisodes: " + " | ".join(t for t, _ in se[:8]))
-st = EpisodeStills(al)
-found = st.for_episodes(aid, mal, [(e.number, e.title) for e in eps[:8]])
-note("S6 stills: " + " | ".join(f"{k}: {v}" for k, v in sorted(found.items(), key=lambda kv: float(kv[0]))))
+env = {**os.environ, "ANI_CLI_PLAYER": "debug", "ANI_CLI_HIST_DIR": "/tmp/h", "PATH": "/tmp/stub:" + os.environ["PATH"], "TERM": "dumb"}
+for query in ("my hero academia season 5", "my hero academia season 6"):
+    for ep in ("1", "2", "3"):
+        res = {}
+        for mode in ("sub", "dub"):
+            args = ["ani-cli", "-S", "1", "-e", ep] + (["--dub"] if mode == "dub" else []) + [query]
+            out = subprocess.run(args, capture_output=True, text=True, timeout=120, env=env).stdout
+            m = re.search(r"Selected link:\s*(\S+)", out)
+            res[mode] = m.group(1) if m else "-"
+            q = re.findall(r"^(\d{3,4}) >", out, re.M)
+            res[mode + "_q"] = q
+        same = res["sub"].rsplit("/", 2)[0] == res["dub"].rsplit("/", 2)[0]
+        note(f"{query} ep {ep}: SAME={same} sub={res['sub']} {res['sub_q']} | dub={res['dub']} {res['dub_q']}")
+        if ep == "1":
+            # what the dub master playlist says about audio
+            master = res["dub"].rsplit("/", 2)[0] + "/master.m3u8"
+            for url in (res["dub"],):
+                p = subprocess.run(["curl", "-sL", "-m", "20", "-e", "https://zokoanime.example/", url], capture_output=True, text=True)
+                note(f"  dub playlist head: {p.stdout[:300]!r}")
