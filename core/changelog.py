@@ -33,6 +33,9 @@ RELEASES: tuple[Release, ...] = (
     Release("1.9.1", "November 3, 2026", (
         Change("Holiday Dock icon", "The Santa hat hung off the bottom corner of the icon on some screens. It "
                                     "now sits on top, drawn sharp at every icon size and display resolution."),
+        Change("Episode titles with accents", "Titles with letters like ū or é came out garbled (My Hero Academia "
+                                              "season 6 episode 4 read \"Keishu014d\"), and those episodes lost "
+                                              "their picture. Both are fixed."),
     )),
     Release("1.9.0", "November 3, 2026", (
         Change("Seasons on one page", "A show's page now lists every season of the series in order, with how far "
