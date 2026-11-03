@@ -6,7 +6,7 @@ from dataclasses import replace
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
-    QButtonGroup, QComboBox, QHBoxLayout, QLabel, QPushButton, QScrollArea, QVBoxLayout, QWidget,
+    QButtonGroup, QHBoxLayout, QLabel, QPushButton, QScrollArea, QVBoxLayout, QWidget,
 )
 
 from core.anilist import Media
@@ -20,7 +20,7 @@ from .context import AppContext
 from .episodes import PER_PAGE, EpisodeGrid, EpisodeItem, EpisodePager, coming_soon, find_episode, page_ranges
 from .hero import Backdrop, airing_note, media_meta, truncate
 from .playback import PlaybackController
-from .widgets import PosterWidget
+from .widgets import Combo, PosterWidget
 
 QUALITIES = [("Best", "best"), ("1080p", "1080"), ("720p", "720"), ("480p", "480")]
 
@@ -121,7 +121,7 @@ class DetailPage(QScrollArea):
         self.mode.addButton(self.dub_btn)
         (self.dub_btn if ctx.pref("dub", False) else self.sub_btn).setChecked(True)
         self.dub_btn.toggled.connect(lambda on: ctx.set_pref("dub", on))
-        self.quality = QComboBox(cursor=Qt.CursorShape.PointingHandCursor)
+        self.quality = Combo(cursor=Qt.CursorShape.PointingHandCursor)
         for label, value in QUALITIES:
             self.quality.addItem(label, value)
         saved = str(ctx.pref("quality", "best"))

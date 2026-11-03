@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 from core import __version__
 
 from .context import AppContext
+from .widgets import Combo
 from .detail_page import QUALITIES
 
 PLAYERS = [("Auto (IINA, then mpv)", "auto"), ("IINA", "iina"), ("mpv", "mpv")]
@@ -119,7 +120,7 @@ class SettingsDialog(QDialog):
         return box
 
     def _choice(self, key: str, options: list[tuple[str, Any]]) -> QComboBox:
-        combo = QComboBox(cursor=Qt.CursorShape.PointingHandCursor)
+        combo = Combo(cursor=Qt.CursorShape.PointingHandCursor)
         combo.setFixedWidth(250)
         for label, value in options:
             combo.addItem(label, value)

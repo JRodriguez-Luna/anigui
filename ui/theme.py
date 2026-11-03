@@ -148,12 +148,18 @@ QDialog#MatureDialog {{ background: {SURFACE}; }}
 QComboBox {{
     background: {SURFACE_2}; border: 1px solid {BORDER}; border-radius: {RADIUS}px;
     padding: 8px 12px; font-weight: 700;
+    combobox-popup: 0;   /* drop down below, MAX_ROWS tall, instead of macOS's over-the-item popup */
 }}
+QComboBox:hover {{ border-color: {FAINT}; }}
 QComboBox::drop-down {{ border: none; width: 22px; subcontrol-position: center right; }}
 QComboBox::down-arrow {{ image: url("__CHEVRON__"); width: 10px; height: 6px; margin-right: 8px; }}
 QComboBox QAbstractItemView {{
     background: {SURFACE_2}; border: 1px solid {BORDER}; selection-background-color: {ACCENT};
+    padding: 4px; outline: 0;
 }}
+QListView#ComboList::item {{ min-height: 28px; padding: 2px 10px; border-radius: 5px; color: {TEXT}; }}
+QListView#ComboList::item:hover {{ background: {SURFACE_3}; }}
+QListView#ComboList::item:selected {{ background: {ACCENT}; color: white; }}
 QCheckBox {{ color: {MUTED}; font-weight: 600; spacing: 8px; }}
 QCheckBox:disabled {{ color: {FAINT}; }}
 QCheckBox::indicator {{ width: 14px; height: 14px; border-radius: 4px; border: 1px solid {SURFACE_3}; background: {SURFACE}; }}

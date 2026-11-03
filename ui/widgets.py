@@ -4,10 +4,33 @@ from __future__ import annotations
 
 from PySide6.QtCore import QRectF, Qt, QTimer
 from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPainterPath
-from PySide6.QtWidgets import QLabel, QWidget
+from PySide6.QtWidgets import QComboBox, QLabel, QListView, QWidget
 
 from . import theme
 from .images import ImageLoader
+
+
+class Combo(QComboBox):
+    """A drop-down that behaves the same on every Mac.
+
+    macOS's own combo popup opens over the current item and fits itself between it and
+    the screen edge: a long list (years) fills the screen, a short one near the bottom is
+    squished to two rows with scroll arrows. The stylesheet switches that off
+    (combobox-popup: 0), so the list drops down below the box, at most MAX_ROWS tall.
+    A plain QListView is set explicitly so the stylesheet's hover and selected item
+    styles apply to it (the Mac default view ignores them)."""
+
+    MAX_ROWS = 10
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        view = QListView(self)
+        view.setObjectName("ComboList")
+        view.setMouseTracking(True)            # hover highlight follows the pointer
+        self.setView(view)
+        self.setMaxVisibleItems(self.MAX_ROWS)
+        # Also here, not only in the app stylesheet, so it holds wherever the box is used.
+        self.setStyleSheet("QComboBox { combobox-popup: 0; }")
 
 
 class Toast(QLabel):

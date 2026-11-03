@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
-    QComboBox, QHBoxLayout, QLabel, QLineEdit, QMenu, QPushButton, QStackedLayout, QToolButton, QVBoxLayout, QWidget,
+    QHBoxLayout, QLabel, QLineEdit, QMenu, QPushButton, QStackedLayout, QToolButton, QVBoxLayout, QWidget,
 )
 
 from core.anilist import GENRES
@@ -17,7 +17,7 @@ from core.anilist import GENRES
 from .mature import decorate_all, hiding, visible
 from .cards import Card, CardGrid, media_card
 from .context import AppContext
-from .widgets import empty_state
+from .widgets import Combo, empty_state
 
 DEBOUNCE_MS = 350
 FIRST_YEAR = 1970
@@ -69,7 +69,7 @@ class FilterBar(QWidget):
         self.genre_btn.setMenu(self.genre_menu)
 
         def combo(options):
-            box = QComboBox(cursor=Qt.CursorShape.PointingHandCursor, objectName="FilterCombo")
+            box = Combo(cursor=Qt.CursorShape.PointingHandCursor, objectName="FilterCombo")
             for label, value in options:
                 box.addItem(label, value)
             box.currentIndexChanged.connect(lambda _i: self._changed())

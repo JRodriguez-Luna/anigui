@@ -25,6 +25,11 @@ class Release:
 
 
 RELEASES: tuple[Release, ...] = (
+    Release("1.8.4", "November 2, 2026", (
+        Change("Better drop-downs", "Search filters, Settings and Quality now drop down right under the box, "
+                                    "at most 10 rows tall with a scroll bar, instead of filling the screen or "
+                                    "squeezing into two rows. The row under the pointer is highlighted."),
+    )),
     Release("1.8.3", "November 2, 2026", (
         Change("Hover cards fit their text", "The card under a Content tag cut off its last line on some Macs. "
                                              "It now sizes itself to the text."),

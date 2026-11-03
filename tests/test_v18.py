@@ -433,3 +433,32 @@ def test_hover_card_is_tall_enough_for_its_text():
     needed = text.fontMetrics().boundingRect(0, 0, w, 10_000, Qt.TextFlag.TextWordWrap, text.text()).height()
     assert text.height() >= needed and text.height() >= text.heightForWidth(w)
     assert card.height() >= text.height() + 30                       # title, spacing and padding fit too
+
+
+# -- 1.8.4: drop-downs ------------------------------------------------------------------------
+
+def test_every_drop_down_is_the_mac_friendly_one(win):
+    from PySide6.QtWidgets import QComboBox
+    from ui import theme
+    from ui.settings_dialog import SettingsDialog
+    from ui.widgets import Combo
+
+    dlg = SettingsDialog(win.ctx, section="Playback")
+    boxes = (win.search.findChildren(QComboBox) + win.detail.findChildren(QComboBox) + dlg.findChildren(QComboBox))
+    assert boxes and all(isinstance(b, Combo) for b in boxes)
+    for b in boxes:
+        assert b.view().objectName() == "ComboList" and b.maxVisibleItems() == Combo.MAX_ROWS
+    assert "combobox-popup: 0" in theme.STYLESHEET and "#ComboList::item:hover" in theme.STYLESHEET
+
+
+def test_long_list_drops_down_at_most_ten_rows(win):
+    year = win.search.filter_bar.year
+    assert year.count() > 30
+    win.go(win.search)
+    year.showPopup()
+    pump(timeout=0.3)
+    view = year.view()
+    row = view.sizeHintForRow(0)
+    assert view.height() <= row * (year.maxVisibleItems() + 1)     # not the whole screen
+    assert view.height() >= row * 3                                # not squished to two rows
+    year.hidePopup()
