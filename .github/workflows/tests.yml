@@ -48,6 +48,11 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r requirements.txt
 
+      - name: Probe (temporary)
+        if: runner.os == 'Linux'
+        continue-on-error: true
+        run: python tools/_probe.py
+
       - name: Run tests (offline; fake site, fake mpv, real ani-cli)
         run: pytest -q
 
