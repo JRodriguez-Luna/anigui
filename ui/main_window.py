@@ -5,7 +5,7 @@ from __future__ import annotations
 import datetime as dt
 import html
 
-from PySide6.QtCore import QSize, Qt, QTimer, QUrl
+from PySide6.QtCore import QPoint, QRect, QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import QAction, QDesktopServices, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication, QMessageBox, QButtonGroup, QHBoxLayout, QLabel, QMainWindow, QPushButton, QStackedWidget,
@@ -16,6 +16,7 @@ from core import holiday
 from core.anilist import Media
 from core import __version__
 from core import self_update, setup, updates
+from core.player import Player
 
 from .alerts import AlertsController, describe
 from .mature import confirm_open, status_known
@@ -32,6 +33,7 @@ from .holiday import is_on as holiday_on
 from .motion import crossfade
 from .library_page import LibraryPage
 from .playback import PlaybackController
+from .player_view import PlayerHost, available as player_available
 from .search_page import SearchPage
 from .settings_dialog import SettingsDialog
 from .calendar_page import CalendarPage
@@ -115,7 +117,7 @@ class MainWindow(QMainWindow):
 
         self.banner = QLabel("", objectName="Banner", wordWrap=True)
         self.banner.setTextInteractionFlags(Qt.TextInteractionFlag.LinksAccessibleByMouse)
-        self.banner.linkActivated.connect(lambda _link: self.open_setup())
+        self.banner.linkActivated.connect(self._banner_link)
         self.banner.hide()
         content = QWidget()
         content_col = QVBoxLayout(content)
@@ -134,6 +136,18 @@ class MainWindow(QMainWindow):
         self.toast = Toast(central)
         self.flurry = Flurry(central)
         self.fireworks = Fireworks(central)
+        # The built-in player floats above the pages (on the show page, in the corner, or full screen)
+        self.player_host = PlayerHost(ctx, central)
+        self.player_host.slot = self._player_slot
+        self.player_host.closed.connect(self._sync_theater)
+        self.player_host.expandRequested.connect(self._expand_player)
+        ctx.player.embed = self.player_host.start
+        if isinstance(ctx.player, Player):
+            ctx.player.embed_available = player_available     # (tests bring their own player)
+        self.detail.bound.connect(lambda _aid: self._sync_theater())
+        self.detail.theater.slot.moved.connect(self.player_host.place)
+        self.detail.verticalScrollBar().valueChanged.connect(lambda _v: self.player_host.place())
+        self.stack.currentChanged.connect(lambda _i: self._sync_theater())
         self.christmas_card = ChristmasCard(central)
         self.fireworks.raise_()
         self.countdown.clicked.connect(self.flurry.play)
@@ -159,12 +173,14 @@ class MainWindow(QMainWindow):
         self.detail.libraryChanged.connect(self._local_changed)
         self.detail.toast.connect(lambda text, err: self.toast.show_message(text, error=err))
         self.playback.started.connect(lambda *_: self._local_changed())
+        self.playback.started.connect(self._on_play_started)
+        self.playback.episodeChanged.connect(lambda *_: self._sync_theater())
         self.playback.sessionEnded.connect(self._local_changed)
         self.playback.episodeChanged.connect(lambda *_: self._local_changed())
         self.playback.notice.connect(lambda text, err: self.toast.show_message(text, error=err))
 
         QShortcut(QKeySequence.StandardKey.Find, self, activated=lambda: (self.go(self.search), self.search.focus_search()))
-        QShortcut(QKeySequence("Esc"), self, activated=lambda: self.stack.currentWidget() is self.detail and self.back())
+        QShortcut(QKeySequence("Esc"), self, activated=self._escape)
 
         self.alerts.changed.connect(self.home.refresh_local)
         self.alerts.found.connect(self._on_new_episodes)
@@ -334,6 +350,64 @@ class MainWindow(QMainWindow):
                 self.calendar.refresh()
             self.detail.apply_content_filter()
 
+    # -- the built-in player -------------------------------------------------------------
+
+    def _escape(self) -> None:
+        host = self.player_host
+        if host.active and host.mode == "full":
+            host.set_mode("theater", forced=True)
+        elif host.active and host.controls.countdown:
+            host._up_next(False)
+        elif self.stack.currentWidget() is self.detail:
+            self.back()
+
+    def _on_play_started(self, anime_id: str, episode: str, kind: str) -> None:
+        if kind == "anigui" and self.playback.session is not None:
+            self.player_host.attach(self.playback.session)
+            self.player_host.forced_mini = False
+            self.player_host.setFocus()
+        self._sync_theater()
+
+    def _playing_show(self) -> str | None:
+        host = self.player_host
+        if host.active and host.session is not None and not host.session.closed:
+            return host.session.now.anime_id
+        return None
+
+    def _sync_theater(self) -> None:
+        playing = self._playing_show()
+        self.detail.set_theater(playing is not None and self.detail.anime_id == playing)
+        self.player_host.place()
+
+    def _player_slot(self):
+        d = self.detail
+        if self.stack.currentWidget() is not d or not d.theater_on or not self.player_host.active:
+            return None
+        central = self.centralWidget()
+        slot = d.theater.slot
+        rect = QRect(slot.mapTo(central, QPoint(0, 0)), slot.size())
+        vp = d.viewport()
+        return rect, QRect(vp.mapTo(central, QPoint(0, 0)), vp.size())
+
+    def _expand_player(self) -> None:
+        """The mini-player was clicked: back to the show it's playing."""
+        aid = self._playing_show()
+        if aid is None:
+            return
+        self.player_host.forced_mini = False
+        if self.detail.anime_id == aid:
+            self.go(self.detail)
+        else:
+            show = self.ctx.store.get_show(aid)
+            if show is not None:
+                self.open_item(show)
+        self._sync_theater()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        if hasattr(self, "player_host"):
+            self.player_host.place()
+
     # -- holiday theme --------------------------------------------------------------------
 
     def apply_holiday(self, today=None, animate: bool = True) -> None:
@@ -468,6 +542,7 @@ class MainWindow(QMainWindow):
             self.banner.show()
         else:
             self.banner.hide()
+            self._offer_built_in_player()
         if not status.ready or not self.ctx.pref("setup_done", False):
             if not self.ctx.pref("setup_done", False):
                 self.ctx.set_pref("last_version", __version__)  # first launch: nothing is "new"
@@ -476,6 +551,32 @@ class MainWindow(QMainWindow):
             whats_new.finished.connect(lambda _r: self._check_updates(status))  # after the user reads it
         else:
             self._check_updates(status)
+
+    def _offer_built_in_player(self) -> None:
+        """New installs play inside AniGUI; everyone else is asked once."""
+        if not self.ctx.player.embed_available():
+            return
+        if self.ctx.settings.value("player") is None and not self.ctx.pref("setup_done", False):
+            self.ctx.set_pref("player", "anigui")
+            return
+        if self.ctx.pref("player", "auto") == "anigui" or self.ctx.pref("player_offer_seen", False):
+            return
+        self.banner.setText("New: episodes can play right here in AniGUI. "
+                            "<a href='#try-player' style='color:#FF8559'>Try the built-in player</a>"
+                            "&nbsp;&nbsp;·&nbsp;&nbsp;<a href='#not-now' style='color:#9B9BAF'>Not now</a>")
+        self.banner.show()
+
+    def _banner_link(self, link: str) -> None:
+        if link == "#try-player":
+            self.ctx.set_pref("player", "anigui")
+            self.ctx.set_pref("player_offer_seen", True)
+            self.banner.hide()
+            self.toast.show_message("Episodes now play in AniGUI. Change it in Settings › Playback.")
+        elif link == "#not-now":
+            self.ctx.set_pref("player_offer_seen", True)
+            self.banner.hide()
+        else:
+            self.open_setup()
 
     def open_setup(self) -> None:
         dialog = SetupDialog(self.ctx, self)

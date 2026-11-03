@@ -49,7 +49,7 @@ paths = libmpv.candidates()
 note(f"candidates: {paths}")
 for path in paths:
     for core in ("0", "1"):
-        env = dict(os.environ, ANIGUI_LIBMPV=path, CORE=core)
+        env = dict(os.environ, ANIGUI_LIBMPV=path, CORE=core, QT_QPA_PLATFORM="cocoa")
         try:
             out = subprocess.run([sys.executable, "-c", CHILD], env=env, capture_output=True, text=True, timeout=60)
             res = [l for l in out.stdout.splitlines() if l.startswith("RESULT")]

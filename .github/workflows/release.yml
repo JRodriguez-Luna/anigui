@@ -58,7 +58,9 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Install build tools
-        run: pip install -r requirements.txt "pyinstaller>=6.22" Pillow
+        run: |
+          pip install -r requirements.txt "pyinstaller>=6.22" Pillow
+          brew install mpv    # libmpv for the built-in player (bundled into the app)
 
       - name: Draw icon
         run: python packaging/make_icon.py
@@ -71,7 +73,7 @@ jobs:
       - name: Check the bundle
         run: |
           APP=dist/AniGUI.app
-          "$APP/Contents/MacOS/AniGUI" --self-test
+          ANIGUI_REQUIRE_LIBMPV=1 "$APP/Contents/MacOS/AniGUI" --self-test
           codesign --verify --deep --strict "$APP" && echo "signature: ok (ad-hoc)"
           echo "arch: $(lipo -archs "$APP/Contents/MacOS/AniGUI")"
           echo "version: $(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$APP/Contents/Info.plist")"

@@ -23,7 +23,8 @@ from .theater import Theater
 from .motion import fade_in
 from .mature import confirm_open, decorate_all, hiding, visible
 from .context import AppContext
-from .episodes import PER_PAGE, EpisodeGrid, EpisodeItem, EpisodePager, coming_soon, find_episode, page_ranges
+from .episodes import (PER_PAGE, EpisodeGrid, EpisodeItem, EpisodePager, coming_soon, find_episode, has_title,
+                       page_ranges)
 from .hero import Backdrop, airing_note, media_meta, truncate
 from .playback import PlaybackController
 from .seasons import UPCOMING, SeasonsRow, SeasonState, UpNextCard
@@ -68,6 +69,7 @@ class DetailPage(QScrollArea):
     openNext = Signal(object)  # Media: Up next's "Start Season 3" (opens and plays)
     libraryChanged = Signal()
     toast = Signal(str, bool)  # message, is_error
+    bound = Signal(str)        # now showing this hianime id
 
     def __init__(self, ctx: AppContext, playback: PlaybackController, parent=None) -> None:
         super().__init__(parent)
@@ -321,6 +323,7 @@ class DetailPage(QScrollArea):
         self.play_btn.setText("▶  Play")
         self.list_btn.setEnabled(False)
         self.verticalScrollBar().setValue(0)
+        self.set_theater(False)
 
     def _show_media(self, media: Media, keep_poster: bool = False) -> None:
         self.media = media
@@ -497,6 +500,7 @@ class DetailPage(QScrollArea):
         self.list_btn.setEnabled(True)
         self._refresh_library_button()
         self._set_status("Loading episodes…")
+        self.bound.emit(anime_id)
         gen = self.gen
         self.ctx.runner.submit(
             self.ctx.catalog.episodes_for, anime_id, title,
@@ -809,13 +813,14 @@ class DetailPage(QScrollArea):
         items = []
         for ep in self.episodes:
             p = progress.get(ep.number)
-            items.append({"number": ep.number, "title": ep.title if ep.title else "", "still": self.stills.get(ep.number),
+            named = has_title(EpisodeItem(number=ep.number, title=ep.title))
+            items.append({"number": ep.number, "title": ep.title if named else "", "still": self.stills.get(ep.number),
                           "watched": bool(p and p.completed), "playing": ep.number == current,
                           "christmas": ep.number in xmas})
         self.theater.rail.set_items(items, f"Episodes · {len(items)}" if items else "Episodes")
         ep = next((e for e in self.episodes if e.number == current), None)
-        self.theater.ep_title.setText(ep.title if ep and ep.title and has_title_text(ep.title)
-                                      else (f"Episode {current}" if current else ""))
+        named = ep is not None and has_title(EpisodeItem(number=ep.number, title=ep.title))
+        self.theater.ep_title.setText(ep.title if named else (f"Episode {current}" if current else ""))
         self.theater.show_title.setText(self.title.text())
         door = None
         if theme.HOLIDAY and self.media and current:

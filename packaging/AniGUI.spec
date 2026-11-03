@@ -1,6 +1,7 @@
 # PyInstaller spec for AniGUI.app (one-folder bundle, macOS).
 #   pyinstaller --noconfirm packaging/AniGUI.spec
 # ani-cli, fzf, curl and IINA/mpv stay external: they come from Homebrew at run time.
+# libmpv (the built-in player) is bundled when the build machine has it (brew install mpv).
 
 import os
 import re
@@ -12,14 +13,22 @@ ROOT = Path(SPECPATH).parent
 VERSION = os.environ.get("ANIGUI_VERSION") or re.search(
     r'__version__ = "([^"]+)"', (ROOT / "core" / "__init__.py").read_text()).group(1)
 
+# The built-in player's libmpv (Homebrew's mpv on the build machine). PyInstaller brings
+# along every library it needs and points them at each other inside the app.
+LIBMPV = os.environ.get("ANIGUI_LIBMPV_BUNDLE") or next(
+    (p for p in ("/opt/homebrew/lib/libmpv.2.dylib", "/usr/local/lib/libmpv.2.dylib") if os.path.exists(p)), None)
+if LIBMPV:
+    LIBMPV = os.path.realpath(LIBMPV)
+
 a = Analysis(
     [str(ROOT / "main.py")],
     pathex=[str(ROOT)],
+    binaries=[(LIBMPV, "libmpv")] if LIBMPV else [],
     datas=[
         (str(ROOT / "core" / "bin" / "anigui-mpv-shim"), "core/bin"),
         (str(ROOT / "packaging" / "AniGUI.png"), "packaging"),
     ],
-    hiddenimports=["PySide6.QtNetwork"],
+    hiddenimports=["PySide6.QtNetwork", "PySide6.QtOpenGL", "PySide6.QtOpenGLWidgets"],
     excludes=[
         "pytest", "tkinter", "unittest", "pydoc_data",
         "PySide6.QtWebEngineCore", "PySide6.QtWebEngineWidgets", "PySide6.QtQml", "PySide6.QtQuick",

@@ -15,6 +15,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import sys
 import re
 import shutil
 import subprocess
@@ -390,5 +391,18 @@ def current_status() -> SetupStatus:
     except AniCliError:
         pass
     managed = bool(path) and Path(path) == managed_ani_cli()
-    return SetupStatus(path, version, managed, bool(version and is_supported(version)), find_player(),
+    return SetupStatus(path, version, managed, bool(version and is_supported(version)),
+                       find_player() or (("anigui", "built-in") if builtin_player() else None),
                        bool(find_player("iina")))
+
+
+def builtin_player() -> bool:
+    """AniGUI's own player (libmpv inside the app, or IINA's / Homebrew's). Mac only."""
+    if sys.platform != "darwin":
+        return False
+    from . import libmpv
+    try:
+        libmpv.load()
+        return True
+    except libmpv.LibMpvError:
+        return False

@@ -57,6 +57,19 @@ def self_test() -> int:
         shim = ani_cli.install_shim()
         if not os.access(shim, os.X_OK):
             problems.append(f"shim not executable: {shim}")
+        # The built-in player: a release build carries its own libmpv
+        from core import libmpv
+        from ui import player_view, theater  # noqa: F401
+        bundled = [c for c in libmpv.candidates() if str(ROOT) in c]
+        if FROZEN and os.environ.get("ANIGUI_REQUIRE_LIBMPV") and not bundled:
+            problems.append("built-in player: libmpv isn't in the app")
+        if bundled:
+            try:
+                m = libmpv.Mpv({"vo": "null", "ao": "null", "idle": "yes"}, lib_path=bundled[0])
+                print(f"self-test: built-in player ok (libmpv {'.'.join(map(str, libmpv.api_version()))})")
+                m.close()
+            except Exception as exc:  # noqa: BLE001
+                problems.append(f"built-in player: {exc}")
     except Exception as exc:  # noqa: BLE001
         problems.append(f"{type(exc).__name__}: {exc}")
     for p in problems:

@@ -318,10 +318,18 @@ class FakePlayer:
         self.launched = []
         self.mpv: FakeMpv | None = None
 
+    embed = None
+
+    def embed_available(self) -> bool:
+        return True
+
     def launch(self, info, title=None, *, start=None, preferred=None, track=True) -> str:
         self.launched.append((info, title, start))
         if self.open_socket and track:
             self.mpv = FakeMpv(self.ipc_path)
+        if preferred == "anigui" and self.embed is not None:
+            self.embed(None, info.url, [])       # the built-in player, with a stand-in for the video
+            return "anigui"
         return "mpv"
 
 

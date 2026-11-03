@@ -185,7 +185,8 @@ class SetupDialog(QDialog):
                                             "mpv until you install IINA.", "Install IINA")
         elif status.player:
             kind, _path = status.player
-            self.player.set_state("ok", f"{'IINA' if kind == 'iina' else 'mpv'} is installed.")
+            self.player.set_state("ok", "AniGUI's built-in player is ready. (IINA is optional.)" if kind == "anigui"
+                                  else f"{'IINA' if kind == 'iina' else 'mpv'} is installed.")
         else:
             self.player.set_state("needed", "No player found. AniGUI can install IINA, a free player for Mac.",
                                   "Install IINA")

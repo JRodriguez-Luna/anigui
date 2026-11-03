@@ -16,7 +16,7 @@ from .context import AppContext
 from .widgets import Combo
 from .detail_page import QUALITIES
 
-PLAYERS = [("Auto (IINA, then mpv)", "auto"), ("IINA", "iina"), ("mpv", "mpv")]
+PLAYERS = [("AniGUI (built-in)", "anigui"), ("Auto (IINA, then mpv)", "auto"), ("IINA", "iina"), ("mpv", "mpv")]
 AUDIO = [("Sub (original audio, subtitles)", False), ("Dub (English audio)", True)]
 SCOPES = [("My List", "library"), ("My List and Continue Watching", "library+continue")]
 VPN_LABELS = {"warp": "Cloudflare WARP", "own": "Your own VPN", "none": "No VPN"}
@@ -157,7 +157,8 @@ class SettingsDialog(QDialog):
 
     def _playback(self) -> list[QWidget]:
         return [
-            SettingRow("Player", "Which app plays episodes. If it isn't installed, the other one is used.",
+            SettingRow("Player", "Where episodes play: right here in AniGUI, or in IINA or mpv. If the one you pick "
+                       "isn't available, another is used.",
                        self._choice("player", PLAYERS)),
             SettingRow("Audio", "Episodes without a dub play subbed.", self._choice("dub", AUDIO)),
             SettingRow("Subtitles with dubs", "Subtitles are made for the Japanese audio, so with a dub they're often "
@@ -204,6 +205,10 @@ class SettingsDialog(QDialog):
                        f"Auto starts the day after Thanksgiving ({start}); Early starts Nov 1. Both end after "
                        "New Year's Day.",
                        self._choice("holiday_theme", HOLIDAY_MODES)),
+            SettingRow("Lights around the player", "With the holiday theme: lights above the built-in player and a "
+                       "garland under it.", self._check("player_lights")),
+            SettingRow("Snow around the player", "Light snow beside the built-in player (never over the picture).",
+                       self._check("player_snow")),
         ]
 
     def _episodes(self) -> list[QWidget]:

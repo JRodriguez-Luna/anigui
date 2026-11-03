@@ -21,6 +21,9 @@ DEFAULTS: dict[str, Any] = {
     "dub": False,
     "quality": "best",           # best | 1080 | 720 | 480
     "autoplay": True,
+    "player_lights": True,       # holiday theme: lights and garland around the built-in player
+    "player_snow": True,
+    "player_bow": True,
     "skip_intro": False,
     "skip_ending": False,
     "skip_recap": False,

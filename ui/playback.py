@@ -650,7 +650,10 @@ class PlaybackController(QObject):
             self.ctx.store.record_progress(job.anime_id, job.episode, 0.0)
         self.started.emit(job.anime_id, job.episode, kind)
         wanted = str(self.ctx.pref("player", "auto"))
-        if wanted in PLAYER_NAMES and kind != wanted:
+        if wanted == "anigui" and kind != wanted:
+            self.notice.emit(f"The built-in player isn't available here, so this opened in {PLAYER_NAMES[kind]}.",
+                             False)
+        elif wanted in PLAYER_NAMES and kind != wanted:
             self.notice.emit(f"{PLAYER_NAMES[wanted]} isn't installed, so this opened in {PLAYER_NAMES[kind]}. "
                              f"Open Setup to install {PLAYER_NAMES[wanted]}." if wanted == "iina" else
                              f"{PLAYER_NAMES[wanted]} isn't installed, so this opened in {PLAYER_NAMES[kind]}.", False)
