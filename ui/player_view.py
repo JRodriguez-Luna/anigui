@@ -10,6 +10,7 @@ players use, so progress, skips and auto-play work exactly as before (ui/playbac
 from __future__ import annotations
 
 import math
+import os
 import random
 import sys
 import time
@@ -69,7 +70,10 @@ class VideoView(QOpenGLWidget):
 
     def __init__(self, options: dict, url: str, tracks: list, parent=None) -> None:
         super().__init__(parent)
-        if sys.platform == "darwin":            # mpv draws best with a modern (core) OpenGL context
+        # The video's OpenGL context must match the window's: a context of its own kind
+        # (asking for a different version here) can't share with the window, and the slot then
+        # shows a flipped copy of the window instead of the video (1.11.0).
+        if os.environ.get("ANIGUI_GL") == "widget-core":
             fmt = QSurfaceFormat()
             fmt.setVersion(4, 1)
             fmt.setProfile(QSurfaceFormat.OpenGLContextProfile.CoreProfile)
