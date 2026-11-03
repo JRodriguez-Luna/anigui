@@ -13,6 +13,7 @@ from core.anilist import Media
 from . import theme
 from .cards import format_label
 from .images import ImageLoader
+from .widgets import WrapLabel
 
 BUCKET = 320  # request banner widths in steps so resizing doesn't refetch constantly
 
@@ -134,13 +135,11 @@ class HeroBanner(Backdrop):
         self.current = 0
 
         self.kicker = QLabel("", objectName="Kicker")
-        self.title = QLabel("", objectName="HeroTitle", wordWrap=True)
+        self.title = WrapLabel("", 760, objectName="HeroTitle")
         self.meta = QLabel("", objectName="Meta")
-        self.synopsis = QLabel("", objectName="Synopsis", wordWrap=True)
+        self.synopsis = WrapLabel("", 620, objectName="Synopsis")
         for label in (self.kicker, self.title, self.meta, self.synopsis):
             label.setTextFormat(Qt.TextFormat.PlainText)   # text from AniList
-        self.synopsis.setMaximumWidth(620)
-        self.title.setMaximumWidth(760)
         self.play = QPushButton("▶  Play", objectName="Primary", cursor=Qt.CursorShape.PointingHandCursor)
         self.info = QPushButton("ⓘ  More info", objectName="Glass", cursor=Qt.CursorShape.PointingHandCursor)
         self.play.clicked.connect(lambda: self.items and self.playRequested.emit(self.items[self.current]))

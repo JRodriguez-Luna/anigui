@@ -190,3 +190,35 @@ def test_one_result_is_singular(win):
     win.go_actions["Search"].trigger()
     win.search._show("lantern", [ui_fakes.FakeHianime().search("Lantern")[0]])
     assert win.search.status.text().startswith("1 result for")
+
+
+# -- the ⓘ panel in a wide window --------------------------------------------------------------
+
+def _nothing_cut_off(win) -> None:
+    from PySide6.QtWidgets import QLabel
+
+    line = win.detail.content_row
+    panel = line.explainer
+    for label in panel.findChildren(QLabel):
+        if label.wordWrap() or label.objectName() == "ScaleBox":
+            need = label.heightForWidth(label.width()) if label.wordWrap() else label.sizeHint().height()
+            assert label.height() >= need, (label.objectName(), label.height(), need)
+            assert label.geometry().bottom() <= panel.height()
+    # the panel fits inside the Content line, which fits in the header, synopsis included
+    assert panel.mapTo(line, panel.rect().bottomLeft()).y() <= line.height()
+    synopsis = win.detail.synopsis
+    assert synopsis.height() >= synopsis.heightForWidth(synopsis.width())
+
+
+@pytest.mark.parametrize("width", [2400, 1700, 1000])
+def test_explainer_is_never_cut_off(win, width):
+    win.resize(width, 900)
+    win.mature_ask = lambda title, notes: (True, False)     # "Show anyway"
+    win.open_item(anilist.Media.from_json(ui_fakes.media_json(ui_fakes.MATURE)))
+    assert pump(lambda: win.detail.content_row.isVisible())
+    win.detail.content_row.info.setChecked(True)
+    pump(timeout=0.4)
+    _nothing_cut_off(win)
+    win.resize(1100 if width > 1100 else 2200, 900)    # and after the window changes size
+    pump(timeout=0.4)
+    _nothing_cut_off(win)

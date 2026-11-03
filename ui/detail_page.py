@@ -20,7 +20,7 @@ from .context import AppContext
 from .episodes import PER_PAGE, EpisodeGrid, EpisodeItem, EpisodePager, coming_soon, find_episode, page_ranges
 from .hero import Backdrop, airing_note, media_meta, truncate
 from .playback import PlaybackController
-from .widgets import Combo, PosterWidget
+from .widgets import Combo, PosterWidget, WrapLabel
 
 QUALITIES = [("Best", "best"), ("1080p", "1080"), ("720p", "720"), ("480p", "480")]
 
@@ -104,10 +104,9 @@ class DetailPage(QScrollArea):
         self.mature_badge.setVisible(False)
         self.content_row = ContentLine()   # Content: tags with hover meters, and the ⓘ explainer
         self.content_row.setVisible(False)
-        self.synopsis = QLabel("", objectName="Synopsis", wordWrap=True)
+        self.synopsis = WrapLabel("", 720, objectName="Synopsis")
         for label in (self.kicker, self.title, self.meta, self.airing, self.filler_note, self.synopsis):
             label.setTextFormat(Qt.TextFormat.PlainText)   # text from AniList / hianime
-        self.synopsis.setMaximumWidth(720)
         self.synopsis.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
 
         self.play_btn = QPushButton("▶  Play", objectName="Primary", cursor=Qt.CursorShape.PointingHandCursor)

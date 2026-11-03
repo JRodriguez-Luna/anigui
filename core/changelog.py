@@ -25,6 +25,10 @@ class Release:
 
 
 RELEASES: tuple[Release, ...] = (
+    Release("1.8.6", "November 2, 2026", (
+        Change("ⓘ panel fits", "In a wide window, the \"What these tags mean\" panel on a show page cut off its "
+                               "last lines. It now gets the room its text needs at any window size."),
+    )),
     Release("1.8.5", "November 2, 2026", (
         Change("Adult shows are flagged 18+", "Shows AniList marks as adult (Nukitashi, for example) never matched, "
                                                "so they had no poster, no details and no 18+ badge. They now match, "

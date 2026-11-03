@@ -10,6 +10,20 @@ from . import theme
 from .images import ImageLoader
 
 
+class WrapLabel(QLabel):
+    """A word-wrapping label with a maximum width that reports the height it needs at the
+    width it will really get. Qt's layouts ask with the whole column's width, ignoring the
+    maximum, so in a wide window the label got one line's height and pushed everything
+    under it into too little room (the show page's ⓘ panel was cut off)."""
+
+    def __init__(self, text: str = "", max_width: int = 16777215, **kwargs) -> None:
+        super().__init__(text, wordWrap=True, **kwargs)
+        self.setMaximumWidth(max_width)
+
+    def heightForWidth(self, width: int) -> int:
+        return super().heightForWidth(min(width, self.maximumWidth()))
+
+
 class Combo(QComboBox):
     """A drop-down that behaves the same on every Mac.
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from PySide6.QtCore import QPoint, QRectF, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QPoint, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import QFrame, QGridLayout, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
@@ -218,7 +218,45 @@ class Explainer(QFrame):
         col.addWidget(intro)
         col.addLayout(scale)
         col.addLayout(rule_row)
-        self.setMaximumWidth(720)
+
+
+class CappedWidth(QWidget):
+    """Holds a panel that stops at `cap` pixels wide, at a fixed height: the height its text
+    needs at the width it really gets, worked out again whenever that width changes.
+    (Left to Qt, a wrapping panel with a maximum width is measured at the whole column's
+    width, so in a wide window it got too little height and its last lines were cut off.)"""
+
+    def __init__(self, child: QWidget, cap: int, parent=None) -> None:
+        super().__init__(parent)
+        self.child, self.cap = child, cap
+        child.setParent(self)
+        self._fit_timer = QTimer(self, singleShot=True, interval=0)
+        self._fit_timer.timeout.connect(self.fit)
+
+    def event(self, event) -> bool:
+        # the panel changed inside (shown, fonts applied): measure again
+        if event.type() in (QEvent.Type.LayoutRequest, QEvent.Type.Show, QEvent.Type.Polish):
+            self._fit_timer.start()
+        return super().event(event)
+
+    def sizeHint(self) -> QSize:
+        return QSize(min(self.child.sizeHint().width(), self.cap), self.height())
+
+    def minimumSizeHint(self) -> QSize:
+        return QSize(min(self.child.minimumSizeHint().width(), self.cap), self.height())
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self.child.setGeometry(0, 0, min(self.width(), self.cap), self.height())
+        if event.oldSize().width() != event.size().width():
+            self._fit_timer.start()
+
+    def fit(self) -> None:
+        width = min(self.width(), self.cap)
+        self.child.ensurePolished()
+        need = self.child.heightForWidth(width)
+        if need > 0 and need != self.minimumHeight():
+            self.setFixedHeight(need)
 
 
 class ContentLine(QWidget):
@@ -248,7 +286,9 @@ class ContentLine(QWidget):
         col.setContentsMargins(0, 0, 0, 0)
         col.setSpacing(10)
         col.addLayout(row)
-        col.addWidget(self.explainer)
+        self.panel = CappedWidth(self.explainer, 720)
+        self.panel.setVisible(False)
+        col.addWidget(self.panel)
         self.tags: list[ContentTag] = []
 
     def set_maturity(self, m: Maturity | None) -> None:
@@ -266,5 +306,6 @@ class ContentLine(QWidget):
         self.setVisible(bool(self.tags))
 
     def _toggle(self, on: bool) -> None:
+        self.panel.setVisible(on)
         self.explainer.setVisible(on)
         self.toggled.emit(on)
