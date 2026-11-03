@@ -25,6 +25,14 @@ class Release:
 
 
 RELEASES: tuple[Release, ...] = (
+    Release("1.8.2", "November 2, 2026", (
+        Change("Rating meters", "Hover a Content tag and a card shows its AniList rating on a meter, with a white "
+                                "line where 18+ starts (70 for nudity), so you can see why a show is or isn't 18+."),
+        Change("Nudity is listed again from 60", "Shows like Tales of Wedding Rings list Nudity again; the meter "
+                                                 "shows it's below the 18+ line, so they aren't hidden."),
+        Change("What these tags mean", "The ⓘ next to Content opens a short guide right on the page: where the "
+                                       "ratings come from, the 0-100 scale, and what earns 18+."),
+    )),
     Release("1.8.1", "November 2, 2026", (
         Change("18+ badges right away", "Shows already in My List or Continue Watching are checked when AniGUI "
                                         "opens, so they're badged and blurred without opening them first. If a "

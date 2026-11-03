@@ -183,7 +183,8 @@ class SettingsDialog(QDialog):
                        "yourself stay, with blurred posters, and ask before opening.", self._check("hide_mature")),
             self._note("A show counts as 18+ when AniList's community rates nudity (70+ out of 100) or sexual "
                        "violence (60+) as a big part of it. Fan service, violence and gore alone don't, but they're "
-                       "listed under Content on the show page; hover a tag there to see its rating."),
+                       "listed under Content on the show page, and nudity is listed from 60. Hover a tag there to see its "
+                       "rating and where the 18+ line is."),
         ]
 
     def _episodes(self) -> list[QWidget]:

@@ -17,12 +17,16 @@ METER_COLORS = {"Nudity": theme.MATURE, "Sexual violence": theme.MATURE, "Sexual
 METER_DEFAULT = "#8A8F9C"
 
 
+BELOW_LINE = "#E9B44C"   # amber: listed, but not enough for 18+
+
+
 @dataclass(frozen=True)
 class NoteCard:
     title: str            # "Nudity · 88 / 100"
     rank: int | None      # for the meter; None: no meter (e.g. Ecchi genre)
     color: str
     text: str             # what it means, one or two sentences
+    line: int | None = None   # where 18+ starts on the meter (Nudity 70, sexual violence 60)
 
 
 def note_card(m: Maturity, note: str) -> NoteCard:
@@ -35,10 +39,13 @@ def note_card(m: Maturity, note: str) -> NoteCard:
         return NoteCard(note, None, color, "")
     name, rank = tags[0]
     said = level(rank) + "."
-    if note == "Nudity":
-        text = f"{said} {NUDITY_18}+ is what makes a show 18+."
-    elif note == "Sexual violence":
-        text = f"{said} {SEXUAL_VIOLENCE_18}+ makes a show 18+."
+    if note in ("Nudity", "Sexual violence"):
+        line = NUDITY_18 if note == "Nudity" else SEXUAL_VIOLENCE_18
+        if rank >= line:
+            text = f"{said} Past the 18+ line ({line}), so it's marked 18+."
+            return NoteCard(f"{note} · {rank} / 100", rank, theme.MATURE, text, line)
+        text = f"{level(rank)}, but below the 18+ line ({line}). Listed so you know, not hidden."
+        return NoteCard(f"{note} · {rank} / 100", rank, BELOW_LINE, text, line)
     elif note == "Sexual themes":
         text = (f"Fan service: {', '.join(f'{n} ({r})' for n, r in tags[:3])}. "
                 "On its own this doesn't make a show 18+.")
@@ -51,30 +58,49 @@ def note_card(m: Maturity, note: str) -> NoteCard:
 
 
 class Meter(QWidget):
-    """A thin rounded bar filled to rank / 100."""
+    """A thin rounded bar filled to rank / 100, with an optional white mark where 18+
+    starts and '0 · 18+ at 70 · 100' underneath."""
 
-    def __init__(self, rank: int, color: str, parent=None) -> None:
+    BAR = 6
+
+    def __init__(self, rank: int, color: str, line: int | None = None, parent=None) -> None:
         super().__init__(parent)
-        self.rank, self.color = rank, color
-        self.setFixedHeight(5)
+        self.rank, self.color, self.line = rank, color, line
+        self.font_ = theme.font(10)
+        self.setFixedHeight(self.BAR + 8 + (16 if line else 0))
 
     def sizeHint(self) -> QSize:
-        return QSize(220, 5)
+        return QSize(240, self.height())
 
     def paintEvent(self, _e) -> None:
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        r = QRectF(self.rect())
+        w = self.width()
+        bar = QRectF(0, 4, w, self.BAR)
         p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(QColor("#2E2E3C"))
-        p.drawRoundedRect(r, 2.5, 2.5)
+        p.drawRoundedRect(bar, 3, 3)
         p.setBrush(QColor(self.color))
-        p.drawRoundedRect(QRectF(r.left(), r.top(), r.width() * max(0, min(100, self.rank)) / 100, r.height()), 2.5, 2.5)
+        p.drawRoundedRect(QRectF(0, bar.top(), w * max(0, min(100, self.rank)) / 100, self.BAR), 3, 3)
+        if self.line:
+            x = w * self.line / 100
+            p.setBrush(QColor(theme.TEXT))
+            p.drawRoundedRect(QRectF(x - 1, 0, 2, self.BAR + 8), 1, 1)
+            p.setFont(self.font_)
+            p.setPen(QColor(theme.FAINT))
+            y = QRectF(0, self.BAR + 10, w, 14)
+            p.drawText(y, Qt.AlignmentFlag.AlignLeft, "0")
+            p.drawText(y, Qt.AlignmentFlag.AlignRight, "100")
+            label = f"18+ at {self.line}"
+            lw = p.fontMetrics().horizontalAdvance(label)
+            p.drawText(QRectF(max(14, min(w - lw - 24, x - lw / 2)), y.top(), lw + 2, 14), Qt.AlignmentFlag.AlignLeft, label)
         p.end()
 
 
 class NoteHoverCard(QFrame):
     """The card that appears under a Content tag while the mouse is over it."""
+
+    WIDTH = 270
 
     def __init__(self, card: NoteCard, parent=None) -> None:
         super().__init__(parent, Qt.WindowType.ToolTip | Qt.WindowType.FramelessWindowHint)
@@ -88,12 +114,16 @@ class NoteHoverCard(QFrame):
         col.setSpacing(7)
         col.addWidget(title)
         if card.rank is not None:
-            col.addWidget(Meter(card.rank, card.color))
+            meter = Meter(card.rank, card.color, card.line)
+            meter.setFixedWidth(self.WIDTH - 24)
+            col.addWidget(meter)
+        title.setFixedWidth(self.WIDTH - 24)
         if card.text:
             text = QLabel(card.text, wordWrap=True, objectName="NoteCardText")
             text.setTextFormat(Qt.TextFormat.PlainText)
+            text.setFixedWidth(self.WIDTH - 24)   # known width, so wrapped lines get their full height
             col.addWidget(text)
-        self.setFixedWidth(270)
+        col.setSizeConstraint(QVBoxLayout.SizeConstraint.SetFixedSize)
 
 
 class ContentTag(QLabel):
@@ -158,7 +188,8 @@ class Explainer(QFrame):
         badge = QLabel("18+", objectName="MatureBadge")
         rule = QLabel(f"means nudity rated <b>{NUDITY_18}+</b> or sexual violence rated <b>{SEXUAL_VIOLENCE_18}+</b>, "
                       "or AniList marks the show adult. Gore and other themes are listed but never make a show 18+ "
-                      "alone. Tags under 60 aren't listed, and spoiler tags never are.", wordWrap=True,
+                      "alone, and Nudity can be listed below 70 (hover it to see where it falls). Tags under 60 aren't "
+                      "listed, and spoiler tags never are.", wordWrap=True,
                       objectName="ExplainerText")
         rule.setTextFormat(Qt.TextFormat.RichText)
         rule_row = QHBoxLayout()
@@ -208,6 +239,8 @@ class ContentLine(QWidget):
     def set_maturity(self, m: Maturity | None) -> None:
         for tag in self.tags:
             tag.hide_card()
+            tag.hide()
+            self.tags_row.removeWidget(tag)   # gone now, not when the event loop gets to it
             tag.deleteLater()
         self.tags = []
         for note in (m.notes if m else ()):

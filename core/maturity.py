@@ -20,7 +20,7 @@ from typing import Iterable
 NUDITY_18 = 70            # Nudity tag rank that makes a show 18+
 SEXUAL_VIOLENCE_18 = 60   # same for the Rape tag
 NOTE_RANK = 60            # a tag must be rated this central to the show to be listed
-# "Nudity" is only listed when it's also enough for 18+, so the Content line and the badge agree
+# Nudity is listed from 60, but only 70+ makes a show 18+: the hover card's meter marks that line.
 SEXUAL_VIOLENCE_NOTE = 40
 DISTURBING = ("Torture", "Suicide", "Cannibalism", "Self-Harm", "Child Abuse", "Slavery")
 
@@ -84,7 +84,7 @@ def assess(is_adult: bool, genres: Iterable[str], tags: Iterable[Tag]) -> Maturi
     def ranked(names: Iterable[str], minimum: int = NOTE_RANK) -> list[tuple[str, int]]:
         return [(n, rank(n)) for n in names if shown(n, minimum)]
 
-    note("Nudity", ranked(["Nudity"], NUDITY_18))
+    note("Nudity", ranked(["Nudity"]))
     adult = [(t.name, t.rank) for t in tags if t.adult and t.name != "Rape" and t.rank >= NOTE_RANK and not t.spoiler]
     note("Sexual themes", adult, always="Ecchi" in set(genres))
     note("Sexual violence", ranked(["Rape"], SEXUAL_VIOLENCE_NOTE))

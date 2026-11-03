@@ -237,7 +237,9 @@ def test_show_page_badge_and_content_line(win):
     assert card.findChild(QLabel, "NoteCardTitle").text() == "Nudity · 88 / 100"
     meter = card.findChild(Meter)
     assert meter is not None and meter.rank == 88
-    assert "What the show is known for. 70+ is what makes a show 18+." == card.findChild(QLabel, "NoteCardText").text()
+    assert meter.line == 70 and meter.color == "#C0392B"
+    assert card.findChild(QLabel, "NoteCardText").text() == \
+        "What the show is known for. Past the 18+ line (70), so it's marked 18+."
     nudity.hide_card()
     assert not card.isVisible()
     assert line.explainer.isHidden()
@@ -333,13 +335,30 @@ def test_sticky_bar_appears_after_scrolling_and_goes_back(win):
 
 # -- 1.8.1: option B, and saved shows checked without opening them ----------------------------
 
-def test_nudity_is_only_listed_when_it_makes_the_show_18_plus():
-    m = assess(False, ["Comedy"], [T("Nudity", 65)])
-    assert not m.mature and "Nudity" not in m.notes          # the old gap: listed but not 18+
+def test_nudity_below_the_line_is_listed_but_not_18_plus():
+    from ui.content_notes import note_card
+    m = assess(False, ["Adventure", "Comedy", "Ecchi"], [T("Nudity", 65)])   # e.g. Tales of Wedding Rings
+    assert not m.mature and m.notes == ("Nudity", "Sexual themes")
+    card = note_card(m, "Nudity")
+    assert card.title == "Nudity · 65 / 100" and card.line == 70 and card.color == "#E9B44C"
+    assert card.text == "A regular part of the show, but below the 18+ line (70). Listed so you know, not hidden."
     m = assess(False, ["Comedy"], [T("Nudity", 70)])
-    assert m.mature and m.notes == ("Nudity",)
+    assert m.mature and note_card(m, "Nudity").color == "#C0392B"
     m = assess(False, ["Romance", "Ecchi"], [T("Nudity", 50)])
-    assert not m.mature and m.notes == ("Sexual themes",) and m.source("Sexual themes") == ()
+    assert not m.mature and m.notes == ("Sexual themes",)    # under 60: not listed
+
+
+def test_meter_draws_the_18_plus_line():
+    from PySide6.QtGui import QImage
+    from ui.content_notes import Meter
+    meter = Meter(65, "#E9B44C", 70)
+    meter.resize(240, meter.height())
+    img = QImage(meter.size(), QImage.Format.Format_ARGB32)
+    img.fill(0)
+    meter.render(img)
+    line_x = int(240 * 70 / 100)
+    assert QImage.pixelColor(img, line_x, 1).lightness() > 200    # the white 18+ mark sticks out above the bar
+    assert QImage.pixelColor(img, 10, 1).alpha() == 0              # nothing else up there
 
 
 def test_hover_cards_explain_each_note():
