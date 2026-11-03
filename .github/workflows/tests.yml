@@ -49,7 +49,6 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Probe (temporary)
-        if: runner.os == 'macOS'
         continue-on-error: true
         run: python tools/_probe.py
 
