@@ -62,6 +62,8 @@ def build_player_command(kind: str, path: str, info: StreamInfo, title: str,
             cmd.append(f"--mpv-audio-files={esc(info.audio_url)}")
         if info.subtitle_url:
             cmd.append(f"--mpv-sub-files={esc(info.subtitle_url)}")
+        if info.subtitle_url and not info.show_subtitles:
+            cmd.append("--mpv-sid=no")   # loaded (Subtitles menu) but off
         cmd += [f"--mpv-{k}={v}" for k, v in opts]
         cmd.append(info.url)
         return cmd
@@ -73,6 +75,8 @@ def build_player_command(kind: str, path: str, info: StreamInfo, title: str,
         cmd.append(f"--audio-file={info.audio_url}")
     if info.subtitle_url:
         cmd.append(f"--sub-file={info.subtitle_url}")
+        if not info.show_subtitles:
+            cmd.append("--sid=no")       # loaded (press v / j to show) but off
     cmd += [f"--{k}={v}" for k, v in opts]
     cmd += ["--", info.url]   # mpv: everything after -- is a file, never an option
     return cmd

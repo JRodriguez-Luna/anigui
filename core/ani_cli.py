@@ -52,6 +52,7 @@ class StreamInfo:
     audio_url: str | None = None
     subtitle_url: str | None = None
     extra_args: tuple[str, ...] = field(default_factory=tuple)  # e.g. ani-skip flags
+    show_subtitles: bool = True  # False: load the subtitle track but leave it off (dubs)
 
 
 # -- Discovery ------------------------------------------------------------------

@@ -155,6 +155,9 @@ class SettingsDialog(QDialog):
             SettingRow("Player", "Which app plays episodes. If it isn't installed, the other one is used.",
                        self._choice("player", PLAYERS)),
             SettingRow("Audio", "Episodes without a dub play subbed.", self._choice("dub", AUDIO)),
+            SettingRow("Subtitles with dubs", "Subtitles are made for the Japanese audio, so with a dub they're often "
+                       "out of sync and don't match what's said. Off: you can still turn them on in the player's "
+                       "Subtitles menu.", self._check("dub_subtitles")),
             SettingRow("Quality", "Falls back to the best available if this one isn't offered.",
                        self._choice("quality", QUALITIES)),
             SettingRow("Auto-play next episode", "Counts down at the end of an episode, then plays the next one.",

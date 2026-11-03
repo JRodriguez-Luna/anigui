@@ -26,6 +26,7 @@ DEFAULTS: dict[str, Any] = {
     "skip_recap": False,
     "skip_fillers": False,       # Up Next and auto-play jump over filler / recap episodes
     "hide_fillers": False,       # leave them out of the episode grid
+    "dub_subtitles": False,      # show the (Japanese-timed) subtitles over dubbed audio
     "alerts": True,              # look for new episodes
     "alerts_scope": "library",   # library | library+continue
     "notify": True,              # Mac notifications for new episodes

@@ -226,6 +226,7 @@ class FakeBridge(QObject):
         super().__init__()
         self.hianime = hianime
         self.fail_episodes = fail_episodes or set()
+        self.no_dub_episodes: set[str] = set()
         self.requests = []
         self._n = 0
 
@@ -237,8 +238,11 @@ class FakeBridge(QObject):
         title = results[req.index - 1].title if 0 < req.index <= len(results) else "Unknown"
         if req.episode in self.fail_episodes:
             QTimer.singleShot(30, lambda: self.failed.emit(rid, "No sources found for sub!"))
+        elif req.dub and req.episode in self.no_dub_episodes:
+            QTimer.singleShot(30, lambda: self.failed.emit(rid, "No sources found for dub!"))
         else:
-            info = StreamInfo(f"https://cdn.example/{rid}.m3u8", "https://embed.example/", f"{title} Episode {req.episode}")
+            info = StreamInfo(f"https://cdn.example/{rid}.m3u8", "https://embed.example/", f"{title} Episode {req.episode}",
+                              subtitle_url=f"https://subs.example/{rid}.vtt")
             QTimer.singleShot(30, lambda: self.streamResolved.emit(rid, info))
         return rid
 

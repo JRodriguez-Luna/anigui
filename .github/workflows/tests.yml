@@ -48,29 +48,22 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r requirements.txt
 
-      - name: Probe AniList tags (temporary)
-        if: runner.os == 'Linux'
+      - name: Probe hianime 18+ marker (temporary)
+        if: runner.os == 'macOS'
         continue-on-error: true
         run: |
           python - <<'PY'
-          import json
-          from core import http
-          q = """query($s:String){Page(perPage:1){media(type:ANIME,search:$s){id title{english romaji} genres isAdult
-                 tags{name rank category isAdult isMediaSpoiler isGeneralSpoiler}}}}"""
-          out = []
-          for s in ["I'm Dating a Dark Summoner", "Food Wars", "High School DxD", "Prison School", "My Dress-Up Darling",
-                    "Chainsaw Man", "Attack on Titan", "Frieren", "Kaguya-sama Love is War", "Rent-a-Girlfriend",
-                    "The Quintessential Quintuplets", "Interspecies Reviewers", "Redo of Healer", "Domestic Girlfriend",
-                    "Jujutsu Kaisen", "Demon Slayer", "Goblin Slayer", "Berserk 1997", "Shimoneta", "To Love Ru",
-                    "Toradora", "Spy x Family", "Highschool of the Dead", "Monster Musume", "Konosuba", "One Punch Man"]:
-              r = http.request("https://graphql.anilist.co", data=json.dumps({"query": q, "variables": {"s": s}}).encode(),
-                               headers={"Content-Type": "application/json"})
-              m = json.loads(r.body)["data"]["Page"]["media"][0]
-              tags = [f"{t['name']}:{t['rank']}{'*' if t['isAdult'] else ''}({t['category'].split('-')[-1]})"
-                      for t in m["tags"] if t["category"].startswith(("Sexual", "Theme-Other", "Theme-Drama")) or t["isAdult"] or t["name"] in ("Gore", "Nudity", "Fan Service", "Violence", "Torture", "Suicide", "Body Horror")]
-              out.append(f"{(m['title']['english'] or m['title']['romaji'])[:30]} adult={m['isAdult']} genres={m['genres']} || {', '.join(tags)[:600]}")
-          for i in range(0, len(out), 3):
-              print(f"::notice title=tags {i // 3}::" + "  ####  ".join(out[i:i + 3]))
+          import re
+          from core.hianime import HianimeClient, SEARCH_URL, normalize_query
+          hi = HianimeClient()
+          for q in ("dark summoner", "high school dxd", "frieren", "redo of healer"):
+              r = hi.fetch(SEARCH_URL.format(query=normalize_query(q)) if "{query}" in SEARCH_URL else SEARCH_URL + normalize_query(q))
+              page = r.body if isinstance(r.body, str) else r.body.decode("utf-8", "replace")
+              page = page.replace("\n", " ")
+              i = page.find('<div class="film-detail">')
+              chunk = re.sub(r"\s+", " ", page[max(0, i - 900):i + 500])
+              ticks = sorted(set(re.findall(r'class="(tick[^"]*)"[^>]*>([^<]{0,20})<', page)))[:12]
+              print(f"::notice title=hianime {q}::status={r.status} ticks={ticks} || {chunk[:1300]}")
           PY
 
       - name: Run tests (offline; fake site, fake mpv, real ani-cli)

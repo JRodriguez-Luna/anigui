@@ -13,7 +13,7 @@ isn't tracked, same as Step 3.
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Callable
 
 from PySide6.QtCore import QObject, QTimer, Signal
@@ -113,6 +113,11 @@ class StreamResolver(QObject):
                 return
             self._fail(job, "ani-cli kept picking a different show. Try searching for it again.")
             return
+        # Subtitles are made for the Japanese audio: with a dub they're out of sync and worded
+        # differently, so they're loaded but off unless Settings says otherwise.
+        dub = (self.ctx.pref("dub", False) if job.dub is None else job.dub) and not job.fell_back_to_sub
+        if dub and not self.ctx.pref("dub_subtitles"):
+            info = replace(info, show_subtitles=False)
         job.on_ready(info)
 
     def _on_failed(self, request_id: str, message: str) -> None:
@@ -143,7 +148,7 @@ class _Now:
     position: float | None = None
     duration: float | None = None
     last_save: float = 0.0
-    pending_tracks: list[tuple[str, str]] = field(default_factory=list)
+    pending_tracks: list[tuple[str, str, str]] = field(default_factory=list)   # (command, url, flag)
     watched: float = 0.0                          # seconds played since the last save (for stats)
     paused: bool = False
     skips: list[aniskip.Segment] | None = None   # None until looked up
@@ -211,9 +216,10 @@ class Session(QObject):
         self.ipc.command("set_property", "options/referrer", info.referrer or "")
         self.ipc.command("set_property", "force-media-title", media_title(title, episode))
         self.ipc.command("set_property", "options/start", f"{start:.0f}" if start else "none")
-        self.now.pending_tracks = [("audio-add", info.audio_url)] if info.audio_url else []
+        self.now.pending_tracks = [("audio-add", info.audio_url, "select")] if info.audio_url else []
         if info.subtitle_url:
-            self.now.pending_tracks.append(("sub-add", info.subtitle_url))
+            self.now.pending_tracks.append(("sub-add", info.subtitle_url,
+                                            "select" if info.show_subtitles else "auto"))
         if not is_web_url(info.url) or any(u and not is_web_url(u) for u in (info.audio_url, info.subtitle_url)):
             self.notice.emit("The stream link didn't look right, so it wasn't opened.", True)
             return
@@ -281,8 +287,8 @@ class Session(QObject):
     def _on_event(self, name: str, msg: dict) -> None:
         if name == "file-loaded":
             self.loading = False
-            for cmd, url in self.now.pending_tracks:
-                self.ipc.command(cmd, url, "select")
+            for cmd, url, flag in self.now.pending_tracks:
+                self.ipc.command(cmd, url, flag)   # "auto": added, but not switched on
             self.now.pending_tracks = []
         elif name == "end-file":
             reason = msg.get("reason")
