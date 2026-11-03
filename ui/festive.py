@@ -11,6 +11,7 @@ from __future__ import annotations
 import datetime as dt
 import math
 import random
+import time
 
 from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen
@@ -313,32 +314,46 @@ class _Overlay(QWidget):
 
 
 class Flurry(_Overlay):
-    """A quick burst of snow over the whole window (click the countdown chip)."""
+    """A quick burst of snow over the whole window (click the countdown chip). It goes by the
+    clock, not by frames, so it's over in a few seconds even on a busy Mac."""
+
+    SECONDS = 4.5          # at most; the last half second fades out
 
     def __init__(self, host: QWidget) -> None:
         super().__init__(host, 16)
         self.flakes: list[list[float]] = []
+        self.started = self.last = 0.0
+        self.alpha = 1.0
 
     def play(self) -> bool:
-        w = max(1, self.parentWidget().width())
+        w, h = max(1, self.parentWidget().width()), max(1, self.parentWidget().height())
+        # x, y, radius, speed (px/s: crosses the window in 2.2-4 s), sway phase
         self.flakes += [[random.uniform(0, w), random.uniform(-120, -4), random.uniform(1.2, 3.0),
-                         random.uniform(1.6, 3.8), random.uniform(0, 6.3)] for _ in range(160)]
+                         (h + 130) / random.uniform(2.2, 4.0), random.uniform(0, 6.3)] for _ in range(160)]
+        self.started = self.last = time.monotonic()
+        self.alpha = 1.0
         return super().play()
 
-    def step(self) -> bool:
+    def step(self, now: float | None = None) -> bool:
+        now = time.monotonic() if now is None else now
+        dt, self.last = min(0.1, max(0.0, now - self.last)), now
         h = self.height()
         for f in self.flakes:
-            f[1] += f[3]
-            f[4] += 0.05
-            f[0] += math.sin(f[4]) * 0.8
+            f[1] += f[3] * dt
+            f[4] += 3.0 * dt
+            f[0] += math.sin(f[4]) * 48 * dt
         self.flakes = [f for f in self.flakes if f[1] < h + 6]
+        age = now - self.started
+        self.alpha = max(0.0, min(1.0, (self.SECONDS - age) / 0.5))
+        if age >= self.SECONDS:
+            self.flakes = []
         return bool(self.flakes)
 
     def paintEvent(self, _e) -> None:
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(QColor(255, 255, 255, 225))
+        p.setBrush(QColor(255, 255, 255, int(225 * self.alpha)))
         for x, y, r, _s, _d in self.flakes:
             p.drawEllipse(QPointF(x, y), r, r)
         p.end()

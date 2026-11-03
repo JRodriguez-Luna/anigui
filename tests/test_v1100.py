@@ -155,7 +155,9 @@ def test_countdown_chip_lets_it_snow(win, plain_theme, motion_on):
     festive(win)
     win.countdown.clicked.emit()
     assert win.flurry.isVisible() and win.flurry.flakes
-    assert pump(lambda: not win.flurry.isVisible(), 15)                     # and it stops by itself
+    assert pump(lambda: not win.flurry.isVisible(), 8)                      # and it stops by itself
+    win.countdown.clicked.emit()                                            # however slow the frames are
+    assert win.flurry.step(win.flurry.started + 0.05) and not win.flurry.step(win.flurry.started + 4.6)
 
 
 def test_reduce_motion_keeps_everything_still(win, plain_theme, motion_off):
