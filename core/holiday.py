@@ -43,3 +43,21 @@ def offer_early(mode: str, seen_year: str, today: dt.date | None = None) -> bool
     today = today or dt.date.today()
     return (mode == "auto" and today.month == 11 and not is_on(mode, today)
             and str(seen_year) != str(today.year))
+
+
+# The Christmas shelf. AniList has no Christmas tag, so these are hand-picked: well-known
+# anime with a Christmas movie or a memorable Christmas episode (AniList ids, in order).
+CHRISTMAS_IDS = (
+    759,      # Tokyo Godfathers
+    4224,     # Toradora!
+    5680,     # K-ON!
+    112641,   # Kaguya-sama: Love is War? (season 2)
+    98444,    # Laid-Back Camp
+    133965,   # Komi Can't Communicate
+    11757,    # Sword Art Online
+    853,      # Ouran High School Host Club
+    6045,     # Kimi ni Todoke: From Me to You
+    232,      # Cardcaptor Sakura
+    2026,     # Hayate the Combat Butler
+    918,      # Gintama
+)

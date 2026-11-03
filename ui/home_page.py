@@ -206,8 +206,13 @@ class HomePage(QScrollArea):
             if self._xmas is None:
                 self.xmas_row.set_loading()
                 self.xmas_row.setVisible(True)
-                self.ctx.runner.submit(self.ctx.catalog.anilist.browse, tags=["Christmas"], sort="POPULARITY_DESC",
-                                       per_page=24, on_done=self._on_xmas,
+                ids = list(holiday.CHRISTMAS_IDS)
+
+                def fetch(anilist=self.ctx.catalog.anilist):
+                    found = anilist.airing(ids)
+                    return [found[i] for i in ids if i in found]      # in the hand-picked order
+
+                self.ctx.runner.submit(fetch, on_done=self._on_xmas,
                                        on_error=lambda _m: self.xmas_row.setVisible(False), group="home-xmas")
             else:
                 self._on_xmas(self._xmas)

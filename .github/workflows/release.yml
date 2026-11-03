@@ -299,8 +299,10 @@ jobs:
               except Exception as exc:  # noqa: BLE001
                   ok, detail = False, repr(exc)
               print(f"::{'notice' if ok else 'warning'} title=seasons::{'PASS' if ok else 'CHECK'} {name}: {detail}")
-          xmas = al.browse(tags=["Christmas"], sort="POPULARITY_DESC", per_page=24)
-          ok = len(xmas) >= 5
+          from core.holiday import CHRISTMAS_IDS
+          found = al.airing(list(CHRISTMAS_IDS))
+          xmas = [found[i] for i in CHRISTMAS_IDS if i in found]
+          ok = len(xmas) == len(CHRISTMAS_IDS)
           print(f"::{'notice' if ok else 'warning'} title=holiday::{'PASS' if ok else 'CHECK'} Christmas shelf: "
                 f"{len(xmas)} shows, e.g. {[m.display_title for m in xmas[:4]]}")
           # hianime renumbered its shows in Nov 2026: an id saved before then must find its new one

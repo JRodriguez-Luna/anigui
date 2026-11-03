@@ -384,14 +384,17 @@ def test_colors_switch_and_switch_back(plain_theme):
     assert theme.stylesheet() == normal
 
 
-def test_app_turns_festive_in_december(win, plain_theme):
+def test_app_turns_festive_in_december(win, plain_theme, monkeypatch):
     from ui import theme
+    monkeypatch.setattr(holiday, "CHRISTMAS_IDS", (501, 500, 502))          # fake AniList's shows
     win.apply_holiday(today=dt.date(2026, 12, 5), animate=False)
     assert plain_theme == [True]                                            # restyled once
     assert theme.HOLIDAY and theme.HOLIDAY_COLORS["ACCENT"] in win.brand.text()
     assert "Happy holidays" in win.footer.text()
     assert win.home.hero_snow is not None and win.home.hero_snow.running
-    assert pump(lambda: win.home.xmas_row.isVisible())
+    assert pump(lambda: win.home.xmas_row.isVisible() and not win.home.xmas_row.view.cards.is_loading())
+    keys = [c.key for c in win.home.xmas_row.view.cards.cards()]
+    assert keys == ["anilist:501", "anilist:500", "anilist:502"]           # in the hand-picked order
     win.apply_holiday(today=dt.date(2027, 1, 2), animate=False)
     assert not theme.HOLIDAY and not win.home.xmas_row.isVisible() and not win.home.hero_snow.running
 

@@ -37,7 +37,7 @@ RELEASES: tuple[Release, ...] = (
         Change("Smoother everywhere", "Pages fade in, pictures fade in as they load, the Home banner crossfades, "
                                       "posters lift when you hover them, and loading placeholders shimmer. With "
                                       "Reduce motion on in macOS, it keeps to gentle fades."),
-        Change("Holiday theme", "Snow on Home, red-and-green colors, a Christmas anime shelf and a festive Dock icon. "
+        Change("Holiday theme", "Snow on Home, red-and-green colors, a shelf of anime with Christmas episodes and a festive Dock icon. "
                                 "It turns on by itself the day after Thanksgiving and off after New Year's Day. "
                                 "Can't wait? Settings › Appearance › Early."),
         Change("Minor fixes", "Small fixes and improvements."),
