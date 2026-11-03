@@ -163,8 +163,6 @@ class SettingsDialog(QDialog):
                        self._choice("quality", QUALITIES)),
             SettingRow("Auto-play next episode", "Counts down at the end of an episode, then plays the next one.",
                        self._check("autoplay")),
-            SettingRow("Skip fillers", "Up Next and auto-play jump over filler episodes. "
-                       "You can still click any episode to watch it.", self._check("skip_fillers")),
         ]
 
     def _skipping(self) -> list[QWidget]:
@@ -173,8 +171,11 @@ class SettingsDialog(QDialog):
             SettingRow("Skip endings", "Jumps past the ending credits; with auto-play on, the next episode starts sooner.",
                        self._check("skip_ending")),
             SettingRow("Skip recaps", "Jumps past \"previously on\" recaps.", self._check("skip_recap")),
-            self._note("Skip times come from <a href='https://aniskip.com' style='color:#FF8559'>AniSkip</a>, "
-                       "a community database. Episodes nobody has timed yet play normally. "
+            SettingRow("Skip fillers", "Up Next and auto-play jump over filler episodes. "
+                       "You can still click any episode to watch it.", self._check("skip_fillers")),
+            self._note("Intro, ending and recap times come from <a href='https://aniskip.com' style='color:#FF8559'>"
+                       "AniSkip</a>, a community database; episodes nobody has timed yet play normally. Fillers come "
+                       "from <a href='https://www.animefillerlist.com' style='color:#FF8559'>Anime Filler List</a>. "
                        "Works with IINA and mpv; nothing extra to install."),
         ]
 

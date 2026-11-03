@@ -25,6 +25,17 @@ class Release:
 
 
 RELEASES: tuple[Release, ...] = (
+    Release("1.8.5", "November 2, 2026", (
+        Change("Adult shows are flagged 18+", "Shows AniList marks as adult (Nukitashi, for example) never matched, "
+                                               "so they had no poster, no details and no 18+ badge. They now match, "
+                                               "get their artwork, and are blurred and asked about like any 18+ show."),
+        Change("One Piece fillers", "One Piece was matched to the One Pace fan edit's list and showed 1 filler. "
+                                    "It now shows all 94, and Hide and Skip fillers work on it."),
+        Change("Go menu", "Home, Search, My List, Stats, Calendar (⌘1 to ⌘5) and Back (⌘[) are in the menu bar."),
+        Change("Small fixes", "Search results and My List fill the page's width. The sidebar works with VoiceOver. "
+                              "Searches with one hit say \"1 result\". "
+                              "Skip fillers moved to Settings › Skipping."),
+    )),
     Release("1.8.4", "November 2, 2026", (
         Change("Better drop-downs", "Search filters, Settings and Quality now drop down right under the box, "
                                     "at most 10 rows tall with a scroll bar, instead of filling the screen or "

@@ -42,7 +42,7 @@ SHOWS_PAGE = """<div class="Group"><h2>N</h2><ul>
 <li><a href="/shows/naruto">Naruto</a></li><li><a href="/shows/boruto-naruto-movie">Naruto Films</a></li>
 <li><a href="/shows/naruto-shippuden">Naruto Shippuden</a></li></ul></div>
 <li><a href="/shows/bleach-thousand-year-blood-war">Bleach: Thousand-Year Blood War (Bleach: Sennen Kessen-hen)</a></li>
-<li><a href="/shows/one-piece">One Piece</a></li><li><a href="/shows/attack-titan">Attack on Titan</a></li>"""
+<li><a href="/shows/one-pace">One Pace (One Piece)</a></li><li><a href="/shows/one-piece">One Piece</a></li><li><a href="/shows/attack-titan">Attack on Titan</a></li>"""
 
 
 def row(n, cls, label):
@@ -101,6 +101,8 @@ def test_titles_must_match_exactly():
     assert guide.find_show(["Attack on Titan Season 2"]) is None             # a later season: no borrowing
     assert guide.find_show(["Frieren", None, ""]) is None
     assert guide.find_show(["Some Show", "One Piece"]) == "one-piece"        # any of the titles
+    assert guide.find_show(["ONE PIECE"]) == "one-piece"                     # not the fan edit listed first
+    assert guide.find_show(["One Pace"]) == "one-pace"
 
 
 def test_summary():

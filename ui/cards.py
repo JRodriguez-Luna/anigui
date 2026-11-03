@@ -6,7 +6,7 @@ from dataclasses import dataclass, replace
 from typing import Any
 
 from PySide6.QtCore import (
-    QAbstractListModel, QEasingCurve, QModelIndex, QPersistentModelIndex, QPropertyAnimation,
+    QAbstractListModel, QEasingCurve, QEvent, QModelIndex, QPersistentModelIndex, QPropertyAnimation,
     QPoint, QRectF, QSize, Qt, Signal,
 )
 from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPainterPath, QPen
@@ -354,8 +354,31 @@ class CardGrid(CardView):
         super().__init__(images, parent)
         self.setFlow(QListView.Flow.LeftToRight)
         self.setWrapping(True)
-        self.setSpacing(10)
+        self.setSpacing(0)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._fit_columns()
+
+    GAP = 10          # least space between two posters
+    ROW_GAP = 20      # space under each card's text
+
+    def viewportEvent(self, event) -> bool:
+        # the viewport, not the view: it also narrows when the scroll bar appears
+        if event.type() == QEvent.Type.Resize:
+            self._fit_columns()
+        return super().viewportEvent(event)
+
+    def _fit_columns(self) -> None:
+        """Share the row's spare width between the columns, so the grid reaches the right
+        edge instead of stopping short of it."""
+        d = self.delegate
+        # The width Qt lays a wrapping list out in: the whole view less room for a scroll bar
+        # (kept whether or not one is showing). A row wraps once it reaches the last pixel.
+        bar = self.style().pixelMetric(QStyle.PixelMetric.PM_ScrollBarExtent, None, self.verticalScrollBar())
+        width = self.maximumViewportSize().width() - bar - 1
+        cols = max(1, (width + self.GAP) // (d.W + self.GAP))
+        size = QSize(max(d.W, width // cols), d.H + d.TEXT_H + self.ROW_GAP)
+        if size != self.gridSize():
+            self.setGridSize(size)
 
 
 FORMAT_LABELS = {

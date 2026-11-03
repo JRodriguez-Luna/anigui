@@ -260,7 +260,7 @@ class SearchPage(QWidget):
                                            f"No results for “{query}”. Try the Japanese title or fewer words."))
             self.stack.setCurrentWidget(self.empty)
             return
-        self.status.setText(f"{len(results)} results for “{query}”")
+        self.status.setText(f"{len(results)} result{'' if len(results) == 1 else 's'} for “{query}”")
         self.grid.cards.set_cards(decorate_all(self.ctx, [
             Card(key=f"show:{r.anime_id}", title=r.title, cover=r.poster, payload=r) for r in results
         ]))

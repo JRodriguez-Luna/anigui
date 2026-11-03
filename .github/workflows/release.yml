@@ -271,10 +271,15 @@ jobs:
               ok = m.mature is want
               print(f"::{'notice' if ok else 'warning'} title=18+::{'PASS' if ok else 'CHECK'} {name}: "
                     f"18+={m.mature} (expected {want}), content={list(m.notes)}")
+          adult = [m for m in al.search("Nukitashi THE ANIMATION") if m.anilist_id == 174188]
+          ok = bool(adult) and adult[0].maturity.mature
+          print(f"::{'notice' if ok else 'warning'} title=18+::{'PASS' if ok else 'CHECK'} Nukitashi "
+                f"(AniList adult entry) found by title search and 18+: {ok}")
           from core.fillers import FillerGuide
           guide = FillerGuide()
           numbers = [str(n) for n in range(1, 221)]
           for name, titles, want in (("Naruto", ["Naruto"], 60), ("Naruto Shippuden", ["Naruto: Shippuden"], 100),
+                                     ("One Piece", ["ONE PIECE"], 80),
                                      ("Frieren", ["Frieren: Beyond Journey's End", "Sousou no Frieren"], 0)):
               info = guide.for_titles(titles)
               count = len(info.kinds)

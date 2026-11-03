@@ -62,6 +62,7 @@ class MainWindow(QMainWindow):
         sidebar.setFixedWidth(208)
         self.nav = QButtonGroup(self)
         self.nav_buttons: dict[QWidget, QPushButton] = {}
+        self.nav_keys: list[tuple[str, QWidget, str]] = []   # for the Go menu
         side = QVBoxLayout(sidebar)
         side.setContentsMargins(14, 26, 14, 16)
         side.setSpacing(4)
@@ -74,9 +75,13 @@ class MainWindow(QMainWindow):
                               cursor=Qt.CursorShape.PointingHandCursor)
             btn.setIcon(nav_icon(icon))
             btn.setIconSize(QSize(18, 18))
+            # toggled covers VoiceOver and other accessibility presses, which check the
+            # button without clicking it; clicked covers clicking the already-checked one
+            # (e.g. Home while a show page is open). go() ignores the second call.
+            btn.toggled.connect(lambda on, p=page: on and self.go(p))
             btn.clicked.connect(lambda _c=False, p=page: self.go(p))
             btn.setToolTip(QKeySequence(keys).toString(QKeySequence.SequenceFormat.NativeText))
-            QShortcut(QKeySequence(keys), self, activated=lambda p=page: self.go(p))
+            self.nav_keys.append((label, page, keys))
             self.nav.addButton(btn)
             self.nav_buttons[page] = btn
             side.addWidget(btn)
@@ -130,7 +135,6 @@ class MainWindow(QMainWindow):
         self.playback.notice.connect(lambda text, err: self.toast.show_message(text, error=err))
 
         QShortcut(QKeySequence.StandardKey.Find, self, activated=lambda: (self.go(self.search), self.search.focus_search()))
-        QShortcut(QKeySequence.StandardKey.Back, self, activated=self.back)
         QShortcut(QKeySequence("Esc"), self, activated=lambda: self.stack.currentWidget() is self.detail and self.back())
 
         self.alerts.changed.connect(self.home.refresh_local)
@@ -220,6 +224,21 @@ class MainWindow(QMainWindow):
         for action in (whats_new, updates_action, settings):
             app_menu.addAction(action)
         self.settings_action = settings
+
+        go = bar.addMenu("Go")
+        self.go_actions: dict[str, QAction] = {}
+        for label, page, keys in self.nav_keys:
+            action = QAction(label, self, shortcut=QKeySequence(keys))
+            action.triggered.connect(lambda _c=False, p=page: self.go(p))
+            go.addAction(action)
+            self.go_actions[label] = action
+        go.addSeparator()
+        back = QAction("Back", self, shortcut=QKeySequence(QKeySequence.StandardKey.Back))
+        if back.shortcut().isEmpty():
+            back.setShortcut(QKeySequence("Ctrl+["))
+        back.triggered.connect(self.back)
+        go.addAction(back)
+        self.go_actions["Back"] = back
 
         history = bar.addMenu("History")
         clear = history.addAction("Clear Watch History…")

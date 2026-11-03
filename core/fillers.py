@@ -51,12 +51,17 @@ def normalize(title: str) -> str:
 
 def parse_shows(page: str) -> dict[str, str]:
     """{normalized name: slug} from the show index. 'Bleach: TYBW (Sennen Kessen-hen)' gives
-    both the full name and each half."""
+    both the full name and each half. A show's own name always wins over another show's
+    half: 'One Pace (One Piece)' is a fan edit, so "One Piece" must stay One Piece."""
+    links = [(slug, html.unescape(name).strip()) for slug, name in _SHOW_LINK.findall(page)]
     names: dict[str, str] = {}
-    for slug, name in _SHOW_LINK.findall(page):
-        name = html.unescape(name).strip()
+    for slug, name in links:
+        key = normalize(name)
+        if key and key not in names:
+            names[key] = slug
+    for slug, name in links:
         main, _, alt = name.partition(" (")
-        for candidate in (name, main, alt.rstrip(")")):
+        for candidate in (main, alt.rstrip(")")):
             key = normalize(candidate)
             if key and key not in names:
                 names[key] = slug
