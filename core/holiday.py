@@ -155,10 +155,11 @@ def challenge(progress, watch_days, christmas_keys: set[tuple[str, str]], first_
 
     progress: Progress rows; watch_days: ISO days with any watching; christmas_keys: the
     (anime_id, episode) pairs that are Christmas episodes; first_seen: anime_id -> when you
-    first watched it. Only this season counts (Nov 1 to Jan 1)."""
+    first watched it. Only December 1 to January 1 counts, so nothing is earned before the
+    Holidays page opens (even with the theme on early in November)."""
     today = today or dt.date.today()
     year = season_year(today)
-    season_start = dt.datetime(year, 11, 1).timestamp()
+    season_start = dt.datetime(year, 12, 1).timestamp()
     season_end = dt.datetime(year + 1, 1, 2).timestamp()
     start, end = challenge_window(year)
     lo, hi = dt.datetime.combine(start, dt.time()).timestamp(), dt.datetime.combine(end, dt.time.max).timestamp()
@@ -166,7 +167,7 @@ def challenge(progress, watch_days, christmas_keys: set[tuple[str, str]], first_
     in_window = [p for p in done if lo <= p.updated_at <= hi]
     count = min(CHALLENGE_GOAL, len(in_window))
 
-    days = sorted({d for d in watch_days if f"{year}-11-01" <= d <= f"{year + 1}-01-01"})
+    days = sorted({d for d in watch_days if f"{year}-12-01" <= d <= f"{year + 1}-01-01"})
     streak = best = 0
     prev = None
     for d in days:
@@ -186,6 +187,13 @@ def challenge(progress, watch_days, christmas_keys: set[tuple[str, str]], first_
         Badge("twelve", "⭐", "12 Days", f"Finish {CHALLENGE_GOAL} episodes from Dec 14 to 25", count >= CHALLENGE_GOAL),
     ]
     return count, badges
+
+
+def holidays_open(today: dt.date | None = None) -> bool:
+    """The advent calendar, the challenge and the badges: December 1 through New Year's Day.
+    Before that the Holidays page says Coming soon."""
+    today = today or dt.date.today()
+    return today.month == 12 or (today.month == 1 and today.day == 1)
 
 
 # -- once-a-year moments ---------------------------------------------------------------------------------

@@ -358,3 +358,15 @@ def test_searches_are_plain_ascii():
     assert normalize_query("Polar Bear's Café") == "Polar Bear's Cafe"
     assert normalize_query("Lucky☆Star") == "Lucky Star"
     assert normalize_query("Pokémon: Shōgun") == "Pokemon Shogun"
+
+
+def test_nothing_is_earned_before_december():
+    at = lambda m, d, h=20: dt.datetime(2026, m, d, h)  # noqa: E731
+    november = [_p("a", "1", at(11, 20, 2)), _p("a", "2", at(11, 21)), _p("a", "3", at(11, 22))]
+    days = {"2026-11-20", "2026-11-21", "2026-11-22"}
+    count, badges = holiday.challenge(november, days, {("a", "1")}, {"a": at(11, 20).timestamp()},
+                                      dt.date(2026, 11, 28))
+    assert count == 0 and not any(b.earned for b in badges)
+    assert not holiday.holidays_open(dt.date(2026, 11, 30))
+    assert holiday.holidays_open(dt.date(2026, 12, 1)) and holiday.holidays_open(dt.date(2027, 1, 1))
+    assert not holiday.holidays_open(dt.date(2027, 1, 2))
