@@ -11,10 +11,11 @@ from __future__ import annotations
 
 import math
 import random
+import sys
 import time
 
 from PySide6.QtCore import QPoint, QPointF, QRect, QRectF, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QCursor, QFont, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QColor, QCursor, QFont, QPainter, QPainterPath, QPen, QSurfaceFormat
 from PySide6.QtWidgets import QMenu, QWidget
 
 from core import libmpv
@@ -68,6 +69,11 @@ class VideoView(QOpenGLWidget):
 
     def __init__(self, options: dict, url: str, tracks: list, parent=None) -> None:
         super().__init__(parent)
+        if sys.platform == "darwin":            # mpv draws best with a modern (core) OpenGL context
+            fmt = QSurfaceFormat()
+            fmt.setVersion(4, 1)
+            fmt.setProfile(QSurfaceFormat.OpenGLContextProfile.CoreProfile)
+            self.setFormat(fmt)
         self.mpv = libmpv.Mpv(options)          # opens the control socket right away
         self.url, self.tracks = url, list(tracks)
         self.renderer: libmpv.GlRenderer | None = None
