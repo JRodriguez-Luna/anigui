@@ -265,6 +265,9 @@ class MainWindow(QMainWindow):
             self.home.refresh_local()
         elif key == "import_history":
             self._import_terminal_history()
+        elif key == "maturity_found":          # saved shows just got their 18+ status
+            self.home.refresh_local()
+            self.library.refresh()
         elif key == "hide_mature":
             self.home.apply_content_filter()
             self.search.apply_content_filter()

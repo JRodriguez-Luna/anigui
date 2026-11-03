@@ -172,7 +172,12 @@ class HomePage(QScrollArea):
         if not self.ctx.catalog.maturity_unknown(shows):
             return
         self.ctx.runner.submit(self.ctx.catalog.backfill_maturity, shows,
-                               on_done=lambda found: found and self.refresh_local(), group="home-maturity")
+                               on_done=self._maturity_found, group="home-maturity")
+
+    def _maturity_found(self, found: int) -> None:
+        # Tell every page (My List may be showing the same shows), not just this one.
+        if found:
+            self.ctx.events.changed.emit("maturity_found", found)
 
     def apply_content_filter(self) -> None:
         """Hide 18+ shows changed: redo the rows from what's already loaded."""

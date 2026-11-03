@@ -355,7 +355,10 @@ def test_meter_draws_the_18_plus_line():
     meter.resize(240, meter.height())
     img = QImage(meter.size(), QImage.Format.Format_ARGB32)
     img.fill(0)
-    meter.render(img)
+    from PySide6.QtCore import QPoint
+    from PySide6.QtGui import QRegion
+    from PySide6.QtWidgets import QWidget
+    meter.render(img, QPoint(), QRegion(), QWidget.RenderFlag.DrawChildren)   # just the meter, no background
     line_x = int(240 * 70 / 100)
     assert QImage.pixelColor(img, line_x, 1).lightness() > 200    # the white 18+ mark sticks out above the bar
     assert QImage.pixelColor(img, 10, 1).alpha() == 0              # nothing else up there

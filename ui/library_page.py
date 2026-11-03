@@ -49,7 +49,8 @@ class LibraryPage(QWidget):
         self.grid.cards.set_cards(decorate_all(self.ctx, [show_card(s) for s in shows]))
         if self.ctx.catalog.maturity_unknown(shows):
             self.ctx.runner.submit(self.ctx.catalog.backfill_maturity, shows,
-                                   on_done=lambda found: found and self.refresh(), group="library-maturity")
+                                   on_done=lambda found: found and self.ctx.events.changed.emit("maturity_found", found),
+                                   group="library-maturity")
         self.stack.setCurrentWidget(self.grid if shows else self.empty)
         for show in shows:
             if not show.poster:
