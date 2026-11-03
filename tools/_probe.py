@@ -1,18 +1,26 @@
 """Temporary CI probe (removed in the next commit)."""
-import re, sys
+import os, subprocess, sys
 sys.path.insert(0, ".")
-from core.hianime import HianimeClient, BASE_URL
+from core.hianime import HianimeClient
+from core.anilist import AniListClient
+from core.stills import EpisodeStills
+def note(m): print(f"::notice title=probe::{m}"[:3000])
+env = {**os.environ, "ANI_CLI_PLAYER": "debug", "ANI_CLI_HIST_DIR": "/tmp/h"}
+for query, ep, mode in (("my hero academia season 5", "1", "dub"), ("my hero academia season 5", "2", "dub"),
+                        ("my hero academia season 6", "1", "dub"), ("my hero academia season 6", "4", "dub")):
+    args = ["ani-cli", "-S", "1", "-e", ep] + (["--dub"] if mode == "dub" else []) + [query]
+    p = subprocess.run(args, capture_output=True, text=True, timeout=120, env=env)
+    out = (p.stdout + " | ERR: " + p.stderr).replace("\n", " ")
+    note(f"{query} ep {ep} {mode}: rc={p.returncode} {out[:900]}")
 c = HianimeClient()
-def note(m): print(f"::notice title=probe::{m}")
-for q in ("my hero academia season 5", "my hero academia season 6", "frieren"):
-    rs = [r for r in c.search(q)][:3]
-    note(f"search {q}: {[r.anime_id for r in rs]}")
-    r = rs[0]
-    eps = c.episodes(r.anime_id)
-    for ep in eps[:3]:
-        f = c.fetch(f"{BASE_URL}/api/theme/episode/servers?episodeId={ep.episode_id}")
-        body = f.body.replace('\\\\"', '"').replace('\\"', '"')
-        items = re.findall(r'server-item[^>]*?data-type="([^"]+)"[^>]*?data-server-name="([^"]+)"', body)
-        if not items:
-            items = re.findall(r'data-type="([^"]+)".{0,200}?data-server-name="([^"]+)"', body)
-        note(f"  {r.anime_id} ep {ep.number}: HTTP {f.status} servers {items} | {body[:200]!r}")
+al = AniListClient()
+eps = c.episodes("my-hero-academia-season-6-961")
+note("S6 hianime titles: " + " | ".join(f"{e.number}: {e.title}" for e in eps[:8]))
+m = [x for x in al.search("My Hero Academia Season 6", per_page=3)]
+note("S6 anilist: " + str([(x.anilist_id, x.mal_id, x.display_title) for x in m]))
+aid, mal = m[0].anilist_id, m[0].mal_id
+se = al.streaming_episodes(aid)
+note("S6 streamingEpisodes: " + " | ".join(t for t, _ in se[:8]))
+st = EpisodeStills(al)
+found = st.for_episodes(aid, mal, [(e.number, e.title) for e in eps[:8]])
+note("S6 stills: " + " | ".join(f"{k}: {v}" for k, v in sorted(found.items(), key=lambda kv: float(kv[0]))))
