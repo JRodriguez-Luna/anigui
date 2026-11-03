@@ -34,6 +34,7 @@ class EpisodeItem:
     hit: bool = False         # just jumped to
     kind: str | None = None   # "filler" | "recap" (Anime Filler List), None = story episode
     upcoming: str | None = None  # "Thu 9:30 PM · in 3d 4h": the next episode, not out yet
+    christmas: bool = False      # a Christmas episode (tagged while the holiday theme is on)
 
 
 class EpisodeModel(QAbstractListModel):
@@ -217,6 +218,8 @@ class EpisodeDelegate(QStyledItemDelegate):
 
         if item.kind in ("filler", "recap"):
             self._kind_badge(p, still, item.kind)
+        elif item.christmas and theme.HOLIDAY:
+            festive.christmas_tag(p, still)
 
         if hover and not item.busy:
             p.fillRect(still, QColor(0, 0, 0, 90))

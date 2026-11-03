@@ -227,6 +227,7 @@ class SweaterBand(QWidget):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setFixedHeight(64)
+        self.clear_left = 0          # room kept plain for the title
         self.hide()
 
     def paintEvent(self, _e) -> None:
@@ -249,6 +250,8 @@ class SweaterBand(QWidget):
         p.setPen(Qt.PenStyle.NoPen)
         for i, x in enumerate(range(14, int(r.width()), 56)):
             cy = r.height() / 2
+            if x < self.clear_left:
+                continue
             if i % 2 == 0:                       # a snowflake-ish diamond
                 d = QPainterPath()
                 d.moveTo(x, cy - 9)
@@ -440,3 +443,119 @@ class Fireworks(_Overlay):
         p.setPen(c)
         p.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, f"Happy New Year {self.year} ✨")
         p.end()
+
+
+class BowPop(_Overlay):
+    """A bow that pops out of the My List button when you add a show."""
+
+    MS = 760
+
+    def __init__(self, host: QWidget) -> None:
+        super().__init__(host, 16)
+        self.t = 0.0
+        self.at = QPointF()
+
+    def pop(self, at: QPointF) -> bool:
+        self.at = QPointF(at)
+        self.t = 0.0
+        return self.play()
+
+    def step(self) -> bool:
+        self.t += 16 / self.MS
+        return self.t < 1.0
+
+    def scale(self) -> float:
+        """Springs up past full size, then settles."""
+        t = min(1.0, self.t)
+        if t < 0.35:
+            return 1.25 * (t / 0.35)
+        return 1.25 - 0.25 * min(1.0, (t - 0.35) / 0.25)
+
+    def paintEvent(self, _e) -> None:
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        t = min(1.0, self.t)
+        p.setOpacity(1.0 if t < 0.7 else max(0.0, 1 - (t - 0.7) / 0.3))
+        s = self.scale()
+        p.translate(self.at.x(), self.at.y() - 26 * t)
+        p.scale(s, s)
+        p.setFont(theme.font(26))
+        p.drawText(QRectF(-24, -24, 48, 48), Qt.AlignmentFlag.AlignCenter, "🎀")
+        p.end()
+
+
+# -- Christmas Day ----------------------------------------------------------------------------------
+
+def first_name() -> str:
+    """The first word of the Mac account's full name ('' if there isn't one)."""
+    try:
+        import os
+        import pwd
+        full = (pwd.getpwuid(os.getuid()).pw_gecos or "").split(",")[0].strip()
+    except (ImportError, KeyError, OSError):
+        return ""
+    return full.split()[0] if full else ""
+
+
+def greeting_lines(name: str, seconds_this_year: float, year: int) -> tuple[str, str]:
+    from core.stats import hours_text
+    title = f"Merry Christmas, {name}! 🎄" if name else "Merry Christmas! 🎄"
+    if seconds_this_year >= 60:
+        body = (f"You've watched {hours_text(seconds_this_year)} of anime in {year}. "
+                "Thanks for spending some of it here. Enjoy the day!")
+    else:
+        body = "Thanks for being here this year. Enjoy the day!"
+    return title, body
+
+
+class ChristmasCard(QWidget):
+    """Once, on Christmas Day: a card over the window."""
+
+    closed = Signal()
+
+    def __init__(self, host: QWidget) -> None:
+        from PySide6.QtWidgets import QFrame, QPushButton, QVBoxLayout
+        super().__init__(host)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setObjectName("ChristmasScrim")
+        outer = QVBoxLayout(self)
+        outer.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.card = QFrame(objectName="ChristmasCard")
+        self.card.setFixedWidth(440)
+        col = QVBoxLayout(self.card)
+        col.setContentsMargins(30, 28, 30, 24)
+        col.setSpacing(10)
+        self.icon = QLabel("🎁", objectName="ChristmasIcon", alignment=Qt.AlignmentFlag.AlignCenter)
+        self.title = QLabel("", objectName="ChristmasTitle", alignment=Qt.AlignmentFlag.AlignCenter, wordWrap=True)
+        self.body = QLabel("", objectName="ChristmasBody", alignment=Qt.AlignmentFlag.AlignCenter, wordWrap=True)
+        self.ok = QPushButton("Thanks!", objectName="Primary", cursor=Qt.CursorShape.PointingHandCursor)
+        self.ok.clicked.connect(self.dismiss)
+        for w in (self.icon, self.title, self.body):
+            col.addWidget(w)
+        col.addSpacing(8)
+        col.addWidget(self.ok, alignment=Qt.AlignmentFlag.AlignCenter)
+        outer.addWidget(self.card)
+        self.hide()
+
+    def present(self, title: str, body: str) -> None:
+        self.title.setText(title)
+        self.body.setText(body)
+        self.setGeometry(self.parentWidget().rect())
+        self.show()
+        self.raise_()
+        self.ok.setFocus()
+
+    def dismiss(self) -> None:
+        self.hide()
+        self.closed.emit()
+
+    def keyPressEvent(self, event) -> None:
+        if event.key() in (Qt.Key.Key_Escape, Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            self.dismiss()
+        else:
+            super().keyPressEvent(event)
+
+    def mousePressEvent(self, event) -> None:
+        if not self.card.geometry().contains(event.position().toPoint()):
+            self.dismiss()
+        super().mousePressEvent(event)

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import random
+
 from PySide6.QtCore import QPoint, Qt, QTimer, Signal
 from PySide6.QtWidgets import QMenu, QMessageBox, QScrollArea, QVBoxLayout, QWidget
 
@@ -9,11 +11,12 @@ from core import holiday
 from core.anilist import current_season
 from core.store import ContinueItem, NewEpisodes, Show
 
-from .mature import decorate_all, visible
+from .mature import decorate_all, flags_for, hiding, visible
 from .cards import Card, CardRow, media_card
 from .context import AppContext
 from . import theme
 from .hero import HeroBanner
+from .festive import Sleigh
 from .holiday import HolidayBanner, SnowLayer
 
 MAX_COVER_LOOKUPS = 12
@@ -49,6 +52,7 @@ class HomePage(QScrollArea):
     playItem = Signal(object)   # Media (open details and start playing)
     historyChanged = Signal()
     holidayAnswered = Signal(bool)   # November's banner: Turn on now (True) / Wait (False)
+    surprise = Signal(object, object)  # Show, episode (None: wherever you're up to)
 
     def __init__(self, ctx: AppContext, parent=None) -> None:
         super().__init__(parent)
@@ -69,6 +73,10 @@ class HomePage(QScrollArea):
         self.clear_btn = self.continue_row.add_action("Clear", "Clear your watch history")
         self.clear_btn.clicked.connect(self.confirm_clear_history)
         self.continue_row.cardMenuRequested.connect(self._continue_menu)
+        self.surprise_btn = self.continue_row.add_action("🎁 Surprise me", "Play something from a show you're watching or saved")
+        self.surprise_btn.setObjectName("SurpriseButton")
+        self.surprise_btn.clicked.connect(self.surprise_me)
+        self.surprise_btn.setVisible(False)
         self.trending_row = CardRow("Trending Now", ctx.images)
         self.season_row = CardRow(f"{season.title()} {year}", ctx.images)
         self.library_row = CardRow("My List", ctx.images)
@@ -80,6 +88,7 @@ class HomePage(QScrollArea):
         self.holiday_banner.turnOn.connect(lambda: self.holidayAnswered.emit(True))
         self.holiday_banner.wait.connect(lambda: self.holidayAnswered.emit(False))
         self.hero_snow: SnowLayer | None = None
+        self.sleigh = Sleigh(self.hero)
         self._xmas = None
 
         rows = QVBoxLayout()
@@ -196,9 +205,34 @@ class HomePage(QScrollArea):
 
     # -- holiday theme --------------------------------------------------------------------
 
+    def surprise_choices(self) -> list[Show]:
+        """Shows you're watching or saved, minus 18+ ones while Hide 18+ shows is on (unless
+        you said to show that one anyway)."""
+        shows: dict[str, Show] = {}
+        for item in self.ctx.store.continue_watching(limit=40):
+            shows[item.show.anime_id] = item.show
+        for show in self.ctx.store.library():
+            shows.setdefault(show.anime_id, show)
+
+        def ok(show: Show) -> bool:
+            mature, _notes, allowed, _id = flags_for(self.ctx, show)
+            return not (mature and hiding(self.ctx) and not allowed)
+
+        return [s for s in shows.values() if ok(s)]
+
+    def surprise_me(self) -> Show | None:
+        choices = self.surprise_choices()
+        if not choices:
+            self._toast("Save a show or start one, and I'll pick something for you 🎁")
+            return None
+        show = random.choice(choices)
+        self.surprise.emit(show, None)
+        return show
+
     def set_holiday(self, on: bool, today=None) -> None:
         """Snow on the banner and the Christmas shelf while the theme is on; November's
         'theme is ready' banner once a year before it starts."""
+        self.surprise_btn.setVisible(on)
         if on:
             if self.hero_snow is None:
                 self.hero_snow = SnowLayer(self.hero, settle=True)

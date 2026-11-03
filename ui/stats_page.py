@@ -14,6 +14,7 @@ from core.stats import Stats, hours_text
 from . import theme
 from .cards import Card, CardRow
 from .context import AppContext
+from .festive import SweaterBand
 
 
 class StatTile(QFrame):
@@ -166,6 +167,15 @@ class GenreBars(QWidget):
 class StatsPage(QScrollArea):
     openItem = Signal(object)  # Show
 
+    def set_holiday(self, on: bool) -> None:
+        """The title sits on a knitted sweater band while the holiday theme is on."""
+        self.sweater.setVisible(on)
+        self.title.setProperty("sweater", on)
+        self.title.setContentsMargins(22 if on else 0, 0, 0, 0)
+        self.title.style().unpolish(self.title)
+        self.title.style().polish(self.title)
+        self.sweater.clear_left = self.title.sizeHint().width() + 30
+
     def __init__(self, ctx: AppContext, parent=None) -> None:
         super().__init__(parent)
         self.ctx = ctx
@@ -175,6 +185,13 @@ class StatsPage(QScrollArea):
         self.stats: Stats | None = None
 
         title = QLabel("Your Stats", objectName="SectionTitle")
+        self.title = title
+        self.sweater = SweaterBand()            # while the holiday theme is on
+        self.title_box = QWidget()
+        tb = QGridLayout(self.title_box)
+        tb.setContentsMargins(0, 0, 0, 0)
+        tb.addWidget(self.sweater, 0, 0)
+        tb.addWidget(title, 0, 0, Qt.AlignmentFlag.AlignVCenter)
         self.subtitle = QLabel("", objectName="Muted", wordWrap=True)
         self.empty = QLabel("Nothing yet. Watch an episode and your stats start here.", objectName="EmptyState")
 
@@ -233,7 +250,7 @@ class StatsPage(QScrollArea):
         col = QVBoxLayout(body)
         col.setContentsMargins(44, 36, 44, 40)
         col.setSpacing(14)
-        col.addWidget(title)
+        col.addWidget(self.title_box)
         col.addWidget(self.subtitle)
         col.addWidget(self.empty)
         col.addWidget(self.content)

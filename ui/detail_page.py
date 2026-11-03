@@ -4,18 +4,21 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import QPointF, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QButtonGroup, QHBoxLayout, QLabel, QPushButton, QScrollArea, QVBoxLayout, QWidget,
 )
 
+from core import holiday
 from core.anilist import Media
 from core.hianime import Episode
 from core.seasons import Series
 from core.store import episode_key
 
 from .cards import CardRow, media_card
+from . import theme
 from .content_notes import ContentLine
+from .festive import BowPop
 from .motion import fade_in
 from .mature import confirm_open, decorate_all, hiding, visible
 from .context import AppContext
@@ -79,7 +82,7 @@ class DetailPage(QScrollArea):
         self.media: Media | None = None
         self.episodes: list[Episode] = []
         self.play_target: str | None = None
-        self.autoplay = False
+        self.autoplay: bool | str = False   # True: Up Next; an episode number: that one
         self._related_for: int | None = None
         self.pending_mature_checked = False   # set by the window: did opening already check 18+?
         self.mature_checked = False
@@ -117,6 +120,7 @@ class DetailPage(QScrollArea):
         self.play_btn.clicked.connect(lambda: self.play_target and self.play(self.play_target))
         self.list_btn = QPushButton("+  My List", objectName="Glass", cursor=Qt.CursorShape.PointingHandCursor)
         self.list_btn.clicked.connect(self._toggle_library)
+        self.bow = BowPop(self)
         self.sub_btn = QPushButton("Sub", objectName="Toggle", checkable=True, cursor=Qt.CursorShape.PointingHandCursor)
         self.dub_btn = QPushButton("Dub", objectName="Toggle", checkable=True, cursor=Qt.CursorShape.PointingHandCursor)
         self.mode = QButtonGroup(self)
@@ -251,7 +255,7 @@ class DetailPage(QScrollArea):
 
     # -- opening ------------------------------------------------------------------------
 
-    def open_media(self, media: Media, autoplay: bool = False) -> None:
+    def open_media(self, media: Media, autoplay: bool | str = False) -> None:
         """From an AniList card: find it on hianime first."""
         self._reset(autoplay)
         self.current_item = media
@@ -264,7 +268,7 @@ class DetailPage(QScrollArea):
             on_error=lambda msg: self._on_load_error(gen, msg), group="detail-find",
         )
 
-    def open_show(self, anime_id: str, title: str, poster: str | None = None, autoplay: bool = False) -> None:
+    def open_show(self, anime_id: str, title: str, poster: str | None = None, autoplay: bool | str = False) -> None:
         """From search, history or My List: we already know the hianime id."""
         self._reset(autoplay)
         self.current_item = (anime_id, title, poster)
@@ -279,7 +283,7 @@ class DetailPage(QScrollArea):
             group="detail-enrich",
         )
 
-    def _reset(self, autoplay: bool) -> None:
+    def _reset(self, autoplay: bool | str) -> None:
         self.gen += 1
         self.anime_id, self.media, self.episodes, self.play_target = None, None, [], None
         self.autoplay = autoplay
@@ -514,7 +518,10 @@ class DetailPage(QScrollArea):
         self._refresh_episode_states()
         self._load_stills()
         self._load_fillers()
-        if self.autoplay and self.play_target:
+        if isinstance(self.autoplay, str) and any(ep.number == self.autoplay for ep in episodes):
+            number, self.autoplay = self.autoplay, False
+            self.play(number)
+        elif self.autoplay and self.play_target:
             self.autoplay = False
             self.play(self.play_target)
 
@@ -547,6 +554,7 @@ class DetailPage(QScrollArea):
         if len(pages) > 1:
             self.pager.set_pages([label for _a, _b, label in pages], self.page)
         hide = bool(skippable) and self.ctx.pref("hide_fillers")
+        xmas = holiday.christmas_episodes_for(self.media.anilist_id if self.media else None)
         items = []
         for ep in self.episodes[first:last]:
             p = progress.get(ep.number)
@@ -559,6 +567,7 @@ class DetailPage(QScrollArea):
                 still=self.stills.get(ep.number),
                 hit=ep.number == self.jumped_to,
                 kind=fillers.kind(ep.number) if fillers else None,
+                christmas=ep.number in xmas,
             )
             if hide and item.kind and not (item.up_next or item.playing or item.hit):
                 continue   # Hide fillers (but never the episode you're on or just jumped to)
@@ -677,9 +686,14 @@ class DetailPage(QScrollArea):
         if not self.anime_id:
             return
         show = self.ctx.store.get_show(self.anime_id)
-        self.ctx.store.set_in_library(self.anime_id, not (show and show.in_library))
+        adding = not (show and show.in_library)
+        self.ctx.store.set_in_library(self.anime_id, adding)
         self._refresh_library_button()
         self.libraryChanged.emit()
+        if adding and theme.HOLIDAY:
+            self.toast.emit("🎁 Added to My List", False)
+            btn = self.list_btn
+            self.bow.pop(QPointF(btn.mapTo(self, btn.rect().center())))
 
     def _show_message(self, text: str) -> None:
         self.message.setText(text)

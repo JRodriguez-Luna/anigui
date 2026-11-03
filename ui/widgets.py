@@ -62,7 +62,8 @@ class Toast(QLabel):
         self._timer.timeout.connect(lambda: fade_out(self, 220, drop=10))
 
     def show_message(self, text: str, error: bool = False, ms: int = 4500) -> None:
-        self.setProperty("kind", "error" if error else "info")
+        festive = theme.HOLIDAY and not error
+        self.setProperty("kind", "error" if error else ("holiday" if festive else "info"))
         self.style().unpolish(self)
         self.style().polish(self)
         self.setText(text)

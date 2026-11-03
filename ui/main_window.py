@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout, QWidget,
 )
 
+from core import holiday
 from core.anilist import Media
 from core import __version__
 from core import self_update, setup, updates
@@ -22,7 +23,10 @@ from .detail_page import DetailPage
 from .home_page import HomePage
 from .icons import nav_icon
 from . import theme
+from .festive import ChristmasCard, CountdownChip, Fireworks, Flurry, SidebarLights, first_name, greeting_lines
+from .motion import reduce_motion
 from .holiday import Brand, holiday_icon
+from .holidays_page import HolidaysPage
 from .holiday import is_on as holiday_on
 from .motion import crossfade
 from .library_page import LibraryPage
@@ -56,7 +60,8 @@ class MainWindow(QMainWindow):
         self.detail = DetailPage(ctx, self.playback)
 
         self.stack = QStackedWidget()
-        for page in (self.home, self.search, self.library, self.calendar, self.stats, self.detail):
+        self.holidays = HolidaysPage(ctx)          # in the sidebar while the holiday theme is on
+        for page in (self.home, self.search, self.library, self.calendar, self.stats, self.detail, self.holidays):
             self.stack.addWidget(page)
         self.history: list[QWidget] = []
         self.show_history: list = []   # earlier shows when one show page leads to another
@@ -73,7 +78,9 @@ class MainWindow(QMainWindow):
         self.brand = Brand()
         side.addWidget(self.brand)
         for label, icon, page, keys in (("Home", "home", self.home, "Ctrl+1"), ("Search", "search", self.search, "Ctrl+2"),
-                                        ("My List", "heart", self.library, "Ctrl+3"), ("Stats", "stats", self.stats, "Ctrl+4"),
+                                        ("My List", "heart", self.library, "Ctrl+3"),
+                                        ("Holidays", "tree", self.holidays, "Ctrl+6"),
+                                        ("Stats", "stats", self.stats, "Ctrl+4"),
                                         ("Calendar", "calendar", self.calendar, "Ctrl+5")):
             btn = QPushButton(f"  {label}", objectName="NavButton", checkable=True,
                               cursor=Qt.CursorShape.PointingHandCursor)
@@ -90,6 +97,10 @@ class MainWindow(QMainWindow):
             self.nav_buttons[page] = btn
             side.addWidget(btn)
         side.addStretch(1)
+        self.countdown = CountdownChip()
+        side.addWidget(self.countdown)
+        side.addSpacing(6)
+        self.lights = SidebarLights(sidebar)
         self.settings_btn = QPushButton("  Settings", objectName="NavButton", cursor=Qt.CursorShape.PointingHandCursor)
         self.settings_btn.setIcon(nav_icon("settings"))
         self.settings_btn.setIconSize(QSize(18, 18))
@@ -120,10 +131,21 @@ class MainWindow(QMainWindow):
         row.addWidget(content, 1)
         self.setCentralWidget(central)
         self.toast = Toast(central)
+        self.flurry = Flurry(central)
+        self.fireworks = Fireworks(central)
+        self.christmas_card = ChristmasCard(central)
+        self.fireworks.raise_()
+        self.countdown.clicked.connect(self.flurry.play)
+        self._midnight = QTimer(self, singleShot=True)       # New Year's Eve, while the app is open
+        self._midnight.timeout.connect(self._new_year)
+        for w in (self.nav_buttons[self.holidays], self.countdown):
+            w.setVisible(False)
 
         # Wiring
-        for page in (self.home, self.search, self.library, self.calendar, self.stats):
+        for page in (self.home, self.search, self.library, self.calendar, self.stats, self.holidays):
             page.openItem.connect(self.open_item)
+        self.holidays.playEpisode.connect(lambda media, episode: self.open_item(media, autoplay=episode))
+        self.home.surprise.connect(lambda item, episode: self.open_item(item, autoplay=episode or True))
         self.calendar.libraryChanged.connect(self._local_changed)
         self.calendar.toast.connect(lambda text, err: self.toast.show_message(text, error=err))
         self.home.playItem.connect(lambda media: self.open_item(media, autoplay=True))
@@ -194,7 +216,7 @@ class MainWindow(QMainWindow):
                 return
         self.go(self.home, remember=False)
 
-    def open_item(self, item, autoplay: bool = False) -> None:
+    def open_item(self, item, autoplay: bool | str = False) -> None:
         if not confirm_open(self.ctx, item, self, ask=self.mature_ask):
             return
         self.detail.pending_mature_checked = status_known(self.ctx, item)
@@ -203,7 +225,7 @@ class MainWindow(QMainWindow):
             del self.show_history[:-30]
         self._reopen(item, autoplay)
 
-    def _reopen(self, item, autoplay: bool = False) -> None:
+    def _reopen(self, item, autoplay: bool | str = False) -> None:
         if self.stack.currentWidget() is self.detail:
             crossfade(self.stack, slide_in=self.detail)   # one show page to another
         if isinstance(item, tuple):  # (anime_id, title, poster) saved by the show page
@@ -330,11 +352,57 @@ class MainWindow(QMainWindow):
         self.brand.refresh()
         self._set_footer()
         self.home.set_holiday(on, today)
+        self.lights.set_on(on)
+        self.countdown.setVisible(on)
+        self.countdown.refresh(today)
+        holidays_btn = self.nav_buttons[self.holidays]
+        holidays_btn.setVisible(on)
+        self.go_actions["Holidays"].setVisible(on)
+        if not on and self.stack.currentWidget() is self.holidays:
+            self.go(self.home, remember=False)
+        self.holidays.today = today
+        self.stats.set_holiday(on)
+        if on:
+            self._big_days(today)
+
+    def _big_days(self, today=None) -> None:
+        """Once-a-year moments: the Christmas card and the New Year's fireworks. And Santa's
+        sleigh over Home, once a day."""
+        import datetime as dt
+        today = today or dt.date.today()
+        if self.ctx.pref("sleigh_day", "") != today.isoformat() and not reduce_motion():
+            self.ctx.set_pref("sleigh_day", today.isoformat())
+            QTimer.singleShot(2500, lambda: self.stack.currentWidget() is self.home and self.home.sleigh.play())
+        if holiday.is_christmas(today) and str(self.ctx.pref("christmas_card", "")) != str(today.year):
+            self.ctx.set_pref("christmas_card", str(today.year))
+            QTimer.singleShot(900, lambda: self.show_christmas_card(today))
+        if holiday.is_new_year(today) and str(self.ctx.pref("fireworks_year", "")) != str(today.year):
+            QTimer.singleShot(900, lambda: self._new_year(today))
+        if today.month == 12 and today.day == 31:
+            midnight = dt.datetime.combine(today + dt.timedelta(days=1), dt.time())
+            self._midnight.start(max(1000, int((midnight - dt.datetime.now()).total_seconds() * 1000) + 1000))
+
+    def show_christmas_card(self, today=None) -> None:
+        import datetime as dt
+        today = today or dt.date.today()
+        year = str(today.year)
+        seconds = sum(sec for day, _a, _e, sec in self.ctx.store.watch_log() if str(day).startswith(year))
+        self.christmas_card.present(*greeting_lines(first_name(), seconds, today.year))
+        self.flurry.play()
+
+    def _new_year(self, today=None) -> None:
+        import datetime as dt
+        today = today or dt.date.today()
+        if not holiday.is_new_year(today) or not theme.HOLIDAY:
+            return
+        self.ctx.set_pref("fireworks_year", str(today.year))
+        self.apply_holiday(today)
+        self.fireworks.play(today.year)
 
     def _set_footer(self) -> None:
         ani_cli = self._footer_ani_cli
         text = f"AniGUI {__version__}" + (f"  ·  ani-cli {ani_cli}" if ani_cli else "")
-        self.footer.setText(text + ("\nHappy holidays ❄" if theme.HOLIDAY else ""))
+        self.footer.setText(text)
 
     # -- new episodes ---------------------------------------------------------------------
 

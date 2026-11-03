@@ -54,6 +54,19 @@ def _path(kind: str) -> QPainterPath:
             p.lineTo(x, 5)
         for x, y in ((6, 10.3), (9, 10.3), (12, 10.3), (6, 13), (9, 13)):
             p.addEllipse(QPointF(x, y), 0.45, 0.45)
+    elif kind == "tree":            # the Holidays page
+        p.moveTo(9, 2)
+        p.lineTo(13, 7.2)
+        p.lineTo(11, 7.2)
+        p.lineTo(14.5, 11.6)
+        p.lineTo(3.5, 11.6)
+        p.lineTo(7, 7.2)
+        p.lineTo(5, 7.2)
+        p.closeSubpath()
+        p.moveTo(9, 11.6)
+        p.lineTo(9, 15.5)
+        p.moveTo(6.5, 15.5)
+        p.lineTo(11.5, 15.5)
     elif kind == "settings":
         cx, cy = 9.0, 9.0
         for i in range(8):  # eight short teeth around a ring
@@ -91,4 +104,4 @@ def nav_icon(kind: str) -> QIcon:
     return icon
 
 
-KINDS = ("home", "search", "heart", "stats", "calendar", "settings")
+KINDS = ("home", "search", "heart", "tree", "stats", "calendar", "settings")

@@ -5,6 +5,7 @@ shows you watch."""
 from __future__ import annotations
 
 import datetime as dt
+from dataclasses import replace
 
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QPainter
@@ -18,7 +19,7 @@ from core.anilist import Media
 from . import festive, theme
 from .cards import Card, CardRow
 from .context import AppContext
-from .mature import decorate_all, visible
+from .mature import decorate, visible
 
 
 class CaneBar(QWidget):
@@ -290,7 +291,9 @@ class HolidaysPage(QScrollArea):
                               badge=f"EP {e.episode}", progress=1.0 if done and done.completed else None,
                               payload=(media, e.episode)))
         shown = [c for c in cards if c.payload[0] in visible(self.ctx, [c.payload[0]])[0]]
-        self.yours.set_cards(decorate_all(self.ctx, shown))
+        # (the 18+ badge goes by the show; the payload also carries the episode)
+        shown = [replace(decorate(self.ctx, replace(c, payload=c.payload[0])), payload=c.payload) for c in shown]
+        self.yours.set_cards(shown)
 
     def showEvent(self, event) -> None:
         super().showEvent(event)

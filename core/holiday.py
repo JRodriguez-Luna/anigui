@@ -47,20 +47,20 @@ def offer_early(mode: str, seen_year: str, today: dt.date | None = None) -> bool
 
 
 # The Christmas shelf. AniList has no Christmas tag, so these are hand-picked: well-known
-# anime with a Christmas movie or a memorable Christmas episode (AniList ids, in order).
+# anime with a Christmas movie or a Christmas episode (in CHRISTMAS_EPISODES below).
 CHRISTMAS_IDS = (
     759,      # Tokyo Godfathers
     4224,     # Toradora!
     5680,     # K-ON!
-    112641,   # Kaguya-sama: Love is War? (season 2)
     98444,    # Laid-Back Camp
-    133965,   # Komi Can't Communicate
     11757,    # Sword Art Online
-    853,      # Ouran High School Host Club
     6045,     # Kimi ni Todoke: From Me to You
     232,      # Cardcaptor Sakura
-    2026,     # Hayate the Combat Butler
     918,      # Gintama
+    99578,    # Wotakoi: Love is Hard for Otaku
+    13759,    # The Pet Girl of Sakurasou
+    20812,    # SHIROBAKO
+    1887,     # Lucky☆Star
 )
 
 
@@ -74,8 +74,34 @@ class XmasEpisode:
     title: str            # the episode's own title
 
 
-# Checked against the episode titles on Kitsu (see .github/workflows/release.yml's live check).
-CHRISTMAS_EPISODES: tuple[XmasEpisode, ...] = ()
+# One per advent door, Dec 1 to 24. Each was checked against the episode's own title on
+# Kitsu, and the release's live check makes sure hianime still has it.
+CHRISTMAS_EPISODES: tuple[XmasEpisode, ...] = (
+    XmasEpisode(98444, "11", "Laid-Back Camp", "Christmas Camp!"),
+    XmasEpisode(5680, "7", "K-ON!", "Christmas!"),
+    XmasEpisode(1887, "11", "Lucky☆Star", "Various Ways to Spend Christmas Eve"),
+    XmasEpisode(66, "17", "Azumanga Daioh", "End of 2nd Semester & Christmas"),
+    XmasEpisode(12815, "37", "Polar Bear's Café", "Christmas Planning! / Christmas Trouble!"),
+    XmasEpisode(10495, "7", "YuruYuri", "Christmas"),
+    XmasEpisode(11757, "3", "Sword Art Online", "The Red-Nosed Reindeer"),
+    XmasEpisode(20047, "8", "Sakura Trick", "A Cherry Blossom-colored Christmas"),
+    XmasEpisode(232, "35", "Cardcaptor Sakura", "Sakura's Wonderful Christmas"),
+    XmasEpisode(918, "37", "Gintama", "People Who Say That Santa Doesn't Really Exist Actually Want To Believe In Him"),
+    XmasEpisode(6045, "22", "Kimi ni Todoke: From Me to You", "Christmas"),
+    XmasEpisode(11843, "6", "Daily Lives of High School Boys", "High School Boys and the Holy Night"),
+    XmasEpisode(99578, "6", "Wotakoi: Love is Hard for Otaku", "Bleak Christmas"),
+    XmasEpisode(21878, "9", "Gabriel DropOut", "Christmas and New Year's Eve Surprise"),
+    XmasEpisode(516, "39", "Sgt. Frog", "The Space Frog Who Stole Christmas"),
+    XmasEpisode(1852, "12", "Hidamari Sketch", "December 24, Christmas Eve"),
+    XmasEpisode(21686, "4", "Kiss Him, Not Me", "Christmas in the Holy Land"),
+    XmasEpisode(20946, "17", "My Love Story!!", "My Christmas"),
+    XmasEpisode(2787, "22", "Shakugan no Shana: Season II", "Christmas Eve"),
+    XmasEpisode(13759, "14", "The Pet Girl of Sakurasou", "Windows and Lights on Christmas Eve"),
+    XmasEpisode(20812, "12", "SHIROBAKO", "Exodus Christmas"),
+    XmasEpisode(4224, "17", "Toradora!", "Mercury Retrogrades at Christmas"),
+    XmasEpisode(4224, "19", "Toradora!", "Christmas Eve Festival"),
+    XmasEpisode(759, "1", "Tokyo Godfathers", "The movie: three people find a baby on Christmas Eve"),
+)
 
 
 def advent_pick(day: int) -> XmasEpisode | None:

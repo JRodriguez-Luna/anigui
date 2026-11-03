@@ -217,6 +217,7 @@ QComboBox#FilterCombo:disabled {{ color: {FAINT}; background: {SURFACE}; }}
 #CalDay[today="true"] {{ border: 1px solid {ACCENT}; }}
 #CalDayTitle {{ color: {MUTED}; font-size: 13px; font-weight: 800; padding: 0 2px 2px 2px; }}
 #CalDay[today="true"] #CalDayTitle {{ color: {ACCENT}; }}
+#CalDayTitle[holiday="true"] {{ color: #6FD39A; }}
 #CalEntry {{ background: {SURFACE_2}; border: 1px solid transparent; border-radius: 10px; }}
 #CalEntry:hover {{ border-color: {SURFACE_3}; }}
 #CalTitle {{ font-size: 12px; font-weight: 700; }}
@@ -270,11 +271,42 @@ QRadioButton::indicator {{ width: 16px; height: 16px; border-radius: 9px; border
 QRadioButton::indicator:checked {{ border: 1px solid {ACCENT}; background: qradialgradient(cx:0.5, cy:0.5, radius:0.5, fx:0.5, fy:0.5, stop:0 #FFFFFF, stop:0.32 #FFFFFF, stop:0.38 {ACCENT}, stop:1 {ACCENT}); }}
 QMessageBox QLabel {{ color: {TEXT}; }}
 
+/* -- the holidays ---------------------------------------------------------------- */
+#Countdown {{
+    color: #F4E7C8; background: #2A1416; border: 1px solid #5A2629; border-radius: 9px;
+    padding: 7px 10px; font-size: 12px; font-weight: 700;
+}}
+#Countdown:hover {{ background: #3A1A1D; border-color: #8A3236; }}
+#HolidaysTitle {{ font-size: 28px; font-weight: 800; }}
+#HolidaysCountdown {{ color: #6FD39A; font-size: 14px; font-weight: 700; }}
+#AdventDoor {{
+    min-height: 54px; border-radius: 10px; font-size: 16px; font-weight: 800;
+    background: #7E1D22; color: #FFE8C2; border: 1px solid #A8333A;
+}}
+#AdventDoor:hover {{ background: #942429; }}
+#AdventDoor[state="today"] {{ background: #1F6B43; color: #FFFFFF; border: 2px solid #F5C64A; }}
+#AdventDoor[state="today"]:hover {{ background: #26804F; }}
+#AdventDoor[state="open"] {{ background: {SURFACE}; color: {MUTED}; border: 1px dashed {FAINT}; }}
+#AdventDoor[state="locked"] {{ background: {SURFACE}; color: {FAINT}; border: 1px solid {BORDER}; }}
+#AdventPickBox {{ background: {SURFACE}; border: 1px solid {BORDER}; border-radius: 12px; }}
+#AdventPick {{ color: {TEXT}; font-size: 14px; }}
+#SurpriseButton {{ color: #F5C64A; }}
+#ChristmasScrim {{ background: rgba(4, 6, 10, 150); }}
+#ChristmasCard {{ background: {SURFACE_2}; border: 2px solid #A8333A; border-radius: 16px; }}
+#ChristmasIcon {{ font-size: 44px; }}
+#ChristmasTitle {{ font-size: 22px; font-weight: 800; color: {TEXT}; }}
+#ChristmasBody {{ font-size: 14px; color: {MUTED}; }}
+#SectionTitle[sweater="true"] {{ color: #FFFFFF; font-size: 22px; font-weight: 800; }}
+
 #Toast {{
     background: {SURFACE_3}; color: {TEXT}; border: 1px solid #3A3A4C; border-radius: 10px;
     padding: 11px 18px; font-weight: 600;
 }}
 #Toast[kind="error"] {{ background: #3A1717; border-color: #6E2A2A; color: #FFD6D6; }}
+#Toast[kind="holiday"] {{
+    border: 2px solid qlineargradient(spread:repeat, x1:0, y1:0, x2:0.035, y2:0.12,
+        stop:0 #E2364B, stop:0.5 #E2364B, stop:0.501 #FFFFFF, stop:1 #FFFFFF);
+}}
 """
 
 

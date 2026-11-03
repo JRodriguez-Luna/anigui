@@ -10,7 +10,9 @@ from PySide6.QtWidgets import (
 )
 
 from core import calendar as cal
+from core import holiday
 
+from . import theme
 from .context import AppContext
 from .widgets import PosterWidget
 
@@ -179,7 +181,14 @@ class CalendarPage(QScrollArea):
         today = dt.date.today()
         for i, (col, header, frame) in enumerate(zip(self.columns, self.headers, self.day_frames)):
             day = week.monday + dt.timedelta(days=i)
-            header.setText("Today" if day == today else f"{day:%a} {day.day}")
+            label = "Today" if day == today else f"{day:%a} {day.day}"
+            special = holiday.holiday_days(day) if theme.HOLIDAY else None
+            emoji = {"Christmas Eve": "🎄", "Christmas": "🎁", "New Year's Eve": "🎆", "New Year's Day": "✨"}
+            header.setText(f"{label}<br><span style='font-size:11px; font-weight:700'>{emoji.get(special, '')} "
+                           f"{special}</span>" if special else label)
+            header.setProperty("holiday", bool(special))
+            header.style().unpolish(header)
+            header.style().polish(header)
             frame.setProperty("today", day == today)
             frame.style().unpolish(frame)
             frame.style().polish(frame)
