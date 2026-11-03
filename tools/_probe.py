@@ -5,17 +5,17 @@ from core import http
 from core.anilist import AniListClient
 def note(m): print(f"::notice title=probe::{m}"[:3800])
 al = AniListClient()
-SHOWS = ["Azumanga Daioh", "Sailor Moon R", "Is the Order a Rabbit??", "Is the Order a Rabbit? BLOOM",
-         "Strike Witches 2", "School Rumble", "White Album 2", "Amagami SS", "Shirokuma Cafe", "Sakura Trick",
-         "Love Live! Sunshine!!", "Laid-Back Camp Season 2", "Kimi ni Todoke 2nd Season", "Hello!! Kiniro Mosaic",
-         "My Teen Romantic Comedy SNAFU TOO!", "ReLIFE", "Haganai", "Clannad After Story", "Kaguya-sama Love is War",
-         "Fruits Basket 2019", "Kiss Him Not Me", "Monthly Girls' Nozaki-kun", "Kemono Michi", "Toaru Kagaku no Railgun",
-         "A Certain Magical Index", "Durarara!!", "Natsume Yuujinchou", "Sweetness and Lightning", "Usagi Drop",
-         "Hinamatsuri", "Kotoura-san", "Charlotte", "Ano Hana", "Tanaka-kun is Always Listless", "Pokemon",
-         "Toradora SOS", "Asobi Asobase", "Kaguya-sama Love is War Ultra Romantic", "Mob Psycho 100",
-         "Golden Time", "Ouran High School Host Club", "Kanojo mo Kanojo", "Akiba Maid War", "Super Cub",
-         "Yuri!!! on Ice", "Bunny Drop", "Hyouka", "Komi Can't Communicate Season 2", "Sound! Euphonium 2"]
-WORDS = re.compile(r"christmas|xmas|santa|holy night|silent night|eve\b|クリスマス|聖夜", re.I)
+SHOWS = ["Sword Art Online", "Kaguya-sama Love is War Season 2", "Spy x Family", "Nisekoi", "Silver Spoon",
+         "Barakamon", "Bakuman", "Tamako Market", "Love Live! School Idol Project 2nd Season", "Hanasaku Iroha",
+         "Aria the Natural", "Squid Girl", "Space Brothers", "Gakkou Gurashi", "Chihayafuru", "Little Busters",
+         "Sket Dance", "Daily Lives of High School Boys", "Nisemonogatari", "Keroro Gunsou", "Chi's Sweet Home",
+         "Yu Yu Hakusho", "Shakugan no Shana II", "To Love-Ru", "Sakurasou no Pet na Kanojo", "Oreimo",
+         "Ef: A Tale of Memories", "Little Witch Academia", "Tsuki ga Kirei", "Tari Tari", "Kamisama Kiss",
+         "Inu x Boku SS", "Hataraku Maou-sama", "Natsume Yuujinchou Shi", "Pokemon", "Ojamajo Doremi",
+         "Wandering Son", "Saki", "Kemono Friends", "Princess Tutu", "Chobits", "Fullmetal Panic? Fumoffu",
+         "Kanokon", "Mahoraba", "Toradora", "The Melancholy of Haruhi Suzumiya 2009", "Lucky Star OVA",
+         "Rozen Maiden", "Sailor Moon", "Tokyo Mew Mew", "Ojamajo Doremi Sharp", "Detective Conan"]
+WORDS = re.compile(r"christmas|xmas|santa|reindeer|holy night|silent night|christmas eve|クリスマス|聖夜|サンタ|イブ", re.I)
 seen = set()
 for title in SHOWS:
     try:
@@ -29,7 +29,7 @@ for title in SHOWS:
             note(f"{m.display_title}: no kitsu"); continue
         kid = inc[0]["id"]
         hits = []
-        for off in range(0, 200, 20):
+        for off in range(0, 300, 20):
             r = http.request(f"https://kitsu.app/api/edge/anime/{kid}/episodes?page[limit]=20&page[offset]={off}&sort=number", headers={"Accept": "application/vnd.api+json"}, timeout=20)
             data = json.loads(r.body).get("data", [])
             for e in data:
