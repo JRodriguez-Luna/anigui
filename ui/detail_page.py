@@ -14,7 +14,8 @@ from core.hianime import Episode
 from core.store import episode_key
 
 from .cards import CardRow, media_card
-from .mature import confirm_open, decorate_all, hiding, note_tooltip, show_explainer, visible
+from .content_notes import ContentLine
+from .mature import confirm_open, decorate_all, hiding, visible
 from .context import AppContext
 from .episodes import PER_PAGE, EpisodeGrid, EpisodeItem, EpisodePager, coming_soon, find_episode, page_ranges
 from .hero import Backdrop, airing_note, media_meta, truncate
@@ -101,16 +102,7 @@ class DetailPage(QScrollArea):
         self.filler_note.setVisible(False)
         self.mature_badge = QLabel("18+", objectName="MatureBadge")
         self.mature_badge.setVisible(False)
-        self.content_label = QLabel("Content:", objectName="ContentLabel")
-        self.content_pills = QHBoxLayout()
-        self.content_pills.setSpacing(6)
-        self.content_row = QWidget()
-        content = QHBoxLayout(self.content_row)
-        content.setContentsMargins(0, 0, 0, 0)
-        content.setSpacing(8)
-        content.addWidget(self.content_label)
-        content.addLayout(self.content_pills)
-        content.addStretch(1)
+        self.content_row = ContentLine()   # Content: tags with hover meters, and the ⓘ explainer
         self.content_row.setVisible(False)
         self.synopsis = QLabel("", objectName="Synopsis", wordWrap=True)
         for label in (self.kicker, self.title, self.meta, self.airing, self.filler_note, self.synopsis):
@@ -361,21 +353,7 @@ class DetailPage(QScrollArea):
         """18+ badge and the Content line (nudity, gore…) from AniList's tags."""
         m = media.maturity if media else None
         self.mature_badge.setVisible(bool(m and m.mature))
-        while self.content_pills.count():
-            w = self.content_pills.takeAt(0).widget()
-            if w is not None:
-                w.deleteLater()
-        for note in (m.notes if m else ()):
-            pill = QLabel(note, objectName="ContentPill")
-            pill.setTextFormat(Qt.TextFormat.PlainText)
-            pill.setToolTip(note_tooltip(m, note))
-            self.content_pills.addWidget(pill)
-        if m and m.notes:
-            info = QPushButton("i", objectName="InfoButton", cursor=Qt.CursorShape.PointingHandCursor)
-            info.setToolTip("What do these mean?")
-            info.clicked.connect(lambda _c=False, b=info: show_explainer(b))
-            self.content_pills.addWidget(info)
-        self.content_row.setVisible(bool(m and m.notes))
+        self.content_row.set_maturity(m)
 
     def _late_mature_check(self, media: Media) -> None:
         """A saved show nobody had checked turned out to be 18+ only now that its details

@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Iterable
 
-from PySide6.QtCore import QPoint, Qt
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox, QDialog, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget,
 )
@@ -53,64 +53,6 @@ def status_known(ctx: AppContext, item) -> bool:
         return True
     _m, _n, _a, anilist_id = flags_for(ctx, item)
     return ctx.store.maturity(anilist_id) is not None
-
-
-def note_tooltip(m, note: str) -> str:
-    """Hover text for a Content tag: its AniList rating and what that means."""
-    from core.maturity import NUDITY_18, SEXUAL_VIOLENCE_18, level
-
-    tags = m.source(note)
-    head = f"<b>{note}</b>"
-    if note == "Sexual themes" and not tags:
-        return (f"{head}<br>Fan service: AniList lists this show as Ecchi.<br>"
-                "On its own this doesn't make a show 18+.")
-    if not tags:
-        return head
-    name, rank = tags[0]
-    lines = [f"{head} · {rank} / 100", level(rank) + "."]
-    if note == "Nudity":
-        lines.append(f"{NUDITY_18}+ is what makes a show 18+.")
-    elif note == "Sexual violence":
-        lines.append(f"{SEXUAL_VIOLENCE_18}+ makes a show 18+.")
-    elif note == "Sexual themes":
-        lines.append("From " + ", ".join(f"{n} ({r})" for n, r in tags[:3]) + ". Doesn't make a show 18+ on its own.")
-    elif note == "Gore":
-        if len(tags) > 1 or name != "Gore":
-            lines.append("From " + ", ".join(f"{n} ({r})" for n, r in tags) + ".")
-        lines.append("Violence never makes a show 18+ by itself.")
-    elif note == "Disturbing themes":
-        lines.append("From " + ", ".join(f"{n} ({r})" for n, r in tags) + ".")
-    return "<br>".join(lines)
-
-
-EXPLAINER = """<b style="font-size:14px">What these tags mean</b><br><br>
-They come from <b>AniList</b>, where fans tag shows and vote on <b>how big a part of the show</b>
-each tag is, from 0 to 100. It's about how much of the show it is, not how explicit one scene gets.<br><br>
-<b>0–40</b> minor &nbsp;·&nbsp; <b>40–60</b> noticeable &nbsp;·&nbsp; <b>60–80</b> a regular part
-&nbsp;·&nbsp; <b>80–100</b> what it's known for<br><br>
-<span style="background:#C0392B;color:#fff;font-weight:800">&nbsp;18+&nbsp;</span> means nudity rated
-<b>70+</b> or sexual violence rated <b>60+</b>, or AniList marks the show adult. Gore and other themes
-are listed but never make a show 18+ alone. Tags under 60 aren't listed, and spoiler tags never are.
-Hover a tag to see its rating."""
-
-
-def show_explainer(anchor: QWidget) -> QWidget:
-    """A small popup under the ⓘ button."""
-    from PySide6.QtWidgets import QFrame
-
-    pop = QFrame(anchor, Qt.WindowType.Popup)
-    pop.setObjectName("Explainer")
-    pop.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
-    text = QLabel(EXPLAINER, wordWrap=True, objectName="ExplainerText")
-    text.setTextFormat(Qt.TextFormat.RichText)
-    text.setFixedWidth(380)
-    col = QVBoxLayout(pop)
-    col.setContentsMargins(16, 14, 16, 14)
-    col.addWidget(text)
-    pop.adjustSize()
-    pop.move(anchor.mapToGlobal(anchor.rect().bottomLeft()) + QPoint(0, 6))
-    pop.show()
-    return pop
 
 
 def visible(ctx: AppContext, medias: Iterable[Media]) -> tuple[list[Media], int]:

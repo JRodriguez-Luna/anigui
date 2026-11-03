@@ -14,6 +14,7 @@ sys.path.insert(0, str(ROOT / "tests"))
 
 from PySide6.QtCore import QCoreApplication  # noqa: E402
 from PySide6.QtWidgets import QLabel  # noqa: E402
+from ui.content_notes import Meter  # noqa: E402
 
 import ui_fakes  # noqa: E402
 from core.ani_cli import StreamInfo  # noqa: E402
@@ -227,18 +228,25 @@ def test_show_page_badge_and_content_line(win):
     d = win.detail
     assert pump(lambda: d.media is not None)
     assert not d.mature_badge.isHidden() and not d.content_row.isHidden()
-    widgets = [d.content_pills.itemAt(i).widget() for i in range(d.content_pills.count())]
-    pills = [w for w in widgets if w.objectName() == "ContentPill"]
-    assert [w.text() for w in pills] == ["Nudity", "Sexual themes", "Gore"]
-    assert pills[0].toolTip().startswith("<b>Nudity</b> · 88 / 100")
-    assert "What the show is known for" in pills[0].toolTip() and "70+" in pills[0].toolTip()
-    assert "Hypersexuality (65)" in pills[1].toolTip()
-    assert "never makes a show 18+" in pills[2].toolTip()
-    info = next(w for w in widgets if w.objectName() == "InfoButton")
-    info.click()
-    pop = next(w for w in info.children() if w.objectName() == "Explainer")
-    assert "how big a part of the show" in pop.findChild(QLabel).text()
-    pop.close()
+    line = d.content_row
+    assert [tag.text() for tag in line.tags] == ["Nudity", "Sexual themes", "Gore"]
+    nudity = line.tags[0]
+    nudity.show_card()                                          # what hovering shows
+    card = nudity.hover
+    assert card.isVisible()
+    assert card.findChild(QLabel, "NoteCardTitle").text() == "Nudity · 88 / 100"
+    meter = card.findChild(Meter)
+    assert meter is not None and meter.rank == 88
+    assert "What the show is known for. 70+ is what makes a show 18+." == card.findChild(QLabel, "NoteCardText").text()
+    nudity.hide_card()
+    assert not card.isVisible()
+    assert line.explainer.isHidden()
+    line.info.click()                                           # ⓘ opens the panel under the line
+    assert not line.explainer.isHidden()
+    boxes = [w.text() for w in line.explainer.findChildren(QLabel, "ScaleBox")]
+    assert len(boxes) == 4 and "0–40" in boxes[0] and "80–100" in boxes[3]
+    line.info.click()
+    assert line.explainer.isHidden()
     win.open_item(win.ctx.catalog.anilist.media(501))
     assert pump(lambda: d.media is not None and d.media.anilist_id == 501)
     assert d.mature_badge.isHidden() and d.content_row.isHidden()
@@ -334,13 +342,17 @@ def test_nudity_is_only_listed_when_it_makes_the_show_18_plus():
     assert not m.mature and m.notes == ("Sexual themes",) and m.source("Sexual themes") == ()
 
 
-def test_tooltips_explain_each_note():
-    from ui.mature import note_tooltip
+def test_hover_cards_explain_each_note():
+    from ui.content_notes import note_card
     m = assess(False, ["Action"], [T("Gore", 77), T("Body Horror", 85), T("Cannibalism", 69), T("Suicide", 55)])
-    assert "85 / 100" in note_tooltip(m, "Gore") and "Body Horror (85), Gore (77)" in note_tooltip(m, "Gore")
-    assert "Cannibalism (69), Suicide (55)" in note_tooltip(m, "Disturbing themes")
-    ecchi = assess(False, ["Ecchi"], [])
-    assert "lists this show as Ecchi" in note_tooltip(ecchi, "Sexual themes")
+    gore = note_card(m, "Gore")
+    assert gore.title == "Gore · 85 / 100" and gore.rank == 85
+    assert "Body Horror (85), Gore (77)" in gore.text and "never makes a show 18+" in gore.text
+    assert "Cannibalism (69), Suicide (55)" in note_card(m, "Disturbing themes").text
+    ecchi = note_card(assess(False, ["Ecchi"], []), "Sexual themes")
+    assert ecchi.rank is None and "lists this show as Ecchi" in ecchi.text   # no meter without a rating
+    themed = note_card(assess(False, ["Ecchi"], [T("Hypersexuality", 65, True)]), "Sexual themes")
+    assert themed.rank == 65 and themed.color == "#E9B44C"
 
 
 def saved_pocket(w, in_list=True):

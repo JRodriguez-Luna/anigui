@@ -135,8 +135,15 @@ QPushButton#InfoButton {{
     font-size: 12px; font-weight: 800;
 }}
 QPushButton#InfoButton:hover {{ color: {TEXT}; border-color: {MUTED}; }}
+QPushButton#InfoButton:checked {{ background: {SURFACE_3}; color: {TEXT}; border-color: {MUTED}; }}
 QFrame#Explainer {{ background: {SURFACE_2}; border: 1px solid {SURFACE_3}; border-radius: 10px; }}
-#ExplainerText {{ color: #D6D6E0; font-size: 13px; }}
+#ExplainerTitle {{ font-size: 14px; font-weight: 800; }}
+#ExplainerText {{ color: #C9C9D6; font-size: 13px; }}
+#ScaleBox {{ background: {SURFACE_3}; color: #D6D6E0; font-size: 12px; padding: 6px 8px; border-radius: 6px; }}
+QFrame#NoteCard {{ background: {SURFACE_2}; border: 1px solid #3A3A48; border-radius: 9px; }}
+#NoteCardTitle {{ font-size: 13px; font-weight: 800; color: {TEXT}; }}
+#NoteCardText {{ font-size: 12px; color: #C9C9D6; }}
+#ContentPill:hover {{ background: #30303F; }}
 QDialog#MatureDialog {{ background: {SURFACE}; }}
 QComboBox {{
     background: {SURFACE_2}; border: 1px solid {BORDER}; border-radius: {RADIUS}px;
