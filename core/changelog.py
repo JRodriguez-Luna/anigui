@@ -30,6 +30,15 @@ class Release:
 
 
 RELEASES: tuple[Release, ...] = (
+    Release("1.11.1", "November 3, 2026", (
+        Change("Built-in player shows the episode", "The video area showed a flipped copy of the window instead of "
+                                                    "the episode. Fixed."),
+        Change("A cleaner watch page", "While an episode plays, its list sits beside the video (find an episode, "
+                                       "sort, hide watched, fillers, right-click to mark watched) and the grid below "
+                                       "steps aside, so episodes aren't listed twice. Under the video: the episode's "
+                                       "title, air date and summary, Sub/Dub and quality, and Open in IINA. Seasons, "
+                                       "Related and You might also like follow."),
+    )),
     Release("1.11.0", "November 3, 2026", (
         Change("Play right here", "Episodes can now play inside AniGUI: the video on the show's page with the "
                                   "episode list beside it, a mini-player in the corner when you look around, and "

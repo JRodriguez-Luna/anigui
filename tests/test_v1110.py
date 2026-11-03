@@ -256,3 +256,68 @@ def test_keys_control_the_player(win):
     assert ["cycle", "pause"] in mpv.commands and ["seek", "10", "relative"] in mpv.commands
     QApplication.sendEvent(host, QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_F, Qt.KeyboardModifier.NoModifier))
     assert host.mode == "full"
+
+
+# -- the watch page (1.11.1) -------------------------------------------------------------------
+
+def test_watch_page_has_one_episode_list(win):
+    play_inside(win)
+    d = win.detail
+    assert d.theater_on and d.episodes_box.isHidden()            # no second list under the video
+    assert not d.seasons_row.isHidden() or d.series is None       # the Seasons row stays
+    win.player_host.close_player()
+    assert pump(lambda: not d.theater_on)
+    assert not d.episodes_box.isHidden()                          # and the grid comes back after
+
+
+def test_episode_and_show_under_the_video(win):
+    play_inside(win)
+    t = win.detail.theater
+    assert pump(lambda: "Oct 31, 2026" in t.ep_meta.text())       # episode 5: date and length (Kitsu)
+    assert t.ep_meta.text().startswith("Episode 5") and "24 min" in t.ep_meta.text()
+    assert t.summary.text() == "In episode 5, everything changes at the academy."
+    assert t.show_title.text() == "Starfall Academy" and "+  My List" in t.list_btn.text()
+    t.listToggled.emit()
+    assert pump(lambda: "In My List" in t.list_btn.text())
+    dated = [i for i in t.rail.visible_items() if i["date"]]
+    assert dated and dated[0]["date"] == "Oct 3, 2026"
+
+
+def test_list_beside_the_video_finds_sorts_and_hides(win):
+    play_inside(win)
+    rail = win.detail.theater.rail
+    n = len(rail.visible_items())
+    assert n == 24 and rail.count.text() == "5 / 24"
+    rail.find.setText("12")
+    assert [i["number"] for i in rail.visible_items()] == ["12"]
+    rail.find.setText("")
+    rail.sort_btn.setChecked(True)
+    assert rail.visible_items()[0]["number"] == "24"
+    rail.sort_btn.setChecked(False)
+    win.ctx.store.mark_watched(STARFALL, "1", True)
+    win.detail.refresh_theater()
+    rail.watched_btn.setChecked(True)
+    assert "1" not in [i["number"] for i in rail.visible_items()]
+    kinds = {i["number"]: i["kind"] for i in rail.all_items}
+    assert kinds["6"] == "filler" and rail.filler_btn.isVisibleTo(rail)
+    rail.markRequested.emit("2", "watched")
+    assert pump(lambda: win.ctx.store.get_progress(STARFALL, "2") and win.ctx.store.get_progress(STARFALL, "2").completed)
+
+
+def test_switching_to_dub_replays_where_you_were(win):
+    mpv = play_inside(win)
+    t = win.detail.theater
+    before = len(win.ctx.player.launched) + len(mpv.named("loadfile"))
+    t.audio.setCurrentIndex(t.audio.findData(True))
+    assert win.ctx.pref("dub") is True and win.detail.dub_btn.isChecked()
+    assert pump(lambda: len(win.ctx.player.launched) + len(mpv.named("loadfile")) > before, 8)
+
+
+def test_open_in_iina_hands_it_over(win):
+    first = play_inside(win)          # (kept alive: a fake mpv closing late would take the socket with it)
+    win.detail.theater.openOutside.emit("iina")
+    assert pump(lambda: not win.player_host.active, 8)
+    assert pump(lambda: win.playback.session is not None and win.playback.session.alive
+                and win.playback.session.kind == "mpv", 8)      # (the fake player has no IINA)
+    assert win.ctx.pref("player") == "anigui"                     # the setting didn't change
+    assert first is not win.ctx.player.mpv

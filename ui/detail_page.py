@@ -19,7 +19,7 @@ from .cards import CardRow, media_card
 from . import theme
 from .content_notes import ContentLine
 from .festive import BowPop
-from .theater import Theater
+from .theater import Theater, nice_date
 from .motion import fade_in
 from .mature import confirm_open, decorate_all, hiding, visible
 from .context import AppContext
@@ -219,11 +219,17 @@ class DetailPage(QScrollArea):
         episodes.setSpacing(12)
         episodes.addWidget(self.seasons_row)
         episodes.addSpacing(8)
-        episodes.addLayout(ep_head)
-        episodes.addWidget(self.message)
-        episodes.addWidget(self.pager)
-        episodes.addWidget(self.grid)
-        episodes.addWidget(self.up_next)
+        # The episode grid (it steps aside while the built-in player's list is showing)
+        self.episodes_box = QWidget()
+        box = QVBoxLayout(self.episodes_box)
+        box.setContentsMargins(0, 0, 0, 0)
+        box.setSpacing(12)
+        box.addLayout(ep_head)
+        box.addWidget(self.message)
+        box.addWidget(self.pager)
+        box.addWidget(self.grid)
+        box.addWidget(self.up_next)
+        episodes.addWidget(self.episodes_box)
 
         # More like this (AniList)
         self.related_row = CardRow("Related", ctx.images)
@@ -237,11 +243,18 @@ class DetailPage(QScrollArea):
         episodes.addStretch(1)
 
         # The built-in player plays here (the video floats over theater.slot)
-        self.theater = Theater(ctx.images)
+        self.theater = Theater(ctx.images, QUALITIES)
         self.theater.back.connect(self.backRequested)
         self.theater.episodeClicked.connect(self.play)
         self.theater.listToggled.connect(self._toggle_library)
+        self.theater.rail.markRequested.connect(self._mark)
+        self.theater.rail.fillersToggled.connect(lambda key, on: ctx.set_pref(key, on))
+        self.theater.dubChanged.connect(self._theater_dub)
+        self.theater.qualityChanged.connect(self._theater_quality)
+        self.theater.openOutside.connect(self._open_outside)
         self.theater.setVisible(False)
+        self.ep_details: dict[str, dict] = {}
+        self._details_for = None
 
         body = QWidget(objectName="PageBody")
         col = QVBoxLayout(body)
@@ -323,6 +336,7 @@ class DetailPage(QScrollArea):
         self.play_btn.setText("▶  Play")
         self.list_btn.setEnabled(False)
         self.verticalScrollBar().setValue(0)
+        self.ep_details, self._details_for = {}, None
         self.set_theater(False)
 
     def _show_media(self, media: Media, keep_poster: bool = False) -> None:
@@ -359,7 +373,8 @@ class DetailPage(QScrollArea):
         bar = self.sticky
         vp = self.viewport().geometry()
         bar.setGeometry(vp.x(), vp.y(), vp.width(), bar.height())
-        scrolled_past = self.verticalScrollBar().value() > self.header.height() - bar.height()
+        scrolled_past = (not self.theater_on                # (the player has its own controls)
+                         and self.verticalScrollBar().value() > self.header.height() - bar.height())
         if scrolled_past:
             bar.title.setText(self.title.text())
             bar.poster.set_cover(self.poster.url, self.poster.color, self.title.text())
@@ -798,6 +813,7 @@ class DetailPage(QScrollArea):
             return
         self.theater.setVisible(on)
         self.header.setVisible(not on)
+        self.episodes_box.setVisible(not on)       # the list beside the video has them
         if on:
             self.refresh_theater()
             self.verticalScrollBar().setValue(0)
@@ -806,28 +822,44 @@ class DetailPage(QScrollArea):
     def refresh_theater(self) -> None:
         if not self.theater_on:
             return
+        t = self.theater
         playing = self.playback.now_playing
         current = playing[1] if playing and playing[0] == self.anime_id else None
         progress = self.ctx.store.show_progress(self.anime_id) if self.anime_id else {}
         xmas = holiday.christmas_episodes_for(self.media.anilist_id if self.media else None)
+        fillers = self.fillers
         items = []
         for ep in self.episodes:
             p = progress.get(ep.number)
             named = has_title(EpisodeItem(number=ep.number, title=ep.title))
+            info = self.ep_details.get(ep.number) or {}
             items.append({"number": ep.number, "title": ep.title if named else "", "still": self.stills.get(ep.number),
                           "watched": bool(p and p.completed), "playing": ep.number == current,
-                          "christmas": ep.number in xmas})
-        self.theater.rail.set_items(items, f"Episodes · {len(items)}" if items else "Episodes")
+                          "christmas": ep.number in xmas, "kind": fillers.kind(ep.number) if fillers else None,
+                          "date": nice_date(info.get("date"))})
+        t.rail.filler_prefs = {"hide_fillers": bool(self.ctx.pref("hide_fillers")),
+                               "skip_fillers": bool(self.ctx.pref("skip_fillers"))}
+        season = self.series.find(self.media.anilist_id) if (self.series and self.media) else None
+        t.rail.set_items(items, season.label if season else "Episodes", has_fillers=bool(fillers and fillers.kinds))
+
+        # the episode
         ep = next((e for e in self.episodes if e.number == current), None)
+        info = self.ep_details.get(current or "") or {}
         named = ep is not None and has_title(EpisodeItem(number=ep.number, title=ep.title))
-        self.theater.ep_title.setText(ep.title if named else (f"Episode {current}" if current else ""))
-        self.theater.show_title.setText(self.title.text())
+        t.ep_title.setText(ep.title if named else (f"Episode {current}" if current else ""))
+        bits = [f"Episode {current}"] if current else []
+        if info.get("date"):
+            bits.append(nice_date(info["date"]))
+        if info.get("minutes"):
+            bits.append(f"{info['minutes']} min")
+        t.ep_meta.setText("  ·  ".join(bits))
+        t.set_choices(bool(self.ctx.pref("dub", False)), str(self.ctx.pref("quality", "best")))
         door = None
         if theme.HOLIDAY and self.media and current:
             door = next((d for d in range(1, 25) if (pick := holiday.advent_pick(d))
                          and pick.anilist_id == self.media.anilist_id and pick.episode == current), None)
-        self.theater.door_chip.setText(f"🎁 Door {door} · Advent" if door else "")
-        self.theater.door_chip.setVisible(bool(door))
+        t.door_chip.setText(f"🎁 Door {door} · Advent" if door else "")
+        t.door_chip.setVisible(bool(door))
         day = None
         if theme.HOLIDAY:
             import datetime as _dt
@@ -835,13 +867,63 @@ class DetailPage(QScrollArea):
             start, end = holiday.challenge_window(holiday.season_year(today))
             if start <= today <= end:
                 day = (today - start).days + 1
-        self.theater.day_chip.setText(f"Day {day} of 12 ⭐" if day else "")
-        self.theater.day_chip.setVisible(bool(day))
+        t.day_chip.setText(f"Day {day} of 12 ⭐" if day else "")
+        t.day_chip.setVisible(bool(day))
+
+        # the show
+        m = self.media
+        t.show_title.setText(m.display_title if m else self.title.text())
+        t.show_meta.setText(media_meta(m) if m else "")
+        t.poster.set_cover(self.poster.url, self.poster.color, self.title.text())
+        summary = info.get("synopsis") or (m.description if m else "")
+        if summary != t._summary_full:
+            t.set_summary(summary)
         show = self.ctx.store.get_show(self.anime_id) if self.anime_id else None
-        self.theater.list_btn.setText("✓  In My List" if show and show.in_library else "+  My List")
+        t.list_btn.setText("✓  In My List" if show and show.in_library else "+  My List")
         on = theme.HOLIDAY
-        self.theater.set_decor(on and bool(self.ctx.pref("player_lights", True)),
-                               on and bool(self.ctx.pref("player_snow", True)))
+        t.set_decor(on and bool(self.ctx.pref("player_lights", True)), on and bool(self.ctx.pref("player_snow", True)))
+        self._load_details()
+
+    def _load_details(self) -> None:
+        """Air dates and summaries for the list and the card (Kitsu; once per show)."""
+        stills = getattr(self.ctx, "stills", None)
+        m = self.media
+        if stills is None or m is None or not m.mal_id or not self.episodes or self._details_for == m.anilist_id:
+            return
+        self._details_for = m.anilist_id
+        gen = self.gen
+        numbers = [e.number for e in self.episodes][:120]
+        self.ctx.runner.submit(stills.details, m.mal_id, numbers,
+                               on_done=lambda found: gen == self.gen and self._got_details(found),
+                               on_error=lambda _m: None, group="detail-ep-details")
+
+    def _got_details(self, found: dict) -> None:
+        self.ep_details = dict(found or {})
+        self.refresh_theater()
+
+    def _theater_dub(self, dub: bool) -> None:
+        self.ctx.set_pref("dub", dub)
+        (self.dub_btn if dub else self.sub_btn).setChecked(True)
+        self._replay_current()
+
+    def _theater_quality(self, quality: str) -> None:
+        self.ctx.set_pref("quality", quality)
+        self.quality.setCurrentIndex(max(0, self.quality.findData(quality)))
+        self._replay_current()
+
+    def _replay_current(self) -> None:
+        """Sub/Dub or quality changed mid-episode: load it again, where you were."""
+        playing = self.playback.now_playing
+        if playing and playing[0] == self.anime_id:
+            if self.playback.session is not None:
+                self.playback.session.save()
+            self.play(playing[1])
+
+    def _open_outside(self, kind: str) -> None:
+        playing = self.playback.now_playing
+        if not playing or playing[0] != self.anime_id or not self.anime_id:
+            return
+        self.playback.play(self.anime_id, self.show_title, playing[1], player=kind)
 
     def refresh_if_showing(self) -> None:
         self._refresh_episode_states()

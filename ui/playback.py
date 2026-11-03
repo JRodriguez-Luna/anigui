@@ -605,8 +605,12 @@ class PlaybackController(QObject):
             return self.session.now.anime_id, self.session.now.episode
         return None
 
-    def play(self, anime_id: str, title: str, episode: str) -> None:
+    def play(self, anime_id: str, title: str, episode: str, player: str | None = None) -> None:
+        """player: this time only, in this player ("iina", "mpv"), instead of the setting."""
         self.cancel()
+        if player and self.session is not None and self.session.alive and self.session.kind != player:
+            self.session.close()                 # e.g. the built-in player hands the episode to IINA
+        self._player_once = player
         job = self.resolver.prepare(
             anime_id, title, episode,
             on_ready=lambda info: self._start(job, info),
@@ -640,7 +644,7 @@ class PlaybackController(QObject):
             try:
                 kind = self.ctx.player.launch(
                     info, media_title(job.title, job.episode), start=start,
-                    preferred=str(self.ctx.pref("player", "auto")),
+                    preferred=getattr(self, "_player_once", None) or str(self.ctx.pref("player", "auto")),
                 )
             except Exception as exc:  # noqa: BLE001
                 self.failed.emit(job.anime_id, job.episode, str(exc))
@@ -649,7 +653,8 @@ class PlaybackController(QObject):
         if not self.ctx.store.get_progress(job.anime_id, job.episode):
             self.ctx.store.record_progress(job.anime_id, job.episode, 0.0)
         self.started.emit(job.anime_id, job.episode, kind)
-        wanted = str(self.ctx.pref("player", "auto"))
+        wanted = getattr(self, "_player_once", None) or str(self.ctx.pref("player", "auto"))
+        self._player_once = None
         if wanted == "anigui" and kind != wanted:
             self.notice.emit(f"The built-in player isn't available here, so this opened in {PLAYER_NAMES[kind]}.",
                              False)

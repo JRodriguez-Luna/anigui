@@ -48,13 +48,6 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r requirements.txt
 
-      - name: Probe video (temporary)
-        if: runner.os == 'macOS'
-        continue-on-error: true
-        run: |
-          brew install mpv >/dev/null 2>&1 || echo "brew mpv failed"
-          python tools/_probe.py
-
       - name: Run tests (offline; fake site, fake mpv, real ani-cli)
         run: pytest -q
 

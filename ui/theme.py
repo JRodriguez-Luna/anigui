@@ -271,6 +271,25 @@ QRadioButton::indicator {{ width: 16px; height: 16px; border-radius: 9px; border
 QRadioButton::indicator:checked {{ border: 1px solid {ACCENT}; background: qradialgradient(cx:0.5, cy:0.5, radius:0.5, fx:0.5, fy:0.5, stop:0 #FFFFFF, stop:0.32 #FFFFFF, stop:0.38 {ACCENT}, stop:1 {ACCENT}); }}
 QMessageBox QLabel {{ color: {TEXT}; }}
 
+/* -- the built-in player's page ------------------------------------------------------ */
+#RailPanel {{ background: {SURFACE}; border: 1px solid {BORDER}; border-radius: 12px; }}
+#EpisodeRail {{ background: transparent; border: none; }}
+#RailFind {{ background: {SURFACE_2}; border: 1px solid {BORDER}; border-radius: 8px; padding: 6px 9px; color: {TEXT}; }}
+#RailFind:focus {{ border-color: {FAINT}; }}
+#RailTool {{ background: {SURFACE_2}; border: 1px solid {BORDER}; border-radius: 7px; padding: 4px 9px;
+             font-size: 11px; font-weight: 700; color: {MUTED}; }}
+#RailTool:hover {{ color: {TEXT}; }}
+#RailTool:checked {{ color: {TEXT}; border-color: {ACCENT}; }}
+#ShowCard {{ background: {SURFACE}; border: 1px solid {BORDER}; border-radius: 12px; }}
+#ShowCardTitle {{ font-size: 15px; font-weight: 700; color: {TEXT}; }}
+#TheaterTitle {{ font-size: 21px; font-weight: 800; color: {TEXT}; }}
+#TheaterChip {{ background: {SURFACE_2}; border: 1px solid {BORDER}; border-radius: 8px; padding: 5px 10px;
+               font-size: 12px; font-weight: 700; color: {TEXT}; }}
+#TheaterChipGreen {{ background: #12261C; border: 1px solid #2E5A40; border-radius: 8px; padding: 5px 10px;
+                    font-size: 12px; font-weight: 700; color: #BFE9CF; }}
+#LinkButton {{ background: transparent; border: none; padding: 2px 0; color: {MUTED}; font-weight: 700; }}
+#LinkButton:hover {{ color: {TEXT}; }}
+
 /* -- the holidays ---------------------------------------------------------------- */
 #Countdown {{
     color: #F4E7C8; background: #2A1416; border: 1px solid #5A2629; border-radius: 9px;

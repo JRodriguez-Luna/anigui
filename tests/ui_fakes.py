@@ -169,6 +169,16 @@ class FakeStills:
         i = (anilist_id or 500) - 500
         return {n: f"fake://still/{i}?ep={n}" for n in numbers if int(float(n)) % 7 != 3}
 
+    def details(self, mal_id, numbers):
+        """Air dates a week apart from Oct 3, 2026; a summary for every episode but 2."""
+        import datetime as _dt
+        out = {}
+        for n in numbers:
+            k = int(float(n))
+            out[n] = {"date": (_dt.date(2026, 10, 3) + _dt.timedelta(weeks=k - 1)).isoformat(), "minutes": 24,
+                      "synopsis": "" if k == 2 else f"In episode {k}, everything changes at the academy."}
+        return out
+
 
 class FakeFillers:
     """Every show: episodes 5-7 and 136-141 are filler, 143 is a recap."""

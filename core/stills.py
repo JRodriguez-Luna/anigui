@@ -185,6 +185,41 @@ class EpisodeStills:
                     out[number] = (thumb, attrs.get("canonicalTitle"))
         return out
 
+    def details(self, mal_id: int | None, numbers: list[str]) -> dict[str, dict]:
+        """Air date, length and summary per episode, from Kitsu (the same pages the stills
+        came from, so usually no extra request): {"3": {"date": "2022-10-14", "minutes": 24,
+        "synopsis": "…"}}. Episodes Kitsu doesn't know are left out."""
+        if not mal_id or not numbers:
+            return {}
+        try:
+            kid = self.kitsu_id(mal_id)
+        except Exception:  # noqa: BLE001 - Kitsu down: no details, the titles still show
+            return {}
+        if not kid:
+            return {}
+        offsets = sorted({(int(float(n)) - 1) // KITSU_PAGE * KITSU_PAGE for n in numbers
+                          if str(n).replace(".", "", 1).isdigit() and float(n) >= 1})[:MAX_KITSU_PAGES]
+        out: dict[str, dict] = {}
+        for offset in offsets:
+            query = urllib.parse.urlencode({"page[limit]": KITSU_PAGE, "page[offset]": offset, "sort": "number"})
+            try:
+                data = self._kitsu_json(f"{KITSU_API}/anime/{kid}/episodes?{query}", TTL_KITSU_EPISODES)
+            except Exception:  # noqa: BLE001
+                continue
+            for ep in data.get("data") or []:
+                attrs = ep.get("attributes") or {}
+                number = number_key(attrs.get("number"))
+                if not number or number in out:
+                    continue
+                synopsis = " ".join(str(attrs.get("synopsis") or attrs.get("description") or "").split())
+                synopsis = re.sub(r"\s*\((?:Source|Written by)[^)]*\)\s*$", "", synopsis)
+                date = str(attrs.get("airdate") or "")[:10]
+                minutes = attrs.get("length")
+                out[number] = {"date": date if re.fullmatch(r"\d{4}-\d{2}-\d{2}", date) else "",
+                               "minutes": int(minutes) if isinstance(minutes, (int, float)) and minutes > 0 else None,
+                               "synopsis": synopsis[:1200]}
+        return out
+
     # -- ani.zip -------------------------------------------------------------------------
 
     def _from_anizip(self, anilist_id: int) -> dict[str, tuple[str, str | None]]:
