@@ -57,7 +57,7 @@ jobs:
           from core.hianime import HianimeClient, SEARCH_URL, normalize_query
           hi = HianimeClient()
           for q in ("dark summoner", "high school dxd", "frieren", "redo of healer"):
-              r = hi.fetch(SEARCH_URL.format(query=normalize_query(q)) if "{query}" in SEARCH_URL else SEARCH_URL + normalize_query(q))
+              r = hi.fetch(SEARCH_URL.format(normalize_query(q)))
               page = r.body if isinstance(r.body, str) else r.body.decode("utf-8", "replace")
               page = page.replace("\n", " ")
               i = page.find('<div class="film-detail">')
