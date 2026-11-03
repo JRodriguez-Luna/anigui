@@ -172,6 +172,8 @@ class Session(QObject):
     notice = Signal(str, bool)          # message, is_error
     ended = Signal()
     untracked = Signal()                # player never opened its control socket
+    osd = Signal(str, int)              # built-in player: a short message for its own overlay
+    countdown = Signal(str, int)        # built-in player: "Episode 6", seconds left (-1: none)
 
     def __init__(self, ctx: AppContext, resolver: StreamResolver, kind: str, ipc_path: str,
                  anime_id: str, title: str, episode: str, parent: QObject | None = None) -> None:
@@ -203,6 +205,49 @@ class Session(QObject):
         self._load_episode_list()
         ctx.events.changed.connect(self._pref_changed)
 
+    @property
+    def embedded(self) -> bool:
+        return self.kind == "anigui"
+
+    def _osd(self, text: str, ms: int) -> None:
+        """mpv's on-screen text, or the built-in player's own message chip."""
+        if self.embedded:
+            self.osd.emit(text, int(ms))
+        else:
+            self.ipc.command("show-text", text, ms)
+
+    # -- for the built-in player's controls ----------------------------------------------
+
+    def segment_at(self, position: float | None):
+        """The intro / ending / recap you're in (to offer Skip), if any."""
+        n = self.now
+        if position is None or not n.skips:
+            return None
+        return next((seg for seg in n.skips if seg.contains(position)), None)
+
+    def skip(self, seg) -> None:
+        n = self.now
+        n.skipped.add(seg.kind)
+        target = seg.end if not n.duration else min(seg.end, n.duration)
+        self.ipc.command("seek", f"{target:.2f}", "absolute")
+
+    def play_next_now(self) -> None:
+        """Up next's Play now."""
+        self._countdown.stop()
+        self.countdown.emit("", -1)
+        if self.next_info:
+            self._play_next()
+        elif self._target:
+            self.advance_when_ready = True
+            if not self.next_job:
+                self._prefetch(self._target)
+
+    def cancel_countdown(self) -> None:
+        """Up next's Cancel: stay on this episode."""
+        self._countdown.stop()
+        self.countdown.emit("", -1)
+        self.advance_when_ready = False
+
     def _pref_changed(self, key: str, value) -> None:
         if key == "skip_fillers" and value and not self.filler_keys:
             self._load_fillers()
@@ -217,6 +262,7 @@ class Session(QObject):
         """Play another episode in this same player window."""
         self.save()
         self._countdown.stop()
+        self.countdown.emit("", -1)
         same_show = anime_id == self.now.anime_id
         self._cancel_next()
         self.now = _Now(anime_id, title, episode)
@@ -335,7 +381,7 @@ class Session(QObject):
 
     def _lookup_skips(self) -> None:
         n = self.now
-        if n.skips is not None or not self._skip_kinds():
+        if n.skips is not None or not (self._skip_kinds() or self.embedded):
             return
         n.skips = []  # looking it up
 
@@ -359,7 +405,7 @@ class Session(QObject):
                 n.skipped.add(seg.kind)  # once per episode, so seeking back into it is allowed
                 target = seg.end if not n.duration else min(seg.end, n.duration)
                 self.ipc.command("seek", f"{target:.2f}", "absolute")
-                self.ipc.command("show-text", self.SKIP_TEXT[seg.kind], 2000)
+                self._osd(self.SKIP_TEXT[seg.kind], 2000)
                 return True
         return False
 
@@ -435,7 +481,7 @@ class Session(QObject):
         def failed(_msg, aid=n.anime_id):
             if aid == self.now.anime_id and self._waiting_for_season:
                 self._waiting_for_season = False
-                self.ipc.command("show-text", "That was the last episode", 4000)
+                self._osd("That was the last episode", 4000)
 
         self.ctx.runner.submit(find, n.anime_id, n.title, on_done=done, on_error=failed)
 
@@ -471,7 +517,7 @@ class Session(QObject):
         self.next_job = None
         if self.advance_when_ready:
             self.advance_when_ready = False
-            self.ipc.command("show-text", f"Couldn't load {target.label.lower()}", 4000)
+            self._osd(f"Couldn't load {target.label.lower()}", 4000)
             self.notice.emit(f"Couldn't auto-play {target.label.lower()}: {message}", True)
 
     def _cancel_next(self) -> None:
@@ -489,7 +535,7 @@ class Session(QObject):
                 self._look_up_next_season()
                 return
             if self.episodes is not None:
-                self.ipc.command("show-text", "That was the last episode", 4000)
+                self._osd("That was the last episode", 4000)
             return
         if target != self._target:
             self._cancel_next()
@@ -506,15 +552,17 @@ class Session(QObject):
 
     def _tick(self) -> None:
         label = self._target.label if self._target else "Next episode"
+        self.countdown.emit(label, self._countdown_left)
         if self._countdown_left <= 0:
             self._countdown.stop()
             if self.next_info:
                 self._play_next()
             else:
                 self.advance_when_ready = True
-                self.ipc.command("show-text", f"Loading {label}…", 30_000)
+                self._osd(f"Loading {label}…", 30_000)
             return
-        self.ipc.command("show-text", f"{label} starts in {self._countdown_left}…", 1100)
+        if not self.embedded:                     # (the built-in player shows its Up next card)
+            self._osd(f"{label} starts in {self._countdown_left}…", 1100)
         self._countdown_left -= 1
 
     def _play_next(self) -> None:

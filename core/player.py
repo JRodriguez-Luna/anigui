@@ -10,7 +10,7 @@ from .ani_cli import StreamInfo, is_web_url
 from .env import child_env, find_player
 
 INSTALL_HINT = "No video player found. Open Setup in AniGUI to install IINA."
-PLAYER_NAMES = {"iina": "IINA", "mpv": "mpv"}
+PLAYER_NAMES = {"anigui": "AniGUI", "iina": "IINA", "mpv": "mpv"}
 
 
 class PlayerError(RuntimeError):
@@ -82,9 +82,44 @@ def build_player_command(kind: str, path: str, info: StreamInfo, title: str,
     return cmd
 
 
+def embedded_options(info: StreamInfo, title: str, ipc_path: str | None = None,
+                     start: float | None = None) -> tuple[dict[str, str], str]:
+    """libmpv options and the link, for playing inside AniGUI's window (same checks and the
+    same choices as the mpv command line)."""
+    for link in (info.url, info.audio_url, info.subtitle_url, info.referrer):
+        if link is not None and not is_web_url(link):
+            raise PlayerError("The stream link didn't look right, so it wasn't opened.")
+    opts = {
+        "vo": "libmpv", "hwdec": "auto-safe", "idle": "yes", "keep-open": "no",
+        "input-default-bindings": "no", "osc": "no", "osd-level": "0",
+        "force-media-title": title, "volume-max": "100",
+    }
+    if info.referrer:
+        opts["referrer"] = info.referrer
+    if ipc_path:
+        opts["input-ipc-server"] = ipc_path
+    if start:
+        opts["start"] = f"{start:.0f}"
+    return opts, info.url
+
+
+def embedded_tracks(info: StreamInfo) -> list[tuple[str, str, str]]:
+    """Separate audio and subtitle links, added once the video has loaded (as commands, so
+    a ':' in a link is never read as a list separator): (command, url, flag)."""
+    tracks = []
+    if info.audio_url:
+        tracks.append(("audio-add", info.audio_url, "select"))
+    if info.subtitle_url:
+        tracks.append(("sub-add", info.subtitle_url, "select" if info.show_subtitles else "auto"))
+    return tracks
+
+
 class Player:
     def __init__(self, ipc_path: str | None = None) -> None:
         self.ipc_path = ipc_path or default_ipc_path()
+        # Set by the window: embed(options, url) starts the built-in player; None = not available
+        self.embed = None
+        self.embed_available = lambda: False
 
     def available(self, preferred: str | None = None) -> tuple[str, str] | None:
         return find_player(None if preferred in (None, "", "auto") else preferred)
@@ -95,7 +130,17 @@ class Player:
 
         If the chosen player isn't installed, the other one is used.
         """
-        pref = None if preferred in (None, "", "auto") else preferred
+        if preferred == "anigui" and self.embed is not None and self.embed_available():
+            ipc = self.ipc_path if track else None
+            if ipc and os.path.exists(ipc):
+                try:
+                    os.unlink(ipc)
+                except OSError:
+                    pass
+            opts, url = embedded_options(info, title or info.title or "AniGUI", ipc, start)
+            self.embed(opts, url, embedded_tracks(info))
+            return "anigui"
+        pref = None if preferred in (None, "", "auto", "anigui") else preferred
         found = find_player(pref) or find_player(None)
         if not found:
             raise PlayerError(INSTALL_HINT)

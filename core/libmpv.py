@@ -10,6 +10,7 @@ from __future__ import annotations
 import ctypes
 import ctypes.util
 import glob
+import locale
 import os
 import sys
 from ctypes import (CFUNCTYPE, POINTER, Structure, byref, c_char_p, c_double, c_int, c_int64, c_uint64,
@@ -152,6 +153,9 @@ class Mpv:
 
     def __init__(self, options: dict[str, str] | None = None, lib_path: str | None = None) -> None:
         self.lib = load(lib_path)
+        # mpv refuses to start unless numbers are formatted the C way, and Qt sets the
+        # user's locale at startup (a Mac set to Spanish writes 1,5 for 1.5).
+        locale.setlocale(locale.LC_NUMERIC, "C")
         self.handle = self.lib.mpv_create()
         if not self.handle:
             raise LibMpvError("libmpv couldn't start.")
