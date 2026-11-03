@@ -16,7 +16,7 @@ from core import __version__
 from core import self_update, setup, updates
 
 from .alerts import AlertsController, describe
-from .mature import confirm_open
+from .mature import confirm_open, status_known
 from .context import AppContext
 from .detail_page import DetailPage
 from .home_page import HomePage
@@ -169,6 +169,7 @@ class MainWindow(QMainWindow):
 
     def back(self) -> None:
         if self.stack.currentWidget() is self.detail and self.show_history:
+            self.detail.pending_mature_checked = True    # it was already allowed when opened
             self._reopen(self.show_history.pop())  # back to the show we came from
             return
         while self.history:
@@ -181,6 +182,7 @@ class MainWindow(QMainWindow):
     def open_item(self, item, autoplay: bool = False) -> None:
         if not confirm_open(self.ctx, item, self, ask=self.mature_ask):
             return
+        self.detail.pending_mature_checked = status_known(self.ctx, item)
         if self.stack.currentWidget() is self.detail and self.detail.current_item is not None:
             self.show_history.append(self.detail.current_item)
             del self.show_history[:-30]

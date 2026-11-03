@@ -181,8 +181,9 @@ class SettingsDialog(QDialog):
         return [
             SettingRow("Hide 18+ shows", "Keeps them out of Home, Search, the Calendar and Related. Shows you added "
                        "yourself stay, with blurred posters, and ask before opening.", self._check("hide_mature")),
-            self._note("A show counts as 18+ when AniList's community rates nudity or sexual violence as a big part "
-                       "of it. Violence and gore alone don't, but they're listed under Content on the show page."),
+            self._note("A show counts as 18+ when AniList's community rates nudity (70+ out of 100) or sexual "
+                       "violence (60+) as a big part of it. Fan service, violence and gore alone don't, but they're "
+                       "listed under Content on the show page; hover a tag there to see its rating."),
         ]
 
     def _episodes(self) -> list[QWidget]:

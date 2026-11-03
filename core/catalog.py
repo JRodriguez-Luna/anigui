@@ -110,6 +110,7 @@ class Catalog:
         self.hianime = hianime or HianimeClient()
         self.anilist = anilist or AniListClient(cache=store)
         self._mature_by_anime: dict[str, int] = {}   # search result -> AniList id (this session)
+        self._maturity_tried: set[str] = set()         # saved shows already looked up (this session)
 
     # hianime -> AniList (artwork and details for something the user found or watched)
     def enrich(self, anime_id: str, title: str, poster: str | None = None) -> Media | None:
@@ -155,6 +156,42 @@ class Catalog:
                 self.remember_maturity(media)
                 self._mature_by_anime[r.anime_id] = media.anilist_id
         return results
+
+    def backfill_maturity(self, shows, max_lookups: int = 10) -> int:
+        """Find 18+ status for saved shows that were never checked (e.g. added before 1.8).
+        Linked shows go to AniList in one batched request; unlinked ones are matched by
+        title (a few per call). Each show is tried once per session. Returns how many
+        shows got a status."""
+        linked: list[int] = []
+        unlinked = []
+        for show in shows:
+            if show.anime_id in self._maturity_tried:
+                continue
+            self._maturity_tried.add(show.anime_id)
+            if show.anilist_id:
+                if self.store.maturity(show.anilist_id) is None:
+                    linked.append(show.anilist_id)
+            else:
+                unlinked.append(show)
+        found = 0
+        if linked:
+            try:
+                for media in self.anilist.airing(linked).values():
+                    self.remember_maturity(media)
+                    found += 1
+            except Exception:  # noqa: BLE001 - AniList down: try again next launch
+                pass
+        for show in unlinked[:max_lookups]:
+            try:
+                found += self.enrich(show.anime_id, show.title, show.poster) is not None
+            except Exception:  # noqa: BLE001
+                pass
+        return found
+
+    def maturity_unknown(self, shows) -> bool:
+        """Any saved show whose 18+ status hasn't been looked up (or tried) yet?"""
+        return any(s.anime_id not in self._maturity_tried and
+                   (not s.anilist_id or self.store.maturity(s.anilist_id) is None) for s in shows)
 
     def is_mature(self, item) -> bool:
         """18+ for a search result or saved show, from what's been looked up so far."""

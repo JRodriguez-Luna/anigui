@@ -20,6 +20,7 @@ from typing import Iterable
 NUDITY_18 = 70            # Nudity tag rank that makes a show 18+
 SEXUAL_VIOLENCE_18 = 60   # same for the Rape tag
 NOTE_RANK = 60            # a tag must be rated this central to the show to be listed
+# "Nudity" is only listed when it's also enough for 18+, so the Content line and the badge agree
 SEXUAL_VIOLENCE_NOTE = 40
 DISTURBING = ("Torture", "Suicide", "Cannibalism", "Self-Harm", "Child Abuse", "Slavery")
 
@@ -41,6 +42,23 @@ class Tag:
 class Maturity:
     mature: bool = False
     notes: tuple[str, ...] = ()       # e.g. ("Nudity", "Sexual themes", "Gore")
+    # What each note came from, for the tooltips: (note, ((tag, rank), ...)). An empty
+    # tuple of tags means the Ecchi genre.
+    sources: tuple[tuple[str, tuple[tuple[str, int], ...]], ...] = ()
+
+    def source(self, note: str) -> tuple[tuple[str, int], ...]:
+        return next((tags for name, tags in self.sources if name == note), ())
+
+
+def level(rank: int) -> str:
+    """AniList's 0-100 tag rating in words."""
+    if rank >= 80:
+        return "What the show is known for"
+    if rank >= 60:
+        return "A regular part of the show"
+    if rank >= 40:
+        return "Noticeable, but not the focus"
+    return "Minor"
 
 
 def assess(is_adult: bool, genres: Iterable[str], tags: Iterable[Tag]) -> Maturity:
@@ -57,16 +75,19 @@ def assess(is_adult: bool, genres: Iterable[str], tags: Iterable[Tag]) -> Maturi
 
     mature = bool(is_adult) or rank("Nudity") >= NUDITY_18 or rank("Rape") >= SEXUAL_VIOLENCE_18
 
-    notes: list[str] = []
-    if shown("Nudity"):
-        notes.append("Nudity")
-    if "Ecchi" in set(genres) or any(t.adult and t.name != "Rape" and t.rank >= NOTE_RANK and not t.spoiler
-                                     for t in tags):
-        notes.append("Sexual themes")
-    if shown("Rape", SEXUAL_VIOLENCE_NOTE):
-        notes.append("Sexual violence")
-    if shown("Gore") or shown("Body Horror"):
-        notes.append("Gore")
-    if any(shown(name, 50) for name in DISTURBING):
-        notes.append("Disturbing themes")
-    return Maturity(mature, tuple(notes))
+    sources: list[tuple[str, tuple[tuple[str, int], ...]]] = []
+
+    def note(name: str, found: list[tuple[str, int]], always: bool = False) -> None:
+        if found or always:
+            sources.append((name, tuple(sorted(found, key=lambda f: -f[1]))))
+
+    def ranked(names: Iterable[str], minimum: int = NOTE_RANK) -> list[tuple[str, int]]:
+        return [(n, rank(n)) for n in names if shown(n, minimum)]
+
+    note("Nudity", ranked(["Nudity"], NUDITY_18))
+    adult = [(t.name, t.rank) for t in tags if t.adult and t.name != "Rape" and t.rank >= NOTE_RANK and not t.spoiler]
+    note("Sexual themes", adult, always="Ecchi" in set(genres))
+    note("Sexual violence", ranked(["Rape"], SEXUAL_VIOLENCE_NOTE))
+    note("Gore", ranked(["Gore", "Body Horror"]))
+    note("Disturbing themes", ranked(DISTURBING, 50))
+    return Maturity(mature, tuple(n for n, _ in sources), tuple(sources))

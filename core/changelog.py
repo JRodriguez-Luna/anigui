@@ -25,6 +25,15 @@ class Release:
 
 
 RELEASES: tuple[Release, ...] = (
+    Release("1.8.1", "November 2, 2026", (
+        Change("18+ badges right away", "Shows already in My List or Continue Watching are checked when AniGUI "
+                                        "opens, so they're badged and blurred without opening them first. If a "
+                                        "show only turns out to be 18+ once its page loads, it asks then."),
+        Change("The Content line matches the badge", "\"Nudity\" is listed only when it's enough to make a show "
+                                                     "18+ (rated 70+), so a show never says Nudity without the badge."),
+        Change("What the tags mean", "Hover a Content tag to see its rating (0-100) and what that means; the ⓘ next "
+                                     "to it explains where the ratings come from and what earns 18+."),
+    )),
     Release("1.8.0", "November 2, 2026", (
         Change("18+ shows", "Shows with heavy nudity or sexual content get a red 18+ badge. Hide 18+ shows "
                             "(Settings → Content, on by default) keeps them out of Home, Search, the Calendar and "

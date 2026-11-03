@@ -129,6 +129,14 @@ QWidget#StickyBar {{ background: rgba(14, 14, 20, 0.97); border-bottom: 1px soli
 #MatureTitle {{ font-size: 18px; font-weight: 800; }}
 #MatureText {{ color: #C9C9D6; font-size: 13px; }}
 #HiddenNote {{ color: {MUTED}; font-size: 13px; }}
+QPushButton#InfoButton {{
+    background: transparent; border: 1px solid {FAINT}; border-radius: 10px; color: {MUTED};
+    min-width: 20px; max-width: 20px; min-height: 20px; max-height: 20px; padding: 0;
+    font-size: 12px; font-weight: 800;
+}}
+QPushButton#InfoButton:hover {{ color: {TEXT}; border-color: {MUTED}; }}
+QFrame#Explainer {{ background: {SURFACE_2}; border: 1px solid {SURFACE_3}; border-radius: 10px; }}
+#ExplainerText {{ color: #D6D6E0; font-size: 13px; }}
 QDialog#MatureDialog {{ background: {SURFACE}; }}
 QComboBox {{
     background: {SURFACE_2}; border: 1px solid {BORDER}; border-radius: {RADIUS}px;

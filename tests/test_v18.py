@@ -13,6 +13,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 
 from PySide6.QtCore import QCoreApplication  # noqa: E402
+from PySide6.QtWidgets import QLabel  # noqa: E402
 
 import ui_fakes  # noqa: E402
 from core.ani_cli import StreamInfo  # noqa: E402
@@ -226,8 +227,18 @@ def test_show_page_badge_and_content_line(win):
     d = win.detail
     assert pump(lambda: d.media is not None)
     assert not d.mature_badge.isHidden() and not d.content_row.isHidden()
-    pills = [d.content_pills.itemAt(i).widget().text() for i in range(d.content_pills.count())]
-    assert pills == ["Nudity", "Sexual themes", "Gore"]
+    widgets = [d.content_pills.itemAt(i).widget() for i in range(d.content_pills.count())]
+    pills = [w for w in widgets if w.objectName() == "ContentPill"]
+    assert [w.text() for w in pills] == ["Nudity", "Sexual themes", "Gore"]
+    assert pills[0].toolTip().startswith("<b>Nudity</b> · 88 / 100")
+    assert "What the show is known for" in pills[0].toolTip() and "70+" in pills[0].toolTip()
+    assert "Hypersexuality (65)" in pills[1].toolTip()
+    assert "never makes a show 18+" in pills[2].toolTip()
+    info = next(w for w in widgets if w.objectName() == "InfoButton")
+    info.click()
+    pop = next(w for w in info.children() if w.objectName() == "Explainer")
+    assert "how big a part of the show" in pop.findChild(QLabel).text()
+    pop.close()
     win.open_item(win.ctx.catalog.anilist.media(501))
     assert pump(lambda: d.media is not None and d.media.anilist_id == 501)
     assert d.mature_badge.isHidden() and d.content_row.isHidden()
@@ -310,3 +321,69 @@ def test_sticky_bar_appears_after_scrolling_and_goes_back(win):
     assert went_back
     d.verticalScrollBar().setValue(0)
     assert pump(lambda: d.sticky.isHidden())
+
+
+# -- 1.8.1: option B, and saved shows checked without opening them ----------------------------
+
+def test_nudity_is_only_listed_when_it_makes_the_show_18_plus():
+    m = assess(False, ["Comedy"], [T("Nudity", 65)])
+    assert not m.mature and "Nudity" not in m.notes          # the old gap: listed but not 18+
+    m = assess(False, ["Comedy"], [T("Nudity", 70)])
+    assert m.mature and m.notes == ("Nudity",)
+    m = assess(False, ["Romance", "Ecchi"], [T("Nudity", 50)])
+    assert not m.mature and m.notes == ("Sexual themes",) and m.source("Sexual themes") == ()
+
+
+def test_tooltips_explain_each_note():
+    from ui.mature import note_tooltip
+    m = assess(False, ["Action"], [T("Gore", 77), T("Body Horror", 85), T("Cannibalism", 69), T("Suicide", 55)])
+    assert "85 / 100" in note_tooltip(m, "Gore") and "Body Horror (85), Gore (77)" in note_tooltip(m, "Gore")
+    assert "Cannibalism (69), Suicide (55)" in note_tooltip(m, "Disturbing themes")
+    ecchi = assess(False, ["Ecchi"], [])
+    assert "lists this show as Ecchi" in note_tooltip(ecchi, "Sexual themes")
+
+
+def saved_pocket(w, in_list=True):
+    w.ctx.store.upsert_show(POCKET, "Pocket Dungeon Diaries")
+    w.ctx.store.set_anilist_match(POCKET, POCKET_ID, 1.0)
+    if in_list:
+        w.ctx.store.set_in_library(POCKET, True)
+
+
+def test_saved_shows_get_checked_without_being_opened(win):
+    saved_pocket(win)                                     # in My List from before 1.8: never checked
+    assert win.ctx.store.maturity(POCKET_ID) is None
+    win.home.refresh_local()
+    assert pump(lambda: any(c.title == "Pocket Dungeon Diaries" and c.mature and c.blur
+                            for c in win.home.library_row.model().cards()))
+    assert win.ctx.store.maturity(POCKET_ID)[0] is True
+
+
+def test_my_list_page_checks_too(win):
+    saved_pocket(win)
+    win.go(win.library)
+    win.library.refresh()
+    assert pump(lambda: any(c.title == "Pocket Dungeon Diaries" and c.blur for c in win.library.grid.cards.cards()))
+
+
+def test_show_page_asks_when_18_plus_turns_up_late(win):
+    saved_pocket(win, in_list=False)
+    win.ctx.catalog._maturity_tried.add(POCKET)           # as if the background check hasn't happened yet
+    asked = []
+    win.mature_ask = lambda title, notes: asked.append(title) or (False, False)
+    came_back = []
+    win.detail.backRequested.connect(lambda: came_back.append(True))
+    win.open_item(win.ctx.store.get_show(POCKET))         # unknown, so opening didn't ask…
+    assert pump(lambda: asked)                            # …but the page does once AniList answers
+    assert asked == ["Pocket Dungeon Diaries"] and pump(lambda: came_back)
+
+
+def test_known_18_plus_is_asked_once_not_twice(win):
+    win.ctx.catalog.remember_maturity(win.ctx.catalog.anilist.media(POCKET_ID))
+    saved_pocket(win, in_list=False)
+    asked = []
+    win.mature_ask = lambda title, notes: asked.append(title) or (True, False)
+    win.open_item(win.ctx.store.get_show(POCKET))
+    assert pump(lambda: win.detail.media is not None)
+    pump(timeout=0.3)
+    assert asked == ["Pocket Dungeon Diaries"]

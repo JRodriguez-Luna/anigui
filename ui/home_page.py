@@ -109,8 +109,10 @@ class HomePage(QScrollArea):
         self.new_row.set_cards(decorate_all(self.ctx, [new_card(n) for n in fresh]))
         items = self.ctx.store.continue_watching(limit=20)
         self.continue_row.set_cards(decorate_all(self.ctx, [continue_card(i) for i in items]))
+        library = self.ctx.store.library()
         self.library_row.set_cards(decorate_all(self.ctx, [show_card(s, new_by_id.get(s.anime_id))
-                                                           for s in self.ctx.store.library()]))
+                                                           for s in library]))
+        self._check_maturity([n.show for n in fresh] + [i.show for i in items] + list(library))
         self._lookup_missing_covers(items)
 
     # -- history ------------------------------------------------------------------------
@@ -164,6 +166,13 @@ class HomePage(QScrollArea):
         self._season = items
         shown, _hidden = visible(self.ctx, items)
         self.season_row.set_cards(decorate_all(self.ctx, [media_card(m) for m in shown]))
+
+    def _check_maturity(self, shows) -> None:
+        """Saved shows from before 18+ existed get checked now, not when first opened."""
+        if not self.ctx.catalog.maturity_unknown(shows):
+            return
+        self.ctx.runner.submit(self.ctx.catalog.backfill_maturity, shows,
+                               on_done=lambda found: found and self.refresh_local(), group="home-maturity")
 
     def apply_content_filter(self) -> None:
         """Hide 18+ shows changed: redo the rows from what's already loaded."""

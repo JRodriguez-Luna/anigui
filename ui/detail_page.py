@@ -14,7 +14,7 @@ from core.hianime import Episode
 from core.store import episode_key
 
 from .cards import CardRow, media_card
-from .mature import decorate_all, hiding, visible
+from .mature import confirm_open, decorate_all, hiding, note_tooltip, show_explainer, visible
 from .context import AppContext
 from .episodes import PER_PAGE, EpisodeGrid, EpisodeItem, EpisodePager, coming_soon, find_episode, page_ranges
 from .hero import Backdrop, airing_note, media_meta, truncate
@@ -76,6 +76,8 @@ class DetailPage(QScrollArea):
         self.play_target: str | None = None
         self.autoplay = False
         self._related_for: int | None = None
+        self.pending_mature_checked = False   # set by the window: did opening already check 18+?
+        self.mature_checked = False
         self.fillers = None                # core.fillers.FillerInfo for this show
         self._fillers_for = None
         self.page: int | None = None       # None = pick the page with Up Next
@@ -284,6 +286,7 @@ class DetailPage(QScrollArea):
         self.grid.model_.set_items([])
         self.grid.set_tile_color(None)
         self.page, self.jumped_to, self.stills, self._stills_asked = None, None, {}, set()
+        self.mature_checked, self.pending_mature_checked = self.pending_mature_checked, False
         self.fillers, self._fillers_for = None, None
         self.filler_note.setVisible(False)
         self.pager.setVisible(False)
@@ -312,6 +315,7 @@ class DetailPage(QScrollArea):
         self.grid.set_tile_color(media.cover_color, media.banner or media.cover)
         self.ctx.catalog.remember_maturity(media)
         self._show_content(media)
+        self._late_mature_check(media)
         if self.episodes:
             self._refresh_episode_states()   # Coming soon needs the airing info
         self._load_related(media)
@@ -364,8 +368,31 @@ class DetailPage(QScrollArea):
         for note in (m.notes if m else ()):
             pill = QLabel(note, objectName="ContentPill")
             pill.setTextFormat(Qt.TextFormat.PlainText)
+            pill.setToolTip(note_tooltip(m, note))
             self.content_pills.addWidget(pill)
+        if m and m.notes:
+            info = QPushButton("i", objectName="InfoButton", cursor=Qt.CursorShape.PointingHandCursor)
+            info.setToolTip("What do these mean?")
+            info.clicked.connect(lambda _c=False, b=info: show_explainer(b))
+            self.content_pills.addWidget(info)
         self.content_row.setVisible(bool(m and m.notes))
+
+    def _late_mature_check(self, media: Media) -> None:
+        """A saved show nobody had checked turned out to be 18+ only now that its details
+        loaded: ask the same question opening it would have asked."""
+        if self.mature_checked:
+            return
+        self.mature_checked = True
+        if not media.maturity.mature:
+            return
+        ask = getattr(self.window(), "mature_ask", None)
+        gen = self.gen
+
+        def check() -> None:
+            if gen == self.gen and not confirm_open(self.ctx, media, self, ask=ask):
+                self.backRequested.emit()
+
+        QTimer.singleShot(0, check)   # after this page has painted
 
     def apply_content_filter(self) -> None:
         """Hide 18+ shows changed: the Related rows follow it."""
