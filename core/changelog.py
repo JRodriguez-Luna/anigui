@@ -25,6 +25,12 @@ class Release:
 
 
 RELEASES: tuple[Release, ...] = (
+    Release("1.8.8", "November 3, 2026", (
+        Change("No crash report after updating (publisher's Mac)", "On the Mac that signs releases, a crash "
+               "report could pop up once after each update: the background signing check tried to start the "
+               "new app from the old one's registration and macOS refused. Updates now pause that check and "
+               "the new version sets it up again. Nothing changes on other Macs."),
+    )),
     Release("1.8.7", "November 3, 2026", (
         Change("Saved shows load again", "hianime renumbered its shows, so shows saved before then said "
                                          "\"Couldn't load this show: HTTP 404\". AniGUI now finds each one's new "

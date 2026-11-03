@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from . import paths, signing
+from . import __version__, paths, signing
 from .env import which
 from .self_update import download, sha256_of
 from .setup import SetupError, _fetch, parse_version
@@ -257,6 +257,9 @@ def agent_plist() -> bytes:
         "ProcessType": "Interactive",
         "StandardOutPath": str(logs / "signer.log"),
         "StandardErrorPath": str(logs / "signer.log"),
+        # Not used by the check; it makes the file differ per version, so refresh_agent()
+        # knows when the app changed under the agent.
+        "EnvironmentVariables": {"ANIGUI_VERSION": __version__},
     })
 
 
@@ -270,6 +273,33 @@ def install_agent(run: Run = subprocess.run) -> Path:
     if done.returncode != 0:
         raise SignerError(f"Couldn't start the background check: {done.stderr.strip()[:200]}")
     return path
+
+
+def pause_agent(run: Run = subprocess.run) -> None:
+    """Stop the background check before the app is replaced (an update). Its file stays;
+    the new AniGUI starts it again with refresh_agent()."""
+    if agent_path().exists():
+        run(["launchctl", "bootout", f"gui/{os.getuid()}/{AGENT_LABEL}"], capture_output=True, text=True)
+
+
+def refresh_agent(run: Run = subprocess.run) -> bool:
+    """On launch: if the background check is set up but was set up by another version (or
+    paused for an update), load it again for this one. macOS ties a background item to
+    the exact app it was loaded with; launching a replaced app from the old registration
+    is refused ("Launch Constraint Violation") and shows a crash report. Returns whether
+    it reloaded."""
+    path = agent_path()
+    if not path.exists() or not getattr(sys, "frozen", False):
+        return False
+    try:
+        current = path.read_bytes()
+    except OSError:
+        return False
+    loaded = run(["launchctl", "print", f"gui/{os.getuid()}/{AGENT_LABEL}"], capture_output=True, text=True)
+    if current == agent_plist() and loaded.returncode == 0:
+        return False
+    install_agent(run)
+    return True
 
 
 def uninstall_agent(run: Run = subprocess.run) -> None:

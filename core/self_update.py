@@ -175,6 +175,11 @@ def install(dmg: Path, app: Path, expected_version: str | None = None, run: Run 
             raise UpdateError("The new version's code signature didn't check out, so it wasn't installed.")
         if expected_version and bundle_version(staged) != expected_version:
             raise UpdateError(f"The download is version {bundle_version(staged)}, not {expected_version}.")
+        try:   # the publisher's release-signing check runs this app: hold it during the swap
+            from . import signer
+            signer.pause_agent(run)
+        except Exception:  # noqa: BLE001 - never let it stop an update
+            pass
         os.replace(app, old)            # same folder, so these are instant renames
         try:
             os.replace(staged, app)

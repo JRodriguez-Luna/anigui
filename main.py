@@ -138,6 +138,20 @@ def signer_check() -> int:
     return 0
 
 
+def refresh_signer_agent() -> None:
+    """The publisher's background check (only set up on the publisher's Mac): reload it
+    after an update so macOS doesn't refuse to start the new app from the old one's."""
+    if sys.platform != "darwin":
+        return
+    try:
+        from core import signer
+
+        if signer.refresh_agent():
+            print("signer: background check reloaded for this version")
+    except Exception as exc:  # noqa: BLE001 - never stop the app from opening
+        print(f"signer: couldn't reload the background check: {exc}")
+
+
 def main() -> int:
     if "--self-test" in sys.argv:
         return self_test()
@@ -161,6 +175,7 @@ def main() -> int:
         app.setWindowIcon(QIcon(str(ICON)))
     apply_theme(app)
 
+    refresh_signer_agent()
     ctx = AppContext.create()
     window = MainWindow(ctx)
     window.show()
