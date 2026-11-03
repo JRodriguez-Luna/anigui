@@ -374,6 +374,12 @@ class MainWindow(QMainWindow):
         if self.ctx.pref("sleigh_day", "") != today.isoformat() and not reduce_motion():
             self.ctx.set_pref("sleigh_day", today.isoformat())
             QTimer.singleShot(2500, lambda: self.stack.currentWidget() is self.home and self.home.sleigh.play())
+        year = str(holiday.season_year(today))
+        if (holiday.holidays_open(today) and str(self.ctx.pref("holidays_remind", "")) == year
+                and str(self.ctx.pref("holidays_reminded", "")) != year):
+            self.ctx.set_pref("holidays_reminded", year)       # Remind me, from November
+            self.alerts.notifier.notify("The advent calendar is open 🎁",
+                                        "Door 1 has a Christmas episode behind it. Find it under Holidays.")
         if holiday.is_christmas(today) and str(self.ctx.pref("christmas_card", "")) != str(today.year):
             self.ctx.set_pref("christmas_card", str(today.year))
             QTimer.singleShot(900, lambda: self.show_christmas_card(today))

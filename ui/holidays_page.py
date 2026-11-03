@@ -7,17 +7,18 @@ from __future__ import annotations
 import datetime as dt
 from dataclasses import replace
 
-from PySide6.QtCore import QPointF, QRectF, Qt, Signal
+from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QPainter
 from PySide6.QtWidgets import (
-    QFrame, QGridLayout, QHBoxLayout, QLabel, QPushButton, QScrollArea, QVBoxLayout, QWidget,
+    QFrame, QGraphicsBlurEffect, QGridLayout, QHBoxLayout, QLabel, QPushButton, QScrollArea, QVBoxLayout,
+    QWidget,
 )
 
 from core import holiday
 from core.anilist import Media
 
 from . import festive, theme
-from .cards import Card, CardRow
+from .cards import Card, CardRow, media_card
 from .context import AppContext
 from .mature import decorate, visible
 
@@ -96,6 +97,57 @@ class BadgeView(QWidget):
         p.end()
 
 
+class ComingSoon(QFrame):
+    """'Coming December 1' with a countdown and Remind me, over the frosted page."""
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent, objectName="ComingSoon")
+        self.setFixedWidth(420)
+        col = QVBoxLayout(self)
+        col.setContentsMargins(30, 26, 30, 26)
+        col.setSpacing(8)
+        icon = QLabel("🎁", objectName="ComingSoonIcon", alignment=Qt.AlignmentFlag.AlignCenter)
+        title = QLabel("Coming December 1", objectName="ComingSoonTitle", alignment=Qt.AlignmentFlag.AlignCenter)
+        body = QLabel("24 Christmas episodes behind the advent doors, the 12 Days of Anime, and six badges "
+                      "to earn.", objectName="ComingSoonBody", alignment=Qt.AlignmentFlag.AlignCenter, wordWrap=True)
+        units = QHBoxLayout()
+        units.setSpacing(10)
+        units.addStretch(1)
+        self.units: list[QLabel] = []
+        for name in ("days", "hours", "min"):
+            box = QFrame(objectName="ComingSoonUnit")
+            b = QVBoxLayout(box)
+            b.setContentsMargins(12, 8, 12, 8)
+            b.setSpacing(0)
+            value = QLabel("0", objectName="ComingSoonValue", alignment=Qt.AlignmentFlag.AlignCenter)
+            b.addWidget(value)
+            b.addWidget(QLabel(name, objectName="ComingSoonLabel", alignment=Qt.AlignmentFlag.AlignCenter))
+            units.addWidget(box)
+            self.units.append(value)
+        units.addStretch(1)
+        self.remind = QPushButton("🔔  Remind me", objectName="Primary", cursor=Qt.CursorShape.PointingHandCursor)
+        for w in (icon, title, body):
+            col.addWidget(w)
+        col.addSpacing(4)
+        col.addLayout(units)
+        col.addSpacing(8)
+        col.addWidget(self.remind, 0, Qt.AlignmentFlag.AlignCenter)
+
+    def set_time(self, now: dt.datetime, today: dt.date) -> None:
+        opens = dt.datetime(today.year, 12, 1)
+        if now.date() == today:
+            left = max(0, int((opens - now).total_seconds()))
+        else:                                    # (a pinned date: whole days)
+            left = max(0, (opens.date() - today).days) * 86400
+        days, rest = divmod(left, 86400)
+        for label, value in zip(self.units, (days, rest // 3600, rest % 3600 // 60)):
+            label.setText(str(value))
+
+    def set_reminded(self, on: bool) -> None:
+        self.remind.setText("✓  We'll let you know" if on else "🔔  Remind me")
+        self.remind.setEnabled(not on)
+
+
 class HolidaysPage(QScrollArea):
     playEpisode = Signal(object, str)     # Media, episode number
     openItem = Signal(object)
@@ -108,6 +160,9 @@ class HolidaysPage(QScrollArea):
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.media: dict[int, Media] = {}
         self.today: dt.date | None = None        # tests pin the date
+        self.now = dt.datetime.now                # (and the clock)
+        self._tick = QTimer(self, interval=30_000)   # the Coming soon countdown
+        self._tick.timeout.connect(lambda: self.is_locked() and self.soon.set_time(self.now(), self._today()))
 
         self.title = QLabel("Holidays at AniGUI", objectName="HolidaysTitle")
         self.countdown = QLabel("", objectName="HolidaysCountdown")
@@ -161,6 +216,12 @@ class HolidaysPage(QScrollArea):
         head.addStretch(1)
         col.addLayout(head)
         col.addSpacing(10)
+        outer = col
+        # Everything below opens December 1; until then it sits frosted behind Coming soon.
+        self.locked_area = QWidget()
+        col = QVBoxLayout(self.locked_area)
+        col.setContentsMargins(0, 0, 0, 0)
+        col.setSpacing(12)
         col.addWidget(QLabel("Advent calendar", objectName="SectionTitle"))
         col.addWidget(QLabel("A Christmas episode behind every door, December 1 to 24. Missed one? It stays open.",
                              objectName="Muted"))
@@ -174,9 +235,24 @@ class HolidaysPage(QScrollArea):
         col.addLayout(self.badges_row)
         col.addSpacing(18)
         col.addWidget(self.yours)
-        col.addStretch(1)
+
+        self.stage = QWidget()                   # the locked area with Coming soon on top
+        stage = QGridLayout(self.stage)
+        stage.setContentsMargins(0, 0, 0, 0)
+        stage.addWidget(self.locked_area, 0, 0)
+        self.soon = ComingSoon()
+        self.soon.remind.clicked.connect(self._remind)
+        stage.addWidget(self.soon, 0, 0, Qt.AlignmentFlag.AlignCenter)
+        outer.addWidget(self.stage)
+        # Before December: the Christmas shelf, so there's something to watch while you wait
+        self.waiting = CardRow("While you wait: Christmas anime", ctx.images)
+        self.waiting.cardActivated.connect(lambda card: self.openItem.emit(card.payload))
+        self.waiting.setVisible(False)
+        outer.addSpacing(18)
+        outer.addWidget(self.waiting)
+        outer.addStretch(1)
         body = QWidget(objectName="PageBody")
-        body.setLayout(col)
+        body.setLayout(outer)
         self.setWidget(body)
 
     # -- data -------------------------------------------------------------------------------
@@ -188,13 +264,35 @@ class HolidaysPage(QScrollArea):
         raw = str(self.ctx.pref(f"advent_{holiday.season_year(self._today())}", "") or "")
         return {int(x) for x in raw.split(",") if x.isdigit()}
 
+    def is_locked(self) -> bool:
+        return not holiday.holidays_open(self._today())
+
+    def _apply_lock(self) -> None:
+        locked = self.is_locked()
+        self.soon.setVisible(locked)
+        self.waiting.setVisible(locked and bool(self.waiting.model().cards()))
+        self.locked_area.setEnabled(not locked)
+        self.locked_area.setGraphicsEffect(None)
+        if locked:
+            blur = QGraphicsBlurEffect(self.locked_area)
+            blur.setBlurRadius(14)
+            self.locked_area.setGraphicsEffect(blur)
+            self.soon.set_time(self.now(), self._today())
+            year = holiday.season_year(self._today())
+            self.soon.set_reminded(str(self.ctx.pref("holidays_remind", "")) == str(year))
+
+    def _remind(self) -> None:
+        self.ctx.set_pref("holidays_remind", str(holiday.season_year(self._today())))
+        self.soon.set_reminded(True)
+
     def refresh(self) -> None:
         today = self._today()
         self.countdown.setText(festive.countdown_text(today))
         self._refresh_doors()
         self._refresh_challenge()
+        self._apply_lock()
         if not self.media and holiday.CHRISTMAS_EPISODES:
-            ids = sorted({e.anilist_id for e in holiday.CHRISTMAS_EPISODES})
+            ids = sorted({e.anilist_id for e in holiday.CHRISTMAS_EPISODES} | set(holiday.CHRISTMAS_IDS))
             self.ctx.runner.submit(self.ctx.catalog.anilist.airing, ids, on_done=self._got_media,
                                    group="holidays-media")
         else:
@@ -203,6 +301,10 @@ class HolidaysPage(QScrollArea):
     def _got_media(self, found: dict[int, Media]) -> None:
         self.media = dict(found)
         self._refresh_yours()
+        shelf = [self.media[i] for i in holiday.CHRISTMAS_IDS if i in self.media]
+        shelf = visible(self.ctx, shelf)[0]
+        self.waiting.set_cards([decorate(self.ctx, media_card(m)) for m in shelf])
+        self._apply_lock()
 
     def _refresh_doors(self) -> None:
         can = holiday.advent_open_until(self._today())
@@ -298,6 +400,11 @@ class HolidaysPage(QScrollArea):
     def showEvent(self, event) -> None:
         super().showEvent(event)
         self.refresh()
+        self._tick.start()
+
+    def hideEvent(self, event) -> None:
+        super().hideEvent(event)
+        self._tick.stop()
 
 
 def _esc(text: str) -> str:

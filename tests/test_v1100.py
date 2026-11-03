@@ -370,3 +370,29 @@ def test_nothing_is_earned_before_december():
     assert not holiday.holidays_open(dt.date(2026, 11, 30))
     assert holiday.holidays_open(dt.date(2026, 12, 1)) and holiday.holidays_open(dt.date(2027, 1, 1))
     assert not holiday.holidays_open(dt.date(2027, 1, 2))
+
+
+def test_coming_soon_until_december(win, plain_theme, fake_advent):
+    nov = dt.date(2026, 11, 3)
+    festive(win, nov)
+    page = win.holidays
+    page.today = nov
+    page.now = lambda: dt.datetime(2026, 11, 3, 13, 30)
+    win.go(page)
+    assert page.is_locked() and page.soon.isVisible() and not page.locked_area.isEnabled()
+    assert page.locked_area.graphicsEffect() is not None                     # frosted
+    assert [u.text() for u in page.soon.units] == ["27", "10", "30"]
+    assert pump(lambda: page.waiting.isVisible())                              # the shelf, while you wait
+    page.soon.remind.click()
+    assert win.ctx.pref("holidays_remind") == "2026" and not page.soon.remind.isEnabled()
+    # December 1: it opens, and the reminder goes out once
+    sent = []
+    win.alerts.notifier.notify = lambda title, body: sent.append(title)
+    dec1 = dt.date(2026, 12, 1)
+    festive(win, dec1)
+    festive(win, dec1)
+    assert sent == ["The advent calendar is open 🎁"]
+    page.today = dec1
+    page.refresh()
+    assert not page.is_locked() and not page.soon.isVisible() and page.locked_area.isEnabled()
+    assert page.locked_area.graphicsEffect() is None and not page.waiting.isVisible()

@@ -291,6 +291,13 @@ QMessageBox QLabel {{ color: {TEXT}; }}
 #AdventPickBox {{ background: {SURFACE}; border: 1px solid {BORDER}; border-radius: 12px; }}
 #AdventPick {{ color: {TEXT}; font-size: 14px; }}
 #SurpriseButton {{ color: #F5C64A; }}
+#ComingSoon {{ background: rgba(29, 29, 40, 240); border: 2px solid #A8333A; border-radius: 16px; }}
+#ComingSoonIcon {{ font-size: 40px; }}
+#ComingSoonTitle {{ font-size: 22px; font-weight: 800; color: {TEXT}; }}
+#ComingSoonBody {{ font-size: 13px; color: {MUTED}; }}
+#ComingSoonUnit {{ background: {SURFACE}; border: 1px solid {BORDER}; border-radius: 10px; min-width: 52px; }}
+#ComingSoonValue {{ font-size: 22px; font-weight: 800; color: {TEXT}; }}
+#ComingSoonLabel {{ font-size: 11px; color: {MUTED}; }}
 #ChristmasScrim {{ background: rgba(4, 6, 10, 150); }}
 #ChristmasCard {{ background: {SURFACE_2}; border: 2px solid #A8333A; border-radius: 16px; }}
 #ChristmasIcon {{ font-size: 44px; }}
