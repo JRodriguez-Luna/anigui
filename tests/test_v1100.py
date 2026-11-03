@@ -396,3 +396,45 @@ def test_coming_soon_until_december(win, plain_theme, fake_advent):
     page.refresh()
     assert not page.is_locked() and not page.soon.isVisible() and page.locked_area.isEnabled()
     assert page.locked_area.graphicsEffect() is None and not page.waiting.isVisible()
+
+
+# -- because you watched -----------------------------------------------------------------------
+
+def test_because_rows_pick_your_top_shows(tmp_path):
+    from core import recommend
+    from core.anilist import Related
+    from core.store import Store
+    from test_v190 import media
+    store = Store(tmp_path / "s.db")
+    for anime_id, aid, eps in (("a-1", 1, 6), ("a2-2", 2, 3), ("b-3", 3, 4), ("c-4", 4, 1)):
+        store.upsert_show(anime_id, f"Show {aid}")
+        store.set_anilist_match(anime_id, aid, 1.0)
+        for e in range(1, eps + 1):
+            store.record_progress(anime_id, str(e), 1400, 1440)
+            store.log_watch(anime_id, str(e), 1400)
+    graph = {
+        1: ([Related(media(2, "Show 2"), "SEQUEL")], [media(i, f"Rec {i}") for i in (3, 10, 11, 12, 13, 14)]),
+        2: ([Related(media(1, "Show 1"), "PREQUEL")], [media(i, f"Rec {i}") for i in (20, 21, 22, 23)]),
+        3: ([], [media(i, f"Rec {i}") for i in (10, 30, 31, 32, 33, 34)]),
+        4: ([], [media(i, f"Rec {i}") for i in (40, 41)]),
+    }
+    top = recommend.top_shows(store)
+    assert [a for a, _t in top][:2] == [1, 3]                    # most watched first
+    rows = recommend.because_rows(store, lambda i: graph[i])
+    assert [r.anilist_id for r in rows] == [1, 3]                # 2 is 1's sequel; 4 has too few
+    assert [m.anilist_id for m in rows[0].picks] == [10, 11, 12, 13, 14]   # 3 is yours: skipped
+    assert 10 not in [m.anilist_id for m in rows[1].picks]       # already in the first row
+    assert rows[0].title == "Show 1"
+
+
+def test_because_rows_on_home(win):
+    win.ctx.store.set_anilist_match(STARFALL, 500, 1.0)
+    win.home.refresh_local()
+    row = win.home.because_rows[0]
+    assert pump(lambda: row.isVisible(), 8)
+    shown = [r for r in win.home.because_rows if r.isVisible()]
+    titles = [r.title.text() for r in shown]
+    assert titles and all(t.startswith("Because you watched ") for t in titles) and len(set(titles)) == len(titles)
+    for r in shown:
+        picks = [c.payload.anilist_id for c in r.view.cards.cards()]
+        assert len(picks) >= 4 and 500 not in picks

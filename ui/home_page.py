@@ -7,7 +7,7 @@ import random
 from PySide6.QtCore import QPoint, Qt, QTimer, Signal
 from PySide6.QtWidgets import QMenu, QMessageBox, QScrollArea, QVBoxLayout, QWidget
 
-from core import holiday
+from core import holiday, recommend
 from core.anilist import current_season
 from core.store import ContinueItem, NewEpisodes, Show
 
@@ -81,8 +81,12 @@ class HomePage(QScrollArea):
         self.season_row = CardRow(f"{season.title()} {year}", ctx.images)
         self.library_row = CardRow("My List", ctx.images)
         self.xmas_row = CardRow("Christmas anime ❄", ctx.images)     # while the holiday theme is on
+        # "Because you watched …": filled once your history is in (refresh_local)
+        self.because_rows = [CardRow("", ctx.images) for _ in range(recommend.MAX_ROWS)]
+        self._because: list[recommend.BecauseRow] = []
+        self._because_key = None
         self.rows = [self.new_row, self.continue_row, self.xmas_row, self.trending_row, self.season_row,
-                     self.library_row]
+                     *self.because_rows, self.library_row]
 
         self.holiday_banner = HolidayBanner()
         self.holiday_banner.turnOn.connect(lambda: self.holidayAnswered.emit(True))
@@ -111,6 +115,8 @@ class HomePage(QScrollArea):
         self.continue_row.setVisible(False)
         self.library_row.setVisible(False)
         self.xmas_row.setVisible(False)
+        for row in self.because_rows:
+            row.setVisible(False)
 
     # -- data ---------------------------------------------------------------------------
 
@@ -137,6 +143,34 @@ class HomePage(QScrollArea):
                                                            for s in library]))
         self._check_maturity([n.show for n in fresh] + [i.show for i in items] + list(library))
         self._lookup_missing_covers(items)
+        self._load_because(items, library)
+
+    # -- because you watched ---------------------------------------------------------------
+
+    def _load_because(self, items, library) -> None:
+        """Only when what you've watched or saved changed (not on every progress save)."""
+        key = (tuple(sorted((i.show.anime_id, i.show.anilist_id or 0) for i in items)),
+               tuple(sorted((s.anime_id, s.anilist_id or 0) for s in library)))
+        if key == self._because_key:
+            return
+        self._because_key = key
+        self.ctx.runner.submit(recommend.because_rows, self.ctx.store, self.ctx.catalog.anilist.related,
+                               on_done=self._on_because, on_error=lambda _m: None, group="home-because")
+
+    def _on_because(self, rows) -> None:
+        self._because = list(rows or [])
+        filled = 0
+        for data in self._because:
+            picks = visible(self.ctx, data.picks)[0]
+            if len(picks) < recommend.MIN_CARDS or filled >= len(self.because_rows):
+                continue
+            row = self.because_rows[filled]
+            row.title.setText(f"Because you watched {data.title}")
+            row.set_cards(decorate_all(self.ctx, [media_card(m) for m in picks]))
+            row.setVisible(True)
+            filled += 1
+        for row in self.because_rows[filled:]:
+            row.setVisible(False)
 
     # -- history ------------------------------------------------------------------------
 
@@ -276,6 +310,7 @@ class HomePage(QScrollArea):
             self._on_trending(self._trending)
         if getattr(self, "_season", None) is not None:
             self._on_season(self._season)
+        self._on_because(self._because)
         self.refresh_local()
 
     def _on_error(self, row: CardRow, message: str) -> None:
