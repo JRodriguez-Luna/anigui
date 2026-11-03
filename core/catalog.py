@@ -91,6 +91,12 @@ def best_media_match(title: str, candidates: list[Media]) -> tuple[Media | None,
     return best, round(best_score, 4)
 
 
+def slug_base(anime_id: str) -> str:
+    """'frieren-beyond-journeys-end-season-2-1665' -> 'frieren-beyond-journeys-end-season-2'."""
+    head, _, tail = anime_id.rpartition("-")
+    return head if head and tail.isdigit() else anime_id
+
+
 def best_result_match(titles: tuple[str, ...], results: list[SearchResult]) -> tuple[SearchResult | None, float]:
     best, best_score = None, 0.0
     for result in results:
@@ -272,22 +278,27 @@ class Catalog:
         list nothing for the slug we have. Then search hianime by title, and on a
         confident match move the show's progress to the current id.
         """
-        eps = self.hianime.episodes(anime_id)
+        eps = self.episodes(anime_id)
         if eps:
             return anime_id, title, eps
         fresh = self.relink(anime_id, title)
         if fresh is None:
             return anime_id, title, []
-        return fresh.anime_id, fresh.title, self.hianime.episodes(fresh.anime_id)
+        return fresh.anime_id, fresh.title, self.episodes(fresh.anime_id)
 
     def relink(self, anime_id: str, title: str) -> SearchResult | None:
         query = normalize_query(title)
         if not query:
             return None
         candidates = [r for r in self.hianime.search(query) if r.anime_id != anime_id]
-        result, score = best_result_match((title,), candidates)
-        if not result or score < AUTO_MATCH:
-            return None
+        # Same address but a new number ("frieren-...-season-2-1665" -> "-808"): that's it.
+        same = [r for r in candidates if slug_base(r.anime_id) == slug_base(anime_id)]
+        if len(same) == 1:
+            result = same[0]
+        else:
+            result, score = best_result_match((title,), candidates)
+            if not result or score < AUTO_MATCH:
+                return None
         self.store.rename_show(anime_id, result.anime_id, result.title, result.poster)
         self.store.cache_delete(f"locate:{anime_id}")
         return result

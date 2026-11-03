@@ -25,6 +25,12 @@ class Release:
 
 
 RELEASES: tuple[Release, ...] = (
+    Release("1.8.7", "November 3, 2026", (
+        Change("Saved shows load again", "hianime renumbered its shows, so shows saved before then said "
+                                         "\"Couldn't load this show: HTTP 404\". AniGUI now finds each one's new "
+                                         "address the first time you open it (or when it checks for new episodes) "
+                                         "and moves your progress and My List over."),
+    )),
     Release("1.8.6", "November 2, 2026", (
         Change("ⓘ panel fits", "In a wide window, the \"What these tags mean\" panel on a show page cut off its "
                                "last lines. It now gets the room its text needs at any window size."),

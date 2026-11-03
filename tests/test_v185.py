@@ -217,8 +217,16 @@ def test_explainer_is_never_cut_off(win, width):
     win.open_item(anilist.Media.from_json(ui_fakes.media_json(ui_fakes.MATURE)))
     assert pump(lambda: win.detail.content_row.isVisible())
     win.detail.content_row.info.setChecked(True)
-    pump(timeout=0.4)
+    pump(lambda: _fits(win), timeout=3)    # settles within a few turns of the event loop
     _nothing_cut_off(win)
     win.resize(1100 if width > 1100 else 2200, 900)    # and after the window changes size
-    pump(timeout=0.4)
+    pump(lambda: _fits(win), timeout=3)
     _nothing_cut_off(win)
+
+
+def _fits(win) -> bool:
+    try:
+        _nothing_cut_off(win)
+        return True
+    except AssertionError:
+        return False

@@ -287,6 +287,20 @@ jobs:
               print(f"::{'notice' if ok else 'warning'} title=fillers::{'PASS' if ok else 'CHECK'} {name}: "
                     f"{count} fillers (complete={info.complete}), {info.summary(numbers)}; "
                     f"first: {sorted(info.kinds, key=float)[:6]}")
+          # hianime renumbered its shows in Nov 2026: an id saved before then must find its new one
+          import tempfile
+          from pathlib import Path
+          from core.catalog import Catalog
+          from core.store import Store
+          cat = Catalog(Store(Path(tempfile.mkdtemp()) / "t.db"), anilist=al)
+          old = "frieren-beyond-journeys-end-season-2-1665"
+          try:
+              new, _t, eps = cat.episodes_for(old, "Frieren: Beyond Journey's End Season 2")
+              ok = new != old and len(eps) >= 10
+              detail = f"{old} -> {new}, {len(eps)} episodes"
+          except Exception as exc:  # noqa: BLE001
+              ok, detail = False, repr(exc)
+          print(f"::{'notice' if ok else 'warning'} title=hianime::{'PASS' if ok else 'CHECK'} old id relinked: {detail}")
           PY
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7

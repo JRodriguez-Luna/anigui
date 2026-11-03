@@ -221,6 +221,9 @@ class StubCatalog:
         self.fetched.append(anime_id)
         return [Episode(str(n), str(n), None) for n in range(1, self.eps[anime_id] + 1)]
 
+    def episodes_for(self, anime_id, title):
+        return anime_id, title, self.episodes(anime_id)
+
     def enrich(self, anime_id, title, poster=None):
         return None
 

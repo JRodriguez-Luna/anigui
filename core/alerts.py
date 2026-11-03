@@ -57,10 +57,10 @@ def check(store: Store, catalog: Catalog, scope: str = "library") -> list[NewEpi
         if known is not None and episode_key(known) >= expected:
             continue  # nothing new has aired since we last looked
         try:
-            episodes = catalog.episodes(show.anime_id)
+            anime_id, _title, episodes = catalog.episodes_for(show.anime_id, show.title)   # repairs old ids
         except Exception:  # noqa: BLE001 - hianime unreachable: try again next time
             continue
         if episodes:
             newest = max(episodes, key=lambda e: episode_key(e.number)).number
-            store.set_latest(show.anime_id, newest)
+            store.set_latest(anime_id, newest)
     return store.take_unnotified()

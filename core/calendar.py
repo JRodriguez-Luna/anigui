@@ -108,7 +108,7 @@ def build(store: Store, catalog: Catalog, *, mine: bool = True, scope: str = "li
                 if (latest is None or episode_key(latest) < a.episode) and checks < MAX_HIANIME_CHECKS:
                     checks += 1
                     try:
-                        eps = catalog.episodes(anime_id)
+                        anime_id, _title, eps = catalog.episodes_for(anime_id, show.title)   # repairs old ids
                     except Exception:  # noqa: BLE001 - hianime unreachable: state stays "aired"
                         eps = []
                     if eps:

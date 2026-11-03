@@ -49,6 +49,10 @@ class CloudflareBlocked(HianimeError):
     """Cloudflare served a challenge page instead of results."""
 
 
+class NotFound(HianimeError):
+    """hianime has nothing at this address (e.g. a show id from before it renumbered)."""
+
+
 class SiteUnreachable(HianimeError):
     """No usable answer from hianime at all: DNS failure, refused or reset connection,
     timeout, TLS failure, or an ISP block page. Usually fixed by a VPN."""
@@ -127,6 +131,8 @@ class HianimeClient:
             raise CloudflareBlocked("Blocked by Cloudflare." + hint)
         if r.status in (403, 451) or (r.status and r.status >= 500 and "hianime" not in r.body.lower()):
             raise SiteUnreachable(UNREACHABLE_MESSAGE)
+        if r.status == 404:
+            raise NotFound(f"HTTP 404 from {url}")
         if not (r.status and 200 <= r.status < 300):
             raise HianimeError(f"HTTP {r.status} from {url}")
         return r.body
@@ -142,7 +148,13 @@ class HianimeClient:
 
     def episodes(self, anime_id: str) -> list[Episode]:
         numeric_id = anime_id.rsplit("-", 1)[-1]
-        page = self._get(EPISODES_URL.format(numeric_id))
+        try:
+            page = self._get(EPISODES_URL.format(numeric_id))
+        except NotFound:
+            # No show with this id (hianime renumbered its shows in November 2026, so
+            # ids saved before then 404). An empty list lets Catalog.episodes_for find
+            # the show again by title and move its progress over.
+            return []
         return parse_episodes(page, anime_id)
 
 
