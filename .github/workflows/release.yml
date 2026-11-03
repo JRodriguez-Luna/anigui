@@ -315,8 +315,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           # What's new (from core/changelog.py, the same text as the in-app window), then install steps
-          python -c "from core import changelog; r = changelog.RELEASES[0]; print('## What\'s new\n'); [print(f'- **{c.title}:** {c.text}') for c in r.changes]; print()" > notes.md
-          sed "s/{{VERSION}}/${{ steps.v.outputs.version }}/g" packaging/RELEASE_NOTES.md >> notes.md
+          python tools/release_notes.py "${{ steps.v.outputs.version }}" > notes.md
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             # Release was created on github.com (which made the tag): attach the .dmg and fill in the notes
             gh release upload "$RELEASE_TAG" "${{ steps.dmg.outputs.name }}" "${{ steps.dmg.outputs.name }}.sha256" --clobber

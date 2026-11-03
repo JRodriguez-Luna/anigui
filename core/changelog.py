@@ -1,7 +1,12 @@
-"""What changed in each version, in plain words. Shown in the What's New window.
+"""What changed in each version, in plain words. Shown in the What's New window and
+on the GitHub release page.
 
 Newest first. Add an entry here with every release; tests check the current
 version has one.
+
+Write for the people using AniGUI: only what they'll notice. Fixes that are internal
+(the publisher's own tools, the build, logs, how the app is put together) go under
+one line: Change("Minor fixes", "Small fixes and improvements.").
 """
 
 from __future__ import annotations
@@ -26,10 +31,7 @@ class Release:
 
 RELEASES: tuple[Release, ...] = (
     Release("1.8.8", "November 3, 2026", (
-        Change("No crash report after updating (publisher's Mac)", "On the Mac that signs releases, a crash "
-               "report could pop up once after each update: the background signing check tried to start the "
-               "new app from the old one's registration and macOS refused. Updates now pause that check and "
-               "the new version sets it up again. Nothing changes on other Macs."),
+        Change("Minor fixes", "Small fixes and improvements."),
     )),
     Release("1.8.7", "November 3, 2026", (
         Change("Saved shows load again", "hianime renumbered its shows, so shows saved before then said "
@@ -99,7 +101,7 @@ RELEASES: tuple[Release, ...] = (
         Change("Auto-play next works in IINA", "IINA stays on the last frame when an episode ends, and AniGUI missed "
                                                "that, so the next episode never started. It now notices either way, "
                                                "and IINA keeps its window open so the next episode plays right there."),
-        Change("Quieter log", "Fixed a harmless error that filled the log after leaving a show page."),
+        Change("Minor fixes", "Small fixes and improvements."),
     )),
     Release("1.7.1", "November 1, 2026", (
         Change("Pictures for new shows", "Shows that started this season now get episode pictures too, from a "

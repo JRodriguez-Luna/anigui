@@ -6,7 +6,8 @@ name: auto-release
 #
 # Publishing is not trusting: Update Now only installs a release once the
 # publisher's Mac has signed it (core/signing.py), so this can't push an update to
-# anyone on its own. If the release was already made by hand, nothing happens.
+# anyone on its own. If the release already exists, only its notes are brought in
+# line with core/changelog.py (so a reworded What's New reaches the GitHub page too).
 
 on:
   push:
@@ -24,6 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.v.outputs.tag }}
+      released: ${{ steps.v.outputs.released }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
         with:
@@ -41,7 +43,8 @@ jobs:
           fi
           if gh release view "v$version" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
              || git ls-remote --exit-code --tags "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" "refs/tags/v$version" >/dev/null; then
-            echo "::notice title=auto-release::v$version is already released; nothing to do"
+            echo "::notice title=auto-release::v$version is already released; checking its notes"
+            echo "released=v$version" >> "$GITHUB_OUTPUT"
           else
             echo "::notice title=auto-release::Releasing v$version"
             echo "tag=v$version" >> "$GITHUB_OUTPUT"
@@ -55,3 +58,28 @@ jobs:
     uses: ./.github/workflows/release.yml
     with:
       tag: ${{ needs.check.outputs.tag }}
+
+  notes:
+    needs: check
+    if: needs.check.outputs.released != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
+        with:
+          persist-credentials: false
+
+      - name: Match the release notes to core/changelog.py
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.check.outputs.released }}
+        run: |
+          python3 tools/release_notes.py "${TAG#v}" > notes.md
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body --jq .body > current.md
+          if diff -q <(sed -e 's/[[:space:]]*$//' notes.md) <(sed -e 's/[[:space:]]*$//' current.md) >/dev/null; then
+            echo "::notice title=auto-release::$TAG notes are up to date"
+          else
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file notes.md
+            echo "::notice title=auto-release::$TAG notes updated from core/changelog.py"
+          fi

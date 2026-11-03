@@ -47,3 +47,41 @@ def test_nothing_in_ci_can_sign():
         text = path.read_text()
         assert "--signer-" not in text and "AniGUI release signing key" not in text, path.name
         assert "secrets." not in text, path.name                 # no stored secret could be a key
+
+
+def test_existing_release_gets_its_notes_from_the_changelog():
+    wf = load("auto-release.yml")
+    notes = wf["jobs"]["notes"]
+    assert notes["needs"] == "check" and notes["if"] == "needs.check.outputs.released != ''"
+    assert notes["permissions"] == {"contents": "write"}
+    run = " ".join(str(s.get("run", "")) for s in notes["steps"])
+    assert "tools/release_notes.py" in run and "gh release edit" in run and "--notes-file notes.md" in run
+    release = load("release.yml")["jobs"]["build"]
+    publish = next(s for s in release["steps"] if s.get("name") == "Publish GitHub Release")
+    assert "tools/release_notes.py" in publish["run"]         # the same text, made the same way
+
+
+def test_release_notes_for_the_current_version():
+    import sys
+    sys.path.insert(0, str(WF.parent.parent))
+    from core import __version__, changelog
+    from tools.release_notes import notes
+
+    text = notes(__version__)
+    assert text.startswith("## What's new\n\n- **")
+    for change in changelog.RELEASES[0].changes:
+        assert f"- **{change.title}:** {change.text}" in text
+    assert f"AniGUI-{__version__}-macOS-AppleSilicon.dmg" in text and "{{VERSION}}" not in text
+
+
+def test_whats_new_is_written_for_users():
+    """Internal fixes (the publisher's tools, the build, logs) are just 'Minor fixes'."""
+    import sys
+    sys.path.insert(0, str(WF.parent.parent))
+    from core import changelog
+
+    internal = ("publisher's mac", "launchagent", "launch constraint", "crash report", "signer", "the log")
+    for release in changelog.RELEASES:
+        for change in release.changes:
+            words = f"{change.title} {change.text}".lower()
+            assert not any(w in words for w in internal), (release.version, change.title)
