@@ -1,0 +1,57 @@
+name: auto-release
+
+# A new version number on main is a release. When main moves to a commit whose
+# core/__init__.py version has no release yet, this runs the release workflow with
+# that tag: build, the real-Mac checks, then it creates the GitHub Release (and tag).
+#
+# Publishing is not trusting: Update Now only installs a release once the
+# publisher's Mac has signed it (core/signing.py), so this can't push an update to
+# anyone on its own. If the release was already made by hand, nothing happens.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: auto-release
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.v.outputs.tag }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
+        with:
+          persist-credentials: false
+
+      - name: Is this version released yet?
+        id: v
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(python3 -c "import re; print(re.search(r'__version__ = \"([^\"]+)\"', open('core/__init__.py').read()).group(1))")
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Unexpected version in core/__init__.py: $version"
+            exit 1
+          fi
+          if gh release view "v$version" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
+             || git ls-remote --exit-code --tags "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" "refs/tags/v$version" >/dev/null; then
+            echo "::notice title=auto-release::v$version is already released; nothing to do"
+          else
+            echo "::notice title=auto-release::Releasing v$version"
+            echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          fi
+
+  release:
+    needs: check
+    if: needs.check.outputs.tag != ''
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ needs.check.outputs.tag }}

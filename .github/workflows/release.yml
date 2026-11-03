@@ -2,11 +2,19 @@ name: release
 
 # Tag push (v1.2.3)   -> build AniGUI.app and publish a GitHub Release with the .dmg
 #                        (also when the release + tag are created on github.com)
-# Packaging changes    -> build only (catches a broken .app before release day)
+# Called by auto-release.yml with a tag when main gets a new version number
+#                     -> the same build and checks, then it creates the release + tag
+# Packaging changes on next -> build only (catches a broken .app before release day)
 on:
+  workflow_call:
+    inputs:
+      tag:
+        description: "Release to publish, e.g. v1.8.5 (must match core/__init__.py)"
+        required: true
+        type: string
   push:
     tags: ["v*"]
-    branches: [main, next]
+    branches: [next]
     paths:
       - "packaging/**"
       - "main.py"
@@ -27,6 +35,8 @@ jobs:
       contents: write
     env:
       QT_QPA_PLATFORM: offscreen
+      # The release to publish: from auto-release.yml, or the pushed tag; empty = build only
+      RELEASE_TAG: ${{ inputs.tag || (github.ref_type == 'tag' && github.ref_name) || '' }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
         with:
@@ -41,8 +51,8 @@ jobs:
         id: v
         run: |
           version=$(python -c "import re; print(re.search(r'__version__ = \"([^\"]+)\"', open('core/__init__.py').read()).group(1))")
-          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "${GITHUB_REF_NAME#v}" != "$version" ]; then
-            echo "::error::Tag $GITHUB_REF_NAME does not match core/__init__.py version $version"
+          if [ -n "$RELEASE_TAG" ] && [ "${RELEASE_TAG#v}" != "$version" ]; then
+            echo "::error::Release $RELEASE_TAG does not match core/__init__.py version $version"
             exit 1
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
@@ -281,18 +291,19 @@ jobs:
           retention-days: 14
 
       - name: Publish GitHub Release
-        if: github.ref_type == 'tag'
+        if: env.RELEASE_TAG != ''
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           # What's new (from core/changelog.py, the same text as the in-app window), then install steps
           python -c "from core import changelog; r = changelog.RELEASES[0]; print('## What\'s new\n'); [print(f'- **{c.title}:** {c.text}') for c in r.changes]; print()" > notes.md
           sed "s/{{VERSION}}/${{ steps.v.outputs.version }}/g" packaging/RELEASE_NOTES.md >> notes.md
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             # Release was created on github.com (which made the tag): attach the .dmg and fill in the notes
-            gh release upload "$GITHUB_REF_NAME" "${{ steps.dmg.outputs.name }}" "${{ steps.dmg.outputs.name }}.sha256" --clobber
-            gh release edit "$GITHUB_REF_NAME" --title "AniGUI $GITHUB_REF_NAME" --notes-file notes.md
+            gh release upload "$RELEASE_TAG" "${{ steps.dmg.outputs.name }}" "${{ steps.dmg.outputs.name }}.sha256" --clobber
+            gh release edit "$RELEASE_TAG" --title "AniGUI $RELEASE_TAG" --notes-file notes.md
           else
-            gh release create "$GITHUB_REF_NAME" "${{ steps.dmg.outputs.name }}" "${{ steps.dmg.outputs.name }}.sha256" \
-              --title "AniGUI $GITHUB_REF_NAME" --notes-file notes.md
+            # No release yet (auto-release): create it, and the tag, on the commit that was built
+            gh release create "$RELEASE_TAG" "${{ steps.dmg.outputs.name }}" "${{ steps.dmg.outputs.name }}.sha256" \
+              --target "$GITHUB_SHA" --title "AniGUI $RELEASE_TAG" --notes-file notes.md
           fi

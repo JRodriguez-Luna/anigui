@@ -237,14 +237,9 @@ The 71 tests run fully offline, using:
 - a **fake mpv** that speaks the JSON IPC protocol over a real Unix socket,
 - **real widgets** rendered offscreen, driven through click-to-play, search, My List and auto-next.
 
-GitHub Actions runs the suite on macOS and Ubuntu on every push, against a pinned ani-cli version. Pushing a version tag builds `AniGUI.app` on an Apple-silicon runner, self-tests it, packs it into a drag-to-install `.dmg` and publishes it as a GitHub Release:
+GitHub Actions runs the suite on macOS and Ubuntu on every push, against a pinned ani-cli version.
 
-```sh
-# bump __version__ in core/__init__.py first
-git tag v1.0.1 && git push origin v1.0.1
-```
-
-Or create the release on github.com with a new `v…` tag; the workflow attaches the `.dmg` and fills in the notes.
+**Releasing:** bump `__version__` in `core/__init__.py` (and add a `core/changelog.py` entry), then get it onto `main`. When `main` has a version with no release yet, `auto-release.yml` builds `AniGUI.app` on an Apple-silicon runner, runs the real-Mac checks, packs the drag-to-install `.dmg` and publishes the GitHub Release (creating the `v…` tag). Pushing a `v…` tag, or creating the release on github.com, still works too; the workflow attaches the `.dmg` and fills in the notes. Either way, the release only reaches **Update Now** once the publisher's Mac signs it.
 
 Handy tools:
 
