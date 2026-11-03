@@ -365,7 +365,7 @@ class Sleigh(_Overlay):
 
     def position(self) -> QPointF:
         w, h = self.width(), self.height()
-        x = -260 + (w + 300) * self.t
+        x = w + 40 - (w + 320) * self.t          # right to left: the reindeer face left, so they lead
         y = h * 0.16 + h * 0.08 * math.sin(self.t * math.pi * 2) - h * 0.06 * self.t
         return QPointF(x, y)
 
@@ -374,9 +374,10 @@ class Sleigh(_Overlay):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         p.setFont(self.font_)
         pos = self.position()
-        # a short sparkle trail
+        end = pos.x() + p.fontMetrics().horizontalAdvance(self.TEXT)
+        # a short sparkle trail behind the sleigh
         for k in range(6):
-            q = QPointF(pos.x() - 14 - k * 16, pos.y() + 14 + math.sin((self.t * 40) + k) * 3)
+            q = QPointF(end + 12 + k * 16, pos.y() + 14 + math.sin((self.t * 40) + k) * 3)
             c = QColor("#FFD54A")
             c.setAlphaF(max(0.0, 0.7 - k * 0.12))
             p.setPen(Qt.PenStyle.NoPen)

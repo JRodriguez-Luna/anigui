@@ -305,6 +305,27 @@ jobs:
           ok = len(xmas) == len(CHRISTMAS_IDS)
           print(f"::{'notice' if ok else 'warning'} title=holiday::{'PASS' if ok else 'CHECK'} Christmas shelf: "
                 f"{len(xmas)} shows, e.g. {[m.display_title for m in xmas[:4]]}")
+          # The advent calendar: every door's episode is still on hianime
+          import tempfile as _tmp
+          from pathlib import Path as _Path
+          from core.catalog import Catalog as _Catalog
+          from core.holiday import CHRISTMAS_EPISODES
+          from core.store import Store as _Store
+          _cat = _Catalog(_Store(_Path(_tmp.mkdtemp()) / "x.db"), anilist=al)
+          _media = al.airing(sorted({e.anilist_id for e in CHRISTMAS_EPISODES}))
+          missing = []
+          for e in CHRISTMAS_EPISODES:
+              try:
+                  hit = _cat.find_streamable(_media[e.anilist_id]) if e.anilist_id in _media else None
+                  eps = _cat.episodes_for(hit.anime_id, hit.title)[2] if hit else []
+                  if not any(x.number == e.episode for x in eps):
+                      missing.append(f"{e.show} ep {e.episode}")
+              except Exception as exc:  # noqa: BLE001
+                  missing.append(f"{e.show} ep {e.episode} ({exc!r})")
+          ok = not missing
+          print(f"::{'notice' if ok else 'warning'} title=holiday::{'PASS' if ok else 'CHECK'} Advent calendar: "
+                f"{len(CHRISTMAS_EPISODES) - len(missing)}/{len(CHRISTMAS_EPISODES)} episodes on hianime"
+                + (f"; missing {missing}" if missing else ""))
           # hianime renumbered its shows in Nov 2026: an id saved before then must find its new one
           import tempfile
           from pathlib import Path

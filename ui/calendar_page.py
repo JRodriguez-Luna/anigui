@@ -187,11 +187,11 @@ class CalendarPage(QScrollArea):
             header.setText(f"{label}<br><span style='font-size:11px; font-weight:700'>{emoji.get(special, '')} "
                            f"{special}</span>" if special else label)
             header.setProperty("holiday", bool(special))
-            header.style().unpolish(header)
-            header.style().polish(header)
             frame.setProperty("today", day == today)
             frame.style().unpolish(frame)
             frame.style().polish(frame)
+            header.style().unpolish(header)       # after the day: its color depends on both
+            header.style().polish(header)
             while col.count() > 2:          # keep the header and the stretch
                 item = col.takeAt(1)
                 if item.widget():
