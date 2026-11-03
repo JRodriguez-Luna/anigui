@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 
 from . import theme
 from .images import ImageLoader
+from .motion import Ticker, Tween, reduce_motion, shimmer_phase
 
 CARD_ROLE = Qt.ItemDataRole.UserRole + 1
 SKELETON = "__skeleton__"
@@ -83,6 +84,20 @@ class CardModel(QAbstractListModel):
                 return
 
 
+def shimmer(p: QPainter, rect: QRectF) -> None:
+    """The soft highlight that sweeps across loading placeholders (still with Reduce motion)."""
+    if reduce_motion():
+        return
+    phase = shimmer_phase()
+    band = rect.width() * 0.6
+    x = rect.left() - band + (rect.width() + band) * phase
+    grad = QLinearGradient(x, 0, x + band, 0)
+    grad.setColorAt(0.0, QColor(255, 255, 255, 0))
+    grad.setColorAt(0.5, QColor(255, 255, 255, 14))
+    grad.setColorAt(1.0, QColor(255, 255, 255, 0))
+    p.fillRect(rect, grad)
+
+
 class CardDelegate(QStyledItemDelegate):
     W, H = 150, 225          # 2:3 poster
     TEXT_H = 46
@@ -102,8 +117,10 @@ class CardDelegate(QStyledItemDelegate):
         if card is None:
             return
         r = option.rect
-        poster = QRectF(r.x(), r.y(), self.W, self.H)
         hover = bool(option.state & QStyle.StateFlag.State_MouseOver) and not card.is_skeleton
+        view = self.parent()
+        lift = view.lift(index.row()) if hasattr(view, "lift") and not card.is_skeleton else 0.0
+        poster = QRectF(r.x(), r.y() - 4 * lift, self.W, self.H)
 
         p.save()
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -114,10 +131,13 @@ class CardDelegate(QStyledItemDelegate):
 
         load = self.images.blurred if card.blur else self.images.pixmap
         pm = None if card.is_skeleton else load(card.cover, self.W, self.H)
-        if pm is not None:
-            p.drawPixmap(poster.toRect(), pm)
-        else:
+        fade = self.images.alpha(card.cover) if pm is not None else 1.0
+        if pm is None or fade < 1:
             self._placeholder(p, poster, card)
+        if pm is not None:
+            p.setOpacity(fade)
+            p.drawPixmap(poster.toRect(), pm)
+            p.setOpacity(1.0)
         if card.blur:
             p.fillRect(poster, QColor(0, 0, 0, 70))
             self._eye_off(p, poster.center())
@@ -135,8 +155,11 @@ class CardDelegate(QStyledItemDelegate):
                        QColor(theme.ACCENT))
         p.setClipping(False)
 
-        if hover:
-            p.setPen(QPen(QColor(theme.ACCENT), 2))
+        outline = max(lift, 1.0 if hover and reduce_motion() else 0.0) if hasattr(view, "lift") else float(hover)
+        if outline > 0:
+            pen = QColor(theme.ACCENT)
+            pen.setAlphaF(outline)
+            p.setPen(QPen(pen, 2))
             p.setBrush(Qt.BrushStyle.NoBrush)
             p.drawRoundedRect(poster.adjusted(1, 1, -1, -1), theme.RADIUS, theme.RADIUS)
 
@@ -146,6 +169,7 @@ class CardDelegate(QStyledItemDelegate):
             p.setBrush(QColor(theme.SURFACE_2))
             p.drawRoundedRect(QRectF(r.x(), text_top + 2, self.W * 0.8, 10), 4, 4)
             p.drawRoundedRect(QRectF(r.x(), text_top + 20, self.W * 0.5, 9), 4, 4)
+            shimmer(p, QRectF(r.x(), text_top, self.W, 30))
         else:
             p.setFont(self.title_font)
             p.setPen(QColor(theme.TEXT if not hover else "#FFFFFF"))
@@ -162,6 +186,7 @@ class CardDelegate(QStyledItemDelegate):
         base = QColor(card.color) if card.color else QColor(theme.SURFACE_2)
         if card.is_skeleton:
             p.fillRect(rect, QColor(theme.SURFACE))
+            shimmer(p, rect)
             return
         grad = QLinearGradient(rect.topLeft(), rect.bottomRight())
         grad.setColorAt(0, base.darker(140))
@@ -234,6 +259,38 @@ class CardView(QListView):
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.clicked.connect(self._on_click)
         images.loaded.connect(lambda _url: self.viewport().update())
+        self._lift = Tween(self.viewport().update, 140, self)
+        self._hovered: int | None = None
+        self._shimmer = Ticker(self.viewport().update, lambda: self.model_.is_loading() and self.isVisible(), self)
+        self.model_.modelReset.connect(self._shimmer.poke)
+
+    def lift(self, row: int) -> float:
+        """0..1: how far the poster under the pointer has lifted."""
+        return self._lift.value(row)
+
+    def _hover(self, row: int | None) -> None:
+        if row == self._hovered:
+            return
+        if self._hovered is not None:
+            self._lift.set(self._hovered, 0.0)
+        self._hovered = row
+        if row is not None:
+            self._lift.set(row, 1.0)
+        self.viewport().update()
+
+    def mouseMoveEvent(self, event) -> None:
+        idx = self.indexAt(event.position().toPoint())
+        card = idx.data(CARD_ROLE) if idx.isValid() else None
+        self._hover(idx.row() if card is not None and not card.is_skeleton else None)
+        super().mouseMoveEvent(event)
+
+    def leaveEvent(self, event) -> None:
+        self._hover(None)
+        super().leaveEvent(event)
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        self._shimmer.poke()
 
     def _on_click(self, index) -> None:
         card: Card = index.data(CARD_ROLE)

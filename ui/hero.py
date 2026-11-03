@@ -13,6 +13,7 @@ from core.anilist import Media
 from . import theme
 from .cards import format_label
 from .images import ImageLoader
+from .motion import Fader, crossfade
 from .widgets import WrapLabel
 
 BUCKET = 320  # request banner widths in steps so resizing doesn't refetch constantly
@@ -87,16 +88,20 @@ class Backdrop(QWidget):
         pm = self.images.pixmap(self.image_url or self.fallback_url, bucket_w, h)
         if pm is None and self.image_url and self.fallback_url:
             pm = self.images.pixmap(self.fallback_url, bucket_w, h)
-        if pm is not None:
-            dpr = pm.devicePixelRatio()
-            src_w = w * dpr
-            src = QRectF((pm.width() - src_w) / 2, 0, src_w, pm.height())
-            p.drawPixmap(rect, pm, src)
-        elif self.tint is not None:
+        url = self.image_url if self.images.pixmap(self.image_url, bucket_w, h) is not None else self.fallback_url
+        fade = self.images.alpha(url) if pm is not None else 1.0
+        if (pm is None or fade < 1) and self.tint is not None:
             grad = QLinearGradient(rect.topRight(), rect.bottomLeft())
             grad.setColorAt(0, self.tint.darker(160))
             grad.setColorAt(1, QColor(theme.BG))
             p.fillRect(rect, grad)
+        if pm is not None:
+            dpr = pm.devicePixelRatio()
+            src_w = w * dpr
+            src = QRectF((pm.width() - src_w) / 2, 0, src_w, pm.height())
+            p.setOpacity(fade)
+            p.drawPixmap(rect, pm, src)
+            p.setOpacity(1.0)
 
         if self.dim:
             p.fillRect(rect, QColor(10, 10, 15, int(255 * self.dim)))
@@ -190,6 +195,8 @@ class HeroBanner(Backdrop):
     def show_item(self, i: int) -> None:
         if not self.items:
             return
+        if i != self.current and self.isVisible() and self.title.text():
+            crossfade(self, ms=450)                 # the old show dissolves into the new one
         self.current = i
         m = self.items[i]
         self.kicker.setText(f"#{i + 1} TRENDING NOW")
@@ -218,6 +225,8 @@ class _Dots(QWidget):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.count, self.current = 0, 0
+        self.previous, self.t = 0, 1.0
+        self._move = Fader(self._set_t, 300, self)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFixedHeight(14)
 
@@ -227,22 +236,42 @@ class _Dots(QWidget):
         self.update()
 
     def set_current(self, i: int) -> None:
+        if i != self.current:
+            self.previous, self.t = self.current, 0.0
+            self._move.stop()
+            self._move.start()
         self.current = i
+        self.update()
+
+    def _set_t(self, t: float) -> None:
+        self.t = t
         self.update()
 
     def _x(self, i: int) -> float:
         return i * 18 + 4
 
+    def _width(self, i: int) -> float:
+        """The active dot is 22 wide; while moving, the old one shrinks as the new one grows."""
+        t = self.t
+        if i == self.current:
+            return 8 + 14 * t
+        if i == self.previous and t < 1:
+            return 22 - 14 * t
+        return 8.0
+
     def paintEvent(self, _e) -> None:
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         p.setPen(Qt.PenStyle.NoPen)
+        x = 4.0
         for i in range(self.count):
-            active = i == self.current
-            p.setBrush(QColor(theme.ACCENT) if active else QColor(255, 255, 255, 80))
-            w = 22 if active else 8
-            x = self._x(i) if i <= self.current else self._x(i) + 14
+            w = self._width(i)
+            color = QColor(theme.ACCENT) if i == self.current else QColor(255, 255, 255, 80)
+            if i == self.current and self.t < 1:
+                color.setAlphaF(0.35 + 0.65 * self.t)
+            p.setBrush(color)
             p.drawRoundedRect(QRectF(x, 3, w, 8), 4, 4)
+            x += w + 10
 
     def mousePressEvent(self, e) -> None:
         for i in range(self.count):

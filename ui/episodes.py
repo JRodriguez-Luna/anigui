@@ -201,10 +201,13 @@ class EpisodeDelegate(QStyledItemDelegate):
         elif item.kind and not (item.playing or item.up_next):
             p.setOpacity(0.8)      # fillers step back a little so story episodes stand out
         pm = self.images.pixmap(item.still, self.W - 2, self.STILL_H - 1) if (self.images and item.still) else None
-        if pm is not None:
-            p.drawPixmap(still.toRect(), pm)
-        else:
+        fade = self.images.alpha(item.still) if pm is not None else 1.0
+        if pm is None or fade < 1:
             self._tile(p, still, item.number)
+        if pm is not None:
+            base = p.opacity()
+            p.setOpacity(base * fade)
+            p.drawPixmap(still.toRect(), pm)
         p.setOpacity(1.0)
 
         if item.state == "progress" or (item.playing and item.fraction > 0):

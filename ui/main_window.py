@@ -21,6 +21,7 @@ from .context import AppContext
 from .detail_page import DetailPage
 from .home_page import HomePage
 from .icons import nav_icon
+from .motion import crossfade
 from .library_page import LibraryPage
 from .playback import PlaybackController
 from .search_page import SearchPage
@@ -160,6 +161,7 @@ class MainWindow(QMainWindow):
         if remember:
             self.history.append(current)
             del self.history[:-30]
+        crossfade(self.stack, slide_in=page)       # the old page fades out as the new one rises in
         self.stack.setCurrentWidget(page)
         if page in self.nav_buttons:
             self.nav_buttons[page].setChecked(True)
@@ -194,6 +196,8 @@ class MainWindow(QMainWindow):
         self._reopen(item, autoplay)
 
     def _reopen(self, item, autoplay: bool = False) -> None:
+        if self.stack.currentWidget() is self.detail:
+            crossfade(self.stack, slide_in=self.detail)   # one show page to another
         if isinstance(item, tuple):  # (anime_id, title, poster) saved by the show page
             self.detail.open_show(*item, autoplay=autoplay)
         elif isinstance(item, Media):

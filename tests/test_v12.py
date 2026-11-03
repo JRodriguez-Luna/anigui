@@ -504,7 +504,9 @@ def test_related_query_orders_and_filters():
 
 def test_show_page_rows_and_back_between_shows(win):
     from ui.cards import CARD_ROLE
+    from core.seasons import Series
     star = ui_fakes.slug("Starfall Academy", 0)
+    win.ctx.catalog.series = lambda media: Series()     # no Seasons row: Related keeps its sequels (v1.9)
     win.open_item(win.ctx.store.get_show(star))
     d = win.detail
     assert pump(lambda: d.related_row.isVisible() and d.recs_row.isVisible())

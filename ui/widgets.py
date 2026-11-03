@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QComboBox, QLabel, QListView, QWidget
 
 from . import theme
 from .images import ImageLoader
+from .motion import fade_in, fade_out
 
 
 class WrapLabel(QLabel):
@@ -58,7 +59,7 @@ class Toast(QLabel):
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.hide()
         self._timer = QTimer(self, singleShot=True)
-        self._timer.timeout.connect(self.hide)
+        self._timer.timeout.connect(lambda: fade_out(self, 220, drop=10))
 
     def show_message(self, text: str, error: bool = False, ms: int = 4500) -> None:
         self.setProperty("kind", "error" if error else "info")
@@ -68,7 +69,15 @@ class Toast(QLabel):
         self.setFixedWidth(min(560, self.fontMetrics().horizontalAdvance(text) + 48))
         self.adjustSize()
         self.reposition()
-        self.show()
+        motion = getattr(self, "_motion", None)
+        if motion is not None:
+            motion.stop()
+            self.setGraphicsEffect(None)
+            self.reposition()
+        if self.isVisible():
+            self.show()
+        else:
+            fade_in(self, 200, rise=10)              # slides up into place
         self.raise_()
         self._timer.start(ms + (2500 if error else 0))
 
@@ -109,7 +118,8 @@ class PosterWidget(QWidget):
         path.addRoundedRect(rect, 10, 10)
         p.setClipPath(path)
         pm = (self.images.blurred if self.blur else self.images.pixmap)(self.url, self.width(), self.height())
-        if pm is not None:
+        fade = self.images.alpha(self.url) if pm is not None else 1.0
+        if pm is not None and fade >= 1:
             p.drawPixmap(self.rect(), pm)
             if self.blur:
                 p.fillRect(rect, QColor(0, 0, 0, 70))
@@ -121,6 +131,12 @@ class PosterWidget(QWidget):
             p.setPen(QColor(255, 255, 255, 140))
             p.setFont(theme.font(15, QFont.Weight.Bold))
             p.drawText(rect.adjusted(14, 14, -14, -14), Qt.AlignmentFlag.AlignCenter | Qt.TextFlag.TextWordWrap, self.label)
+            if pm is not None:                      # just arrived: fade it in over the placeholder
+                p.setOpacity(fade)
+                p.drawPixmap(self.rect(), pm)
+                if self.blur:
+                    p.fillRect(rect, QColor(0, 0, 0, 70))
+                p.setOpacity(1.0)
         p.setClipping(False)
         p.setPen(QColor(255, 255, 255, 30))
         p.setBrush(Qt.BrushStyle.NoBrush)

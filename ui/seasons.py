@@ -109,10 +109,13 @@ class SeasonCard(QWidget):
         p.setClipPath(clip)
         load = self.images.blurred if self.state.blur else self.images.pixmap
         pm = load(self.picture, int(pic.width()), int(pic.height()))
-        if pm is not None:
-            p.drawPixmap(pic.toRect(), pm)
-        else:
+        fade = self.images.alpha(self.picture) if pm is not None else 1.0
+        if pm is None or fade < 1:
             p.fillRect(pic, QColor(self.season.media.cover_color or theme.SURFACE_3).darker(140))
+        if pm is not None:
+            p.setOpacity(fade)
+            p.drawPixmap(pic.toRect(), pm)
+            p.setOpacity(1.0)
         if (self.season.media.status or "") in UPCOMING:
             p.fillRect(pic, QColor(0, 0, 0, 110))
         p.restore()

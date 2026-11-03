@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QFrame, QGridLayout, QHBoxLayout, QLabel, QPushBut
 from core.maturity import NUDITY_18, SEXUAL_VIOLENCE_18, Maturity, level
 
 from . import theme
+from .motion import fade_in
 
 METER_COLORS = {"Nudity": theme.MATURE, "Sexual violence": theme.MATURE, "Sexual themes": "#E9B44C"}
 METER_DEFAULT = "#8A8F9C"
@@ -306,6 +307,9 @@ class ContentLine(QWidget):
         self.setVisible(bool(self.tags))
 
     def _toggle(self, on: bool) -> None:
-        self.panel.setVisible(on)
         self.explainer.setVisible(on)
+        if on:
+            fade_in(self.panel, 200)
+        else:
+            self.panel.setVisible(False)
         self.toggled.emit(on)

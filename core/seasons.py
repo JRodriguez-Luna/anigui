@@ -118,12 +118,61 @@ def build(start: Media, related: RelatedFn) -> Series:
             if (x.anilist_id not in seen and r.relation in EXTRA_RELATIONS
                     and (x.format or "") in EXTRA_FORMATS and not (_is_season(x) and r.relation in ("PREQUEL", "SEQUEL"))):
                 extras.setdefault(x.anilist_id, x)
-    labels = season_labels([m.display_title for m in seasons])
+    labels = season_labels_for(seasons)
     return Series(
         seasons=tuple(Season(m, i + 1, label) for i, (m, label) in enumerate(zip(seasons, labels))),
         extras=tuple(sorted(extras.values(), key=lambda m: (m.year or 9999, m.display_title))),
         complete=w.complete,
     )
+
+
+_ORDINAL = re.compile(r"^(\d+)(?:st|nd|rd|th)\s+season$", re.I)        # '3rd Season' -> 'Season 3'
+
+
+def _norm(words: list[str]) -> list[str]:
+    return [w.strip(":-–—,.").lower() for w in words]
+
+
+def season_labels_for(seasons: list[Media]) -> list[str]:
+    """Labels from whichever title language the seasons share best. AniList often has
+    no English title for a new season ('Sousou no Frieren 3rd Season'), so try the
+    first season's English and romaji names as the shared part and keep the better fit."""
+    if len(seasons) <= 1:
+        return ["Season 1"] * len(seasons)
+    first = seasons[0]
+    best: list[str] | None = None
+    best_hits = -1
+    for base in dict.fromkeys(t for t in (first.title_english, first.title_romaji) if t):
+        prefix = _norm(base.split())
+        labels, hits = [], 0
+        for i, m in enumerate(seasons):
+            label = None
+            for t in (m.title_english, m.title_romaji, *m.synonyms):
+                words = (t or "").split()
+                if t and _norm(words[:len(prefix)]) == prefix:
+                    label = _tidy(" ".join(words[len(prefix):])) or ("Season 1" if i == 0 else None)
+                    if label:
+                        break
+            if label:
+                hits += 1
+            labels.append(label or m.display_title)
+        if hits > best_hits:
+            best, best_hits = labels, hits
+    if best is None or best_hits < 2:
+        return season_labels([m.display_title for m in seasons])
+    return best
+
+
+def _tidy(rest: str) -> str:
+    rest = _SEP.sub("", rest)
+    if rest.upper() in _ROMAN:                       # 'Mob Psycho 100 II' -> 'Season 2'
+        return f"Season {_ROMAN.index(rest.upper()) + 1}"
+    m = _ORDINAL.match(rest)
+    if m:
+        return f"Season {int(m.group(1))}"
+    if rest.isupper() and len(rest) > 3:              # 'FINAL SEASON' -> 'Final Season'
+        return rest.title()
+    return rest
 
 
 _ROMAN = ("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X")
@@ -148,8 +197,6 @@ def season_labels(titles: list[str]) -> list[str]:
         return list(titles)
     labels = []
     for i, words in enumerate(split):
-        rest = _SEP.sub("", " ".join(words[shared:]))
-        if rest.upper() in _ROMAN:                       # 'Mob Psycho 100 II' -> 'Season 2'
-            rest = f"Season {_ROMAN.index(rest.upper()) + 1}"
+        rest = _tidy(" ".join(words[shared:]))
         labels.append(rest or ("Season 1" if i == 0 else titles[i]))
     return labels

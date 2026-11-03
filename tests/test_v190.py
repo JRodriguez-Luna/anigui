@@ -266,3 +266,70 @@ def test_last_episode_without_a_next_season_still_says_so(win):
     mpv.send_event("end-file", reason="eof")
     assert pump(lambda: any(c[:2] == ["show-text", "That was the last episode"] for c in mpv.commands))
     assert not mpv.named("loadfile")
+
+
+def test_labels_use_whichever_title_language_fits():
+    from core.seasons import season_labels_for
+
+    def m(en, ro):
+        return media(1, en or ro).__class__(**{**media(1, "x").__dict__, "title_english": en, "title_romaji": ro})
+
+    frieren = [m("Frieren: Beyond Journey's End", "Sousou no Frieren"),
+               m("Frieren: Beyond Journey's End Season 2", "Sousou no Frieren 2nd Season"),
+               m(None, "Sousou no Frieren 3rd Season")]                    # no English title yet
+    assert season_labels_for(frieren) == ["Season 1", "Season 2", "Season 3"]
+    mha = [m("My Hero Academia", "Boku no Hero Academia"), m("My Hero Academia FINAL SEASON", None)]
+    assert season_labels_for(mha) == ["Season 1", "Final Season"]
+
+
+# -- animations ----------------------------------------------------------------------------------
+
+def test_reduce_motion_follows_the_setting(monkeypatch):
+    from ui import motion
+    monkeypatch.setenv("ANIGUI_REDUCE_MOTION", "1")
+    motion.set_reduce_motion(None)
+    assert motion.reduce_motion()
+    monkeypatch.setenv("ANIGUI_REDUCE_MOTION", "0")
+    motion.set_reduce_motion(None)
+    assert not motion.reduce_motion()
+
+
+def test_page_switch_fades_and_cleans_up(win):
+    from PySide6.QtWidgets import QLabel
+    win.go(win.library)
+    overlays = [w for w in win.stack.findChildren(QLabel) if w.pixmap() is not None and not w.pixmap().isNull()]
+    assert overlays                                                     # the old page, fading out
+    assert pump(lambda: not [w for w in win.stack.findChildren(QLabel)
+                             if w.pixmap() is not None and not w.pixmap().isNull() and w.parent() is win.stack], 2)
+    assert win.stack.currentWidget() is win.library and win.library.pos().y() == 0
+
+
+def test_new_pictures_fade_in(win):
+    images = win.ctx.images
+    images._born["fake://new"] = __import__("time").monotonic()
+    assert 0.0 <= images.alpha("fake://new") < 0.5
+    assert pump(lambda: images.alpha("fake://new") == 1.0, 1)
+    assert images.alpha("fake://never-loaded") == 1.0
+
+
+def test_toast_fades_out_and_hides(win):
+    win.toast.show_message("Added to My List", ms=10)
+    assert win.toast.isVisible()
+    assert pump(lambda: win.toast.isHidden(), 2)
+
+
+def test_hover_lift_eases_in_and_out(win):
+    from ui.cards import CardGrid, Card
+    from ui import motion
+    motion.set_reduce_motion(False)
+    grid = CardGrid(win.ctx.images)
+    grid.cards.set_cards([Card("a", "A"), Card("b", "B")])
+    grid._hover(0)
+    assert pump(lambda: grid.lift(0) == 1.0, 1)
+    grid._hover(None)
+    assert pump(lambda: grid.lift(0) == 0.0, 1)
+    motion.set_reduce_motion(True)
+    grid._hover(1)
+    pump(timeout=0.2)
+    assert grid.lift(1) == 0.0                                          # Reduce motion: no lift
+    motion.set_reduce_motion(None)

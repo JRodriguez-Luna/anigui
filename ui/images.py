@@ -7,9 +7,10 @@ screen's pixel density). When it lands, `loaded` fires and views repaint.
 
 from __future__ import annotations
 
+import time
 from collections import OrderedDict
 
-from PySide6.QtCore import QObject, QRect, Qt, Signal
+from PySide6.QtCore import QObject, QRect, Qt, QTimer, Signal
 from PySide6.QtGui import QGuiApplication, QImage, QPixmap
 
 from core.covers import CoverCache
@@ -43,6 +44,9 @@ class ImageLoader(QObject):
         self._cache: OrderedDict[Key, QPixmap] = OrderedDict()
         self._pending: set[Key] = set()
         self._failed: set[str] = set()
+        self._born: dict[str, float] = {}          # url -> when it arrived (for the fade-in)
+        self._fade_timer = QTimer(self, interval=16)
+        self._fade_timer.timeout.connect(self._fade_tick)
 
     def pixmap(self, url: str | None, w: int, h: int) -> QPixmap | None:
         if not url or w <= 0 or h <= 0:
@@ -93,7 +97,33 @@ class ImageLoader(QObject):
         self._cache[key] = pm
         while len(self._cache) > self.max_items:
             self._cache.popitem(last=False)
+        # A short fade-in (fine with Reduce motion too: nothing moves)
+        self._born.setdefault(key[0], time.monotonic())
+        if not self._fade_timer.isActive():
+            self._fade_timer.start()
         self.loaded.emit(key[0])
+
+    FADE_S = 0.24
+
+    def alpha(self, url: str | None) -> float:
+        """How far a just-arrived picture has faded in (1.0 for anything older). Painters
+        draw their placeholder, then the picture at this opacity."""
+        born = self._born.get(url or "")
+        if born is None:
+            return 1.0
+        t = (time.monotonic() - born) / self.FADE_S
+        if t >= 1:
+            return 1.0
+        return 1 - (1 - t) ** 3
+
+    def _fade_tick(self) -> None:
+        now = time.monotonic()
+        for url, born in list(self._born.items()):
+            if now - born > self.FADE_S + 0.05:
+                del self._born[url]
+            self.loaded.emit(url)          # painters showing it repaint
+        if not self._born:
+            self._fade_timer.stop()
 
     def _fail(self, key: Key) -> None:
         self._pending.discard(key)

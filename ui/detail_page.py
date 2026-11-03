@@ -16,6 +16,7 @@ from core.store import episode_key
 
 from .cards import CardRow, media_card
 from .content_notes import ContentLine
+from .motion import fade_in
 from .mature import confirm_open, decorate_all, hiding, visible
 from .context import AppContext
 from .episodes import PER_PAGE, EpisodeGrid, EpisodeItem, EpisodePager, coming_soon, find_episode, page_ranges
@@ -351,7 +352,10 @@ class DetailPage(QScrollArea):
             bar.play.setEnabled(self.play_btn.isEnabled())
             bar.where.setText(self._where_text())
             bar.raise_()
-        bar.setVisible(scrolled_past)
+            if bar.isHidden():
+                fade_in(bar, 160)
+        else:
+            bar.setVisible(False)
 
     def _short_play_text(self) -> str:
         text = self.play_btn.text().split("  ·  ")[0]
