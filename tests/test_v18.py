@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 
-from PySide6.QtCore import QCoreApplication  # noqa: E402
+from PySide6.QtCore import QCoreApplication, Qt  # noqa: E402
 from PySide6.QtWidgets import QLabel  # noqa: E402
 from ui.content_notes import Meter  # noqa: E402
 
@@ -421,3 +421,15 @@ def test_known_18_plus_is_asked_once_not_twice(win):
     assert pump(lambda: win.detail.media is not None)
     pump(timeout=0.3)
     assert asked == ["Pocket Dungeon Diaries"]
+
+
+def test_hover_card_is_tall_enough_for_its_text():
+    """1.8.2 cut off the last line on a real Mac (the Ecchi-only Sexual themes card)."""
+    from ui.content_notes import NoteHoverCard, note_card
+    card = NoteHoverCard(note_card(assess(False, ["Adventure", "Ecchi"], []), "Sexual themes"))
+    card.fit()
+    text = card.text
+    w = card.WIDTH - 24
+    needed = text.fontMetrics().boundingRect(0, 0, w, 10_000, Qt.TextFlag.TextWordWrap, text.text()).height()
+    assert text.height() >= needed and text.height() >= text.heightForWidth(w)
+    assert card.height() >= text.height() + 30                       # title, spacing and padding fit too

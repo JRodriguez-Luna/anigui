@@ -118,12 +118,27 @@ class NoteHoverCard(QFrame):
             meter.setFixedWidth(self.WIDTH - 24)
             col.addWidget(meter)
         title.setFixedWidth(self.WIDTH - 24)
+        self.text: QLabel | None = None
         if card.text:
             text = QLabel(card.text, wordWrap=True, objectName="NoteCardText")
             text.setTextFormat(Qt.TextFormat.PlainText)
-            text.setFixedWidth(self.WIDTH - 24)   # known width, so wrapped lines get their full height
+            text.setFixedWidth(self.WIDTH - 24)
             col.addWidget(text)
-        col.setSizeConstraint(QVBoxLayout.SizeConstraint.SetFixedSize)
+            self.text = text
+        self.setFixedWidth(self.WIDTH)
+
+    def fit(self) -> None:
+        """Size the card to its wrapped text. A tooltip-style window doesn't get Qt's
+        height-for-width layout pass, and the stylesheet's font only applies once the
+        label is polished, so measure after polishing and set the height outright."""
+        self.ensurePolished()
+        if self.text is not None:
+            self.text.ensurePolished()
+            w = self.WIDTH - 24
+            needed = self.text.fontMetrics().boundingRect(0, 0, w, 10_000, Qt.TextFlag.TextWordWrap,
+                                                          self.text.text()).height()
+            self.text.setFixedHeight(max(needed, self.text.heightForWidth(w)) + 2)
+        self.adjustSize()
 
 
 class ContentTag(QLabel):
@@ -152,7 +167,7 @@ class ContentTag(QLabel):
     def show_card(self) -> None:
         if self.hover is None:
             self.hover = NoteHoverCard(self.card, self)
-        self.hover.adjustSize()
+        self.hover.fit()
         self.hover.move(self.mapToGlobal(QPoint(0, self.height() + 8)))
         self.hover.show()
 

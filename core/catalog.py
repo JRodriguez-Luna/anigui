@@ -160,14 +160,11 @@ class Catalog:
     def backfill_maturity(self, shows, max_lookups: int = 10) -> int:
         """Find 18+ status for saved shows that were never checked (e.g. added before 1.8).
         Linked shows go to AniList in one batched request; unlinked ones are matched by
-        title (a few per call). Each show is tried once per session. Returns how many
-        shows got a status."""
+        title (a few per call). Pass shows from claim_maturity(). Returns how many
+        shows have a status now."""
         linked: list[int] = []
         unlinked = []
         for show in shows:
-            if show.anime_id in self._maturity_tried:
-                continue
-            self._maturity_tried.add(show.anime_id)
             if show.anilist_id:
                 if self.store.maturity(show.anilist_id) is None:
                     linked.append(show.anilist_id)
@@ -178,9 +175,11 @@ class Catalog:
             try:
                 for media in self.anilist.airing(linked).values():
                     self.remember_maturity(media)
-                    found += 1
             except Exception:  # noqa: BLE001 - AniList down: try again next launch
                 pass
+            # Count every show that has a status now, including ones another lookup
+            # (e.g. a cover lookup) saved while this one ran, so the pages redraw for them.
+            found += sum(1 for aid in linked if self.store.maturity(aid) is not None)
         for show in unlinked[:max_lookups]:
             try:
                 found += self.enrich(show.anime_id, show.title, show.poster) is not None
@@ -188,10 +187,14 @@ class Catalog:
                 pass
         return found
 
-    def maturity_unknown(self, shows) -> bool:
-        """Any saved show whose 18+ status hasn't been looked up (or tried) yet?"""
-        return any(s.anime_id not in self._maturity_tried and
-                   (not s.anilist_id or self.store.maturity(s.anilist_id) is None) for s in shows)
+    def claim_maturity(self, shows) -> list:
+        """The saved shows whose 18+ status is unknown and that no lookup has taken yet.
+        Call on the UI thread: claiming before the background lookup starts means two
+        pages refreshing at once never start (and then cancel) the same lookup twice."""
+        todo = [s for s in shows if s.anime_id not in self._maturity_tried and
+                (not s.anilist_id or self.store.maturity(s.anilist_id) is None)]
+        self._maturity_tried.update(s.anime_id for s in todo)
+        return todo
 
     def is_mature(self, item) -> bool:
         """18+ for a search result or saved show, from what's been looked up so far."""

@@ -47,8 +47,9 @@ class LibraryPage(QWidget):
         shows = self.ctx.store.library()
         self.count.setText(str(len(shows)) if shows else "")
         self.grid.cards.set_cards(decorate_all(self.ctx, [show_card(s) for s in shows]))
-        if self.ctx.catalog.maturity_unknown(shows):
-            self.ctx.runner.submit(self.ctx.catalog.backfill_maturity, shows,
+        todo = self.ctx.catalog.claim_maturity(shows)
+        if todo:
+            self.ctx.runner.submit(self.ctx.catalog.backfill_maturity, todo,
                                    on_done=lambda found: found and self.ctx.events.changed.emit("maturity_found", found),
                                    group="library-maturity")
         self.stack.setCurrentWidget(self.grid if shows else self.empty)

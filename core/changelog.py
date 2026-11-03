@@ -25,6 +25,13 @@ class Release:
 
 
 RELEASES: tuple[Release, ...] = (
+    Release("1.8.3", "November 2, 2026", (
+        Change("Hover cards fit their text", "The card under a Content tag cut off its last line on some Macs. "
+                                             "It now sizes itself to the text."),
+        Change("18+ badges show up reliably", "When Home and My List both checked your saved shows at the same "
+                                              "time, one of them could miss the result and stay unblurred until "
+                                              "you came back. Fixed."),
+    )),
     Release("1.8.2", "November 2, 2026", (
         Change("Rating meters", "Hover a Content tag and a card shows its AniList rating on a meter, with a white "
                                 "line where 18+ starts (70 for nudity), so you can see why a show is or isn't 18+."),

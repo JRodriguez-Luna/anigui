@@ -169,9 +169,10 @@ class HomePage(QScrollArea):
 
     def _check_maturity(self, shows) -> None:
         """Saved shows from before 18+ existed get checked now, not when first opened."""
-        if not self.ctx.catalog.maturity_unknown(shows):
+        todo = self.ctx.catalog.claim_maturity(shows)
+        if not todo:
             return
-        self.ctx.runner.submit(self.ctx.catalog.backfill_maturity, shows,
+        self.ctx.runner.submit(self.ctx.catalog.backfill_maturity, todo,
                                on_done=self._maturity_found, group="home-maturity")
 
     def _maturity_found(self, found: int) -> None:
