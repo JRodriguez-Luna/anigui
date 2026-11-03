@@ -10,6 +10,7 @@ from __future__ import annotations
 import html
 import json
 import re
+import unicodedata
 import subprocess
 from dataclasses import dataclass
 
@@ -32,7 +33,9 @@ _TLS13_CIPHERS = "TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POL
 
 # Characters allowed in a query. ani-cli puts the query into the URL unescaped,
 # so anything else could make its search differ from ours and break -S indexing.
-_QUERY_STRIP = re.compile(r"[^\w\s\-'.!]", re.UNICODE)
+# ASCII only: hianime answers HTTP 400 to a raw "é" (Polar Bear's Café), so accents are
+# dropped (Café → Cafe) and other symbols (Lucky☆Star) become spaces.
+_QUERY_STRIP = re.compile(r"[^\w\s\-'.!]", re.ASCII)
 
 _SEARCH_ITEM = re.compile(
     r'<h3 class="film-name">\s*<a href="[^"]*/([^"/]*)"\s*title="([^"]*)"'
@@ -94,8 +97,9 @@ class Episode:
 
 def normalize_query(query: str) -> str:
     """Clean a query so this client and ani-cli search for exactly the same thing."""
-    cleaned = _QUERY_STRIP.sub(" ", query)
-    return " ".join(cleaned.split())
+    plain = "".join(c for c in unicodedata.normalize("NFKD", query) if not unicodedata.combining(c))
+    cleaned = _QUERY_STRIP.sub(" ", plain)
+    return " ".join(cleaned.encode("ascii", "ignore").decode().split())
 
 
 class HianimeClient:

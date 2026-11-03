@@ -4,11 +4,15 @@ from pathlib import Path
 sys.path.insert(0, ".")
 from core.anilist import AniListClient
 from core.catalog import Catalog
-from core.holiday import CHRISTMAS_EPISODES, CHRISTMAS_IDS
+from core.holiday import CHRISTMAS_EPISODES, CHRISTMAS_IDS, XmasEpisode
 from core.store import Store
 def note(m): print(f"::notice title=probe::{m}"[:3800])
 al = AniListClient()
 cat = Catalog(Store(Path(tempfile.mkdtemp()) / "t.db"), anilist=al)
+EXTRA = (XmasEpisode(12815, '37', "Polar Bear's Cafe", ''), XmasEpisode(10495, '7', 'YuruYuri', ''),
+         XmasEpisode(687, '37', 'Tokyo Mew Mew', ''), XmasEpisode(351, '44', 'Ojamajo Doremi Sharp', ''),
+         XmasEpisode(918, '200', 'Gintama', ''), XmasEpisode(516, '90', 'Sgt. Frog', ''))
+CHRISTMAS_EPISODES = EXTRA
 ids = sorted({e.anilist_id for e in CHRISTMAS_EPISODES} | set(CHRISTMAS_IDS))
 found = al.airing(ids)
 note(f"anilist found {len(found)}/{len(ids)}; missing {[i for i in ids if i not in found]}")

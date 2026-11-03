@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import html
 
 from PySide6.QtCore import QSize, Qt, QTimer, QUrl
@@ -137,6 +138,7 @@ class MainWindow(QMainWindow):
         self.fireworks.raise_()
         self.countdown.clicked.connect(self.flurry.play)
         self._midnight = QTimer(self, singleShot=True)       # New Year's Eve, while the app is open
+        self.now = dt.datetime.now                            # (tests pin the clock)
         self._midnight.timeout.connect(self._new_year)
         for w in (self.nav_buttons[self.holidays], self.countdown):
             w.setVisible(False)
@@ -368,7 +370,6 @@ class MainWindow(QMainWindow):
     def _big_days(self, today=None) -> None:
         """Once-a-year moments: the Christmas card and the New Year's fireworks. And Santa's
         sleigh over Home, once a day."""
-        import datetime as dt
         today = today or dt.date.today()
         if self.ctx.pref("sleigh_day", "") != today.isoformat() and not reduce_motion():
             self.ctx.set_pref("sleigh_day", today.isoformat())
@@ -380,10 +381,11 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(900, lambda: self._new_year(today))
         if today.month == 12 and today.day == 31:
             midnight = dt.datetime.combine(today + dt.timedelta(days=1), dt.time())
-            self._midnight.start(max(1000, int((midnight - dt.datetime.now()).total_seconds() * 1000) + 1000))
+            ms = int((midnight - self.now()).total_seconds() * 1000) + 1000
+            if 0 < ms <= 86_401_000:
+                self._midnight.start(ms)
 
     def show_christmas_card(self, today=None) -> None:
-        import datetime as dt
         today = today or dt.date.today()
         year = str(today.year)
         seconds = sum(sec for day, _a, _e, sec in self.ctx.store.watch_log() if str(day).startswith(year))
@@ -391,7 +393,6 @@ class MainWindow(QMainWindow):
         self.flurry.play()
 
     def _new_year(self, today=None) -> None:
-        import datetime as dt
         today = today or dt.date.today()
         if not holiday.is_new_year(today) or not theme.HOLIDAY:
             return

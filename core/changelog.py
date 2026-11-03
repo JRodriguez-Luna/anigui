@@ -30,6 +30,20 @@ class Release:
 
 
 RELEASES: tuple[Release, ...] = (
+    Release("1.10.0", "November 3, 2026", (
+        Change("Holidays", "A new 🎄 Holidays page while the holiday theme is on. An advent calendar with a "
+                           "Christmas episode behind every door from December 1 to 24 (missed one? it stays open), "
+                           "the 12 Days of Anime challenge from December 14 to Christmas, six badges to earn, and "
+                           "the Christmas episodes in shows you already watch."),
+        Change("Decked out", "Twinkling lights and a Christmas countdown in the sidebar (click it and see), "
+                             "candy-cane progress bars, snow on the posters and settling on the Home banner, "
+                             "ornaments, gift-tag NEW badges, a sweater on Stats, and 🎄 tags on Christmas episodes."),
+        Change("Little surprises", "🎁 Surprise me on Home plays something from a show you're watching or saved. "
+                                   "Santa flies by now and then, adding a show to My List comes with a bow, and the "
+                                   "Calendar marks Christmas and New Year's. Christmas Day and New Year's each have "
+                                   "something special too."),
+        Change("Christmas shelf", "Every show on Home's Christmas shelf now has a Christmas episode."),
+    )),
     Release("1.9.1", "November 3, 2026", (
         Change("Holiday Dock icon", "The Santa hat hung off the bottom corner of the icon on some screens. It "
                                     "now sits on top, drawn sharp at every icon size and display resolution."),
