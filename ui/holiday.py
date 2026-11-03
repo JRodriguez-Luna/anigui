@@ -6,7 +6,7 @@ import datetime as dt
 import math
 import random
 
-from PySide6.QtCore import QEvent, QObject, QPointF, QRectF, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QObject, QPointF, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
@@ -141,20 +141,37 @@ class Brand(QLabel):
             p.end()
 
 
-def holiday_icon(base: QIcon) -> QIcon:
-    """The app icon wearing a Santa hat (for the Dock while the theme is on)."""
-    pm = base.pixmap(512, 512)
-    if pm.isNull():
-        return base
+ICON_SIZES = (16, 32, 64, 128, 256, 512)       # points, like a Mac .icns
+ICON_SCALES = (1.0, 1.5, 2.0, 3.0)             # regular, scaled and Retina displays
+
+
+def _hatted(pm: QPixmap) -> QPixmap:
+    """One size of the icon with the hat on. The painter works in points, so place the hat
+    by the size in points (a 2x pixmap is twice as many pixels for the same points)."""
     out = QPixmap(pm)
-    # On a Retina Mac the pixmap is 2x: the painter works in points, so size by points
-    # (sizing by pixels drew a giant hat hanging off the bottom-right corner).
     size = out.width() / out.devicePixelRatio()
     p = QPainter(out)
     p.setRenderHint(QPainter.RenderHint.Antialiasing)
     draw_hat(p, size * 0.50, size * 0.06, size * 0.44, 18)
     p.end()
-    return QIcon(out)
+    return out
+
+
+def holiday_icon(base) -> QIcon:
+    """The app icon wearing a Santa hat (for the Dock while the theme is on), drawn at every
+    icon size and screen scale, so macOS picks a sharp, correctly placed one whatever the
+    display's resolution."""
+    icon = QIcon()
+    for size in ICON_SIZES:
+        for scale in ICON_SCALES:
+            try:
+                pm = base.pixmap(QSize(size, size), scale)
+            except TypeError:                            # an icon without per-scale pixmaps
+                pm = base.pixmap(int(size * scale), int(size * scale))
+                pm.setDevicePixelRatio(scale)
+            if not pm.isNull():
+                icon.addPixmap(_hatted(pm))
+    return icon if not icon.isNull() else base
 
 
 # -- November's banner ----------------------------------------------------------------------------

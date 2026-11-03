@@ -438,18 +438,38 @@ def test_dock_icon_gets_a_hat():
     assert icon.pixmap(64, 64).toImage() != base.toImage()
 
 
-@pytest.mark.parametrize("dpr", [1.0, 2.0])
-def test_dock_hat_sits_on_the_top_right_on_retina_too(dpr):
-    from PySide6.QtGui import QColor, QIcon, QPixmap
-    from ui.holiday import holiday_icon
-    base = QPixmap(int(512 * dpr), int(512 * dpr))
-    base.setDevicePixelRatio(dpr)
-    base.fill(QColor("#202030"))
-    class RetinaIcon:              # what macOS hands back: a 2x pixmap for a 512-point request
-        def pixmap(self, _w, _h):
-            return base
-    img = holiday_icon(RetinaIcon()).pixmap(int(512 * dpr), int(512 * dpr)).toImage()
+class _MacIcon:
+    """Like macOS: a pixmap of the asked size at the asked scale (2x on Retina, 1.5x on a
+    scaled display), the way QIcon.pixmap(size, scale) answers."""
+
+    def pixmap(self, size, scale):
+        from PySide6.QtGui import QColor, QPixmap
+        pm = QPixmap(round(size.width() * scale), round(size.height() * scale))
+        pm.setDevicePixelRatio(scale)
+        pm.fill(QColor("#202030"))
+        return pm
+
+
+def _hat_on_top(img) -> bool:
+    from PySide6.QtGui import QColor
     w, h = img.width(), img.height()
-    red = lambda x, y: QColor(img.pixel(int(x * w), int(y * h))).red() > 150   # noqa: E731
-    assert any(red(x / 20, y / 20) for x in range(10, 20) for y in range(0, 6))       # hat up top, right side
-    assert not any(red(x / 20, y / 20) for x in range(0, 20) for y in range(12, 20))  # nothing at the bottom
+
+    def red(x, y):
+        c = QColor(img.pixel(min(w - 1, int(x * w)), min(h - 1, int(y * h))))
+        return c.red() > 150 and c.green() < 120
+
+    top_right = any(red(x / 20, y / 20) for x in range(10, 20) for y in range(0, 6))
+    bottom = any(red(x / 20, y / 20) for x in range(0, 20) for y in range(12, 20))
+    return top_right and not bottom
+
+
+def test_dock_hat_sits_on_top_at_every_size_and_scale():
+    from PySide6.QtCore import QSize
+    from ui.holiday import ICON_SCALES, ICON_SIZES, holiday_icon
+    icon = holiday_icon(_MacIcon())
+    assert len(icon.availableSizes()) >= len(ICON_SIZES)
+    for size in (32, 128, 512):
+        for scale in ICON_SCALES:
+            pm = icon.pixmap(QSize(size, size), scale)
+            assert pm.devicePixelRatio() == pytest.approx(scale, abs=0.01) or size == 16
+            assert _hat_on_top(pm.toImage()), (size, scale)

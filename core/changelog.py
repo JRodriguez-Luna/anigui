@@ -31,8 +31,8 @@ class Release:
 
 RELEASES: tuple[Release, ...] = (
     Release("1.9.1", "November 3, 2026", (
-        Change("Holiday Dock icon", "On Retina screens the Santa hat hung off the bottom corner of the icon. "
-                                    "It now sits on top."),
+        Change("Holiday Dock icon", "The Santa hat hung off the bottom corner of the icon on some screens. It "
+                                    "now sits on top, drawn sharp at every icon size and display resolution."),
     )),
     Release("1.9.0", "November 3, 2026", (
         Change("Seasons on one page", "A show's page now lists every season of the series in order, with how far "
