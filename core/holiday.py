@@ -82,7 +82,7 @@ CHRISTMAS_EPISODES: tuple[XmasEpisode, ...] = (
     XmasEpisode(1887, "11", "Lucky☆Star", "Various Ways to Spend Christmas Eve"),
     XmasEpisode(66, "17", "Azumanga Daioh", "End of 2nd Semester & Christmas"),
     XmasEpisode(12815, "37", "Polar Bear's Café", "Christmas Planning! / Christmas Trouble!"),
-    XmasEpisode(10495, "7", "YuruYuri", "Christmas"),
+    XmasEpisode(918, "200", "Gintama", "Santa Claus Red Is Blood Red"),
     XmasEpisode(11757, "3", "Sword Art Online", "The Red-Nosed Reindeer"),
     XmasEpisode(20047, "8", "Sakura Trick", "A Cherry Blossom-colored Christmas"),
     XmasEpisode(232, "35", "Cardcaptor Sakura", "Sakura's Wonderful Christmas"),
