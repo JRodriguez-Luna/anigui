@@ -436,3 +436,20 @@ def test_dock_icon_gets_a_hat():
     base.fill()
     icon = holiday_icon(QIcon(base))
     assert icon.pixmap(64, 64).toImage() != base.toImage()
+
+
+@pytest.mark.parametrize("dpr", [1.0, 2.0])
+def test_dock_hat_sits_on_the_top_right_on_retina_too(dpr):
+    from PySide6.QtGui import QColor, QIcon, QPixmap
+    from ui.holiday import holiday_icon
+    base = QPixmap(int(512 * dpr), int(512 * dpr))
+    base.setDevicePixelRatio(dpr)
+    base.fill(QColor("#202030"))
+    class RetinaIcon:              # what macOS hands back: a 2x pixmap for a 512-point request
+        def pixmap(self, _w, _h):
+            return base
+    img = holiday_icon(RetinaIcon()).pixmap(int(512 * dpr), int(512 * dpr)).toImage()
+    w, h = img.width(), img.height()
+    red = lambda x, y: QColor(img.pixel(int(x * w), int(y * h))).red() > 150   # noqa: E731
+    assert any(red(x / 20, y / 20) for x in range(10, 20) for y in range(0, 6))       # hat up top, right side
+    assert not any(red(x / 20, y / 20) for x in range(0, 20) for y in range(12, 20))  # nothing at the bottom

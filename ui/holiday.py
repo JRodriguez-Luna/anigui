@@ -147,9 +147,12 @@ def holiday_icon(base: QIcon) -> QIcon:
     if pm.isNull():
         return base
     out = QPixmap(pm)
+    # On a Retina Mac the pixmap is 2x: the painter works in points, so size by points
+    # (sizing by pixels drew a giant hat hanging off the bottom-right corner).
+    size = out.width() / out.devicePixelRatio()
     p = QPainter(out)
     p.setRenderHint(QPainter.RenderHint.Antialiasing)
-    draw_hat(p, out.width() * 0.50, out.height() * 0.06, out.width() * 0.44, 18)
+    draw_hat(p, size * 0.50, size * 0.06, size * 0.44, 18)
     p.end()
     return QIcon(out)
 
