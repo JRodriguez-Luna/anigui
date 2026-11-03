@@ -130,7 +130,7 @@ class Catalog:
         if show and show.anilist_id:
             return self.anilist.media(show.anilist_id)
 
-        miss_key = f"nomatch:anilist:{anime_id}"
+        miss_key = f"nomatch2:anilist:{anime_id}"   # 2: since 1.8.5 adult entries can match
         if self.store.cache_get(miss_key):
             return None
         media, score = best_media_match(title, self.anilist.search(title))

@@ -65,10 +65,13 @@ query ($season: MediaSeason, $year: Int, $page: Int, $perPage: Int) {
   }
 }"""
 
+# Matching hianime titles to AniList: adult entries included, so a show AniList marks
+# adult gets linked (poster, details) and flagged 18+ instead of slipping past unrated.
+# Lists AniGUI shows on its own (trending, season, browse, schedule) still leave them out.
 Q_SEARCH = _FIELDS + """
 query ($search: String, $perPage: Int) {
   Page(page: 1, perPage: $perPage) {
-    media(type: ANIME, search: $search, isAdult: false) { ...f }
+    media(type: ANIME, search: $search) { ...f }
   }
 }"""
 
