@@ -287,6 +287,18 @@ jobs:
               print(f"::{'notice' if ok else 'warning'} title=fillers::{'PASS' if ok else 'CHECK'} {name}: "
                     f"{count} fillers (complete={info.complete}), {info.summary(numbers)}; "
                     f"first: {sorted(info.kinds, key=float)[:6]}")
+          # Seasons: the whole series in order, from any season of it
+          from core.seasons import build
+          for name, aid, want in (("My Hero Academia (from S2)", 21856, 6), ("Frieren", 154587, 2),
+                                  ("Demon Slayer (from Entertainment District)", 142329, 3)):
+              try:
+                  series = build(al.media(aid), lambda i: al.related(i)[0])
+                  labels = [s.label for s in series.seasons]
+                  ok = len(labels) >= want and series.complete
+                  detail = f"{len(labels)} seasons {labels[:8]}, extras {len(series.extras)}"
+              except Exception as exc:  # noqa: BLE001
+                  ok, detail = False, repr(exc)
+              print(f"::{'notice' if ok else 'warning'} title=seasons::{'PASS' if ok else 'CHECK'} {name}: {detail}")
           # hianime renumbered its shows in Nov 2026: an id saved before then must find its new one
           import tempfile
           from pathlib import Path

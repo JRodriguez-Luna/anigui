@@ -127,6 +127,7 @@ class MainWindow(QMainWindow):
         self.search.setupRequested.connect(self.open_setup)
         self.detail.backRequested.connect(self.back)
         self.detail.openItem.connect(self.open_item)
+        self.detail.openNext.connect(lambda media: self.open_item(media, autoplay=True))
         self.detail.libraryChanged.connect(self._local_changed)
         self.detail.toast.connect(lambda text, err: self.toast.show_message(text, error=err))
         self.playback.started.connect(lambda *_: self._local_changed())

@@ -87,8 +87,15 @@ class _Walker:
 
 def build(start: Media, related: RelatedFn) -> Series:
     w = _Walker(related)
-    seen = {start.anilist_id}
     first = start
+    if not _is_season(start):
+        # A movie or OVA page: start from the season it belongs to (its prequel, sequel or
+        # main story), so the row still shows the whole series.
+        links = [r for r in w.links(start) if _is_season(r.media) and r.relation in ("PREQUEL", "SEQUEL", "PARENT", "SIDE_STORY")]
+        links.sort(key=lambda r: ("PREQUEL", "PARENT", "SEQUEL", "SIDE_STORY").index(r.relation))
+        if links:
+            first = links[0].media
+    seen = {first.anilist_id}
     while (prev := w.step(first, "PREQUEL", seen)) is not None:
         seen.add(prev.anilist_id)
         first = prev

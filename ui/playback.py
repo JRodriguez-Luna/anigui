@@ -156,6 +156,14 @@ class _Now:
     ended: bool = False                           # reached the end (auto-next started once)
 
 
+@dataclass(frozen=True)
+class _Target:
+    anime_id: str
+    title: str
+    episode: str
+    label: str          # "Episode 5", or "Season 3" when auto-play moves to the next season
+
+
 class Session(QObject):
     """One player window, possibly playing several episodes in a row."""
 
@@ -177,7 +185,10 @@ class Session(QObject):
         self.advance_when_ready = False
         self.loading = False
         self.closed = False
-        self._next_episode: str | None = None
+        self._target: _Target | None = None          # what auto-play will play next
+        self.next_season = None                       # catalog.NextSeason after the last episode
+        self._season_looked_up: str | None = None     # show whose next season was looked up
+        self._waiting_for_season = False
         self._countdown_left = 0
         self._countdown = QTimer(self, interval=1000)
         self._countdown.timeout.connect(self._tick)
@@ -387,78 +398,135 @@ class Session(QObject):
             rest = [n for n in rest if number_key(n) not in self.filler_keys]
         return rest[0] if rest else None
 
+    def _next_target(self) -> _Target | None:
+        """What auto-play plays next: the next episode, or after the last episode of a
+        finished season, the next season's first (once it's been looked up)."""
+        n = self.now
+        nxt = self._next_number()
+        if nxt:
+            return _Target(n.anime_id, n.title, nxt, f"Episode {nxt}")
+        if self.episodes is not None and self.next_season is not None:
+            s = self.next_season
+            return _Target(s.anime_id, s.title, s.episode, s.label)
+        return None
+
+    def _look_up_next_season(self) -> None:
+        """At the last episode: is there a next season to roll into? (Once per show.)"""
+        n = self.now
+        if self._season_looked_up == n.anime_id or self.episodes is None or self._next_number():
+            return
+        self._season_looked_up = n.anime_id
+        find = getattr(self.ctx.catalog, "next_season", None)
+        if find is None:
+            return
+
+        def done(found, aid=n.anime_id):
+            if aid != self.now.anime_id or self.closed:
+                return
+            self.next_season = found
+            if found is not None:
+                print(f"playback: next season after this one: {found.label} ({found.anime_id})", flush=True)
+            if self._waiting_for_season:
+                self._waiting_for_season = False
+                self._advance()
+            else:
+                self._maybe_prefetch()          # near the end already: get it ready now
+
+        def failed(_msg, aid=n.anime_id):
+            if aid == self.now.anime_id and self._waiting_for_season:
+                self._waiting_for_season = False
+                self.ipc.command("show-text", "That was the last episode", 4000)
+
+        self.ctx.runner.submit(find, n.anime_id, n.title, on_done=done, on_error=failed)
+
     def _maybe_prefetch(self) -> None:
         n = self.now
         if (self.next_job or self.next_info or not n.duration or n.position is None
                 or n.duration - n.position > PREFETCH_REMAINING_S or not self.ctx.pref("autoplay", True)):
             return
-        nxt = self._next_number()
-        if nxt:
-            self._prefetch(nxt)
+        target = self._next_target()
+        if target:
+            self._prefetch(target)
+        else:
+            self._look_up_next_season()
 
-    def _prefetch(self, episode: str) -> None:
-        n = self.now
+    def _prefetch(self, target: _Target) -> None:
+        self._target = target
         self.next_job = self.resolver.prepare(
-            n.anime_id, n.title, episode,
-            on_ready=lambda info, ep=episode, aid=n.anime_id: self._next_ready(aid, ep, info),
-            on_fail=lambda msg, ep=episode: self._next_failed(ep, msg),
+            target.anime_id, target.title, target.episode,
+            on_ready=lambda info, t=target: self._next_ready(t, info),
+            on_fail=lambda msg, t=target: self._next_failed(t, msg),
         )
 
-    def _next_ready(self, anime_id: str, episode: str, info: StreamInfo) -> None:
-        if anime_id != self.now.anime_id or self.closed:
+    def _next_ready(self, target: _Target, info: StreamInfo) -> None:
+        if target != self._target or self.closed:
             return
         self.next_job, self.next_info = None, info
-        self._next_episode = episode
         if self.advance_when_ready:
             self.advance_when_ready = False
             self._play_next()
 
-    def _next_failed(self, episode: str, message: str) -> None:
-        print(f"playback: couldn't get episode {episode} ready: {message}", flush=True)
+    def _next_failed(self, target: _Target, message: str) -> None:
+        print(f"playback: couldn't get {target.label.lower()} ready: {message}", flush=True)
         self.next_job = None
         if self.advance_when_ready:
             self.advance_when_ready = False
-            self.ipc.command("show-text", f"Couldn't load episode {episode}", 4000)
-            self.notice.emit(f"Couldn't auto-play episode {episode}: {message}", True)
+            self.ipc.command("show-text", f"Couldn't load {target.label.lower()}", 4000)
+            self.notice.emit(f"Couldn't auto-play {target.label.lower()}: {message}", True)
 
     def _cancel_next(self) -> None:
         self.resolver.cancel(self.next_job)
         self.next_job, self.next_info, self.advance_when_ready = None, None, False
+        self._target = None
 
     def _advance(self) -> None:
         if not self.ctx.pref("autoplay", True):
             return
-        nxt = self._next_number()
-        if nxt is None:
+        target = self._next_target()
+        if target is None:
+            if self.episodes is not None and self._season_looked_up != self.now.anime_id:
+                self._waiting_for_season = True      # look for a next season, then come back here
+                self._look_up_next_season()
+                return
             if self.episodes is not None:
                 self.ipc.command("show-text", "That was the last episode", 4000)
             return
-        self._next_episode = nxt
+        if target != self._target:
+            self._cancel_next()
+        self._target = target
         self._countdown_left = COUNTDOWN_S
         self._tick()
         self._countdown.start()
         if not self.next_info and not self.next_job:
-            self._prefetch(nxt)
+            self._prefetch(target)
+
+    @property
+    def _next_episode(self) -> str | None:
+        return self._target.episode if self._target else None
 
     def _tick(self) -> None:
+        label = self._target.label if self._target else "Next episode"
         if self._countdown_left <= 0:
             self._countdown.stop()
             if self.next_info:
                 self._play_next()
             else:
                 self.advance_when_ready = True
-                self.ipc.command("show-text", f"Loading episode {self._next_episode}…", 30_000)
+                self.ipc.command("show-text", f"Loading {label}…", 30_000)
             return
-        self.ipc.command("show-text", f"Episode {self._next_episode} starts in {self._countdown_left}…", 1100)
+        self.ipc.command("show-text", f"{label} starts in {self._countdown_left}…", 1100)
         self._countdown_left -= 1
 
     def _play_next(self) -> None:
-        info, episode = self.next_info, self._next_episode
-        n = self.now
+        info, t = self.next_info, self._target
+        if info is None or t is None:
+            return
         self.next_info = None
-        self.load(info, n.anime_id, n.title, episode, None)
-        self.ctx.store.record_progress(n.anime_id, episode, 0.0)
-        self.episodeChanged.emit(n.anime_id, episode)
+        if t.anime_id != self.now.anime_id:
+            self.next_season = None
+        self.load(info, t.anime_id, t.title, t.episode, None)
+        self.ctx.store.record_progress(t.anime_id, t.episode, 0.0)
+        self.episodeChanged.emit(t.anime_id, t.episode)
 
 
 # -- Front door used by the pages -----------------------------------------------------------

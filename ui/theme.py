@@ -144,6 +144,11 @@ QFrame#NoteCard {{ background: {SURFACE_2}; border: 1px solid #3A3A48; border-ra
 #NoteCardTitle {{ font-size: 13px; font-weight: 800; color: {TEXT}; }}
 #NoteCardText {{ font-size: 12px; color: #C9C9D6; }}
 #ContentPill:hover {{ background: #30303F; }}
+QPushButton#ExtraPill {{ background: {SURFACE_2}; border: 1px solid {BORDER}; color: #D6D6E0; font-size: 12px;
+    font-weight: 500; padding: 4px 11px; border-radius: 13px; }}
+QPushButton#ExtraPill:hover {{ background: {SURFACE_3}; color: {TEXT}; }}
+QFrame#UpNextCard {{ background: {SURFACE}; border: 1px solid {BORDER}; border-radius: 12px; }}
+#UpNextTitle {{ font-size: 15px; font-weight: 700; }}
 QDialog#MatureDialog {{ background: {SURFACE}; }}
 QComboBox {{
     background: {SURFACE_2}; border: 1px solid {BORDER}; border-radius: {RADIUS}px;

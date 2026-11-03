@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
 
 from core.anilist import Media
 from core.hianime import Episode
+from core.seasons import Series
 from core.store import episode_key
 
 from .cards import CardRow, media_card
@@ -20,6 +21,7 @@ from .context import AppContext
 from .episodes import PER_PAGE, EpisodeGrid, EpisodeItem, EpisodePager, coming_soon, find_episode, page_ranges
 from .hero import Backdrop, airing_note, media_meta, truncate
 from .playback import PlaybackController
+from .seasons import UPCOMING, SeasonsRow, SeasonState, UpNextCard
 from .widgets import Combo, PosterWidget, WrapLabel
 
 QUALITIES = [("Best", "best"), ("1080p", "1080"), ("720p", "720"), ("480p", "480")]
@@ -58,6 +60,7 @@ class StickyBar(QWidget):
 class DetailPage(QScrollArea):
     backRequested = Signal()
     openItem = Signal(object)  # Media from the Related / You might also like rows
+    openNext = Signal(object)  # Media: Up next's "Start Season 3" (opens and plays)
     libraryChanged = Signal()
     toast = Signal(str, bool)  # message, is_error
 
@@ -195,13 +198,24 @@ class DetailPage(QScrollArea):
         self.message.setAlignment(Qt.AlignmentFlag.AlignLeft)
         self.message.setContentsMargins(5, 0, 5, 0)
 
+        # Seasons of the series (AniList prequels/sequels), and Up next after the last episode
+        self.seasons_row = SeasonsRow(ctx.images)
+        self.seasons_row.setContentsMargins(5, 0, 5, 0)
+        self.seasons_row.openMedia.connect(self.openItem)
+        self.up_next = UpNextCard(ctx.images)
+        self.up_next.start.connect(lambda media: self.openNext.emit(media))
+        self.series: Series | None = None
+
         episodes = QVBoxLayout()
         episodes.setContentsMargins(39, 10, 39, 40)
         episodes.setSpacing(12)
+        episodes.addWidget(self.seasons_row)
+        episodes.addSpacing(8)
         episodes.addLayout(ep_head)
         episodes.addWidget(self.message)
         episodes.addWidget(self.pager)
         episodes.addWidget(self.grid)
+        episodes.addWidget(self.up_next)
 
         # More like this (AniList)
         self.related_row = CardRow("Related", ctx.images)
@@ -286,6 +300,9 @@ class DetailPage(QScrollArea):
         self._related_for = None
         for row in (self.related_row, self.recs_row):
             row.set_cards([])
+        self.series, self._seasons_for = None, None
+        self.seasons_row.clear()
+        self.up_next.show_for(None)
         self.play_btn.setEnabled(False)
         self.play_btn.setText("▶  Play")
         self.list_btn.setEnabled(False)
@@ -310,6 +327,7 @@ class DetailPage(QScrollArea):
         if self.episodes:
             self._refresh_episode_states()   # Coming soon needs the airing info
         self._load_related(media)
+        self._load_seasons(media)
         self._load_stills()
         self._load_fillers()
 
@@ -385,12 +403,59 @@ class DetailPage(QScrollArea):
                                on_done=lambda result: gen == self.gen and self._show_related(*result),
                                group="detail-related")
 
+    # -- seasons ------------------------------------------------------------------------
+
+    def _load_seasons(self, media: Media) -> None:
+        if getattr(self, "_seasons_for", None) == media.anilist_id:
+            return
+        self._seasons_for = media.anilist_id
+        gen = self.gen
+        self.ctx.runner.submit(self.ctx.catalog.series, media,
+                               on_done=lambda series: gen == self.gen and self._show_series(series),
+                               group="detail-seasons")
+
+    def _show_series(self, series: Series) -> None:
+        self.series = series
+        self._refresh_seasons()
+        if self._related is not None:
+            self._show_related(*self._related)       # its sequels and prequels are in Seasons now
+
+    def _refresh_seasons(self) -> None:
+        """Season cards and Up next, from what you've watched (cheap: no network)."""
+        series, media = self.series, self.media
+        if series is None or media is None:
+            return
+        hide = hiding(self.ctx)
+        states: dict[int, SeasonState] = {}
+        for s in series.seasons:
+            m = s.media
+            show = self.ctx.store.find_by_anilist(m.anilist_id)
+            if m.anilist_id == media.anilist_id and self.anime_id:
+                show = self.ctx.store.get_show(self.anime_id) or show
+            watched = 0
+            if show:
+                watched = sum(1 for p in self.ctx.store.show_progress(show.anime_id).values() if p.completed)
+            states[m.anilist_id] = SeasonState(watched, m.episodes, m.anilist_id == media.anilist_id,
+                                               hide and m.maturity.mature)
+        hidden = {m.anilist_id for m in series.extras if hide and m.maturity.mature}
+        self.seasons_row.set_series(series, states, hidden)
+        current = series.find(media.anilist_id)
+        nxt = series.after(media.anilist_id)
+        done = current is not None and states[media.anilist_id].done and (current.media.status or "") == "FINISHED"
+        ready = nxt is not None and (nxt.media.status or "") not in UPCOMING
+        self.up_next.show_for(nxt if done and ready and not (hide and nxt.media.maturity.mature) else None)
+
     def _show_related(self, related, recs) -> None:
         self._related = (related, recs)
         hide = hiding(self.ctx)
+        in_seasons: set[int] = set()
+        if self.series is not None and self.series.worth_showing:
+            in_seasons = {s.media.anilist_id for s in self.series.seasons} | {m.anilist_id for m in self.series.extras}
         cards = []
         for r in related:
             if hide and r.media.maturity.mature:
+                continue
+            if r.media.anilist_id in in_seasons:
                 continue
             card = media_card(r.media)
             cards.append(replace(card, badge=r.label.upper()))
@@ -511,6 +576,7 @@ class DetailPage(QScrollArea):
         self.play_btn.setText(text)
         self.play_btn.setEnabled(target is not None)
         self._update_sticky()
+        self._refresh_seasons()
 
     def _coming_soon(self, numbers: list[str]) -> EpisodeItem | None:
         """The next episode of an airing show, if it's the one right after the last listed."""

@@ -13,7 +13,9 @@ from difflib import SequenceMatcher
 from .ani_cli import ResolveRequest
 from .anilist import AniListClient, Media
 from .hianime import Episode, HianimeClient, SearchResult, normalize_query
-from .store import ContinueItem, Store
+from . import seasons
+from .seasons import Series
+from .store import ContinueItem, Store, episode_key
 
 AUTO_MATCH = 0.85          # minimum score to link automatically
 NO_MATCH_TTL = 7 * 24 * 3600   # AniList has no entry for this hianime title
@@ -105,6 +107,15 @@ def best_result_match(titles: tuple[str, ...], results: list[SearchResult]) -> t
         if score > best_score:
             best, best_score = result, score
     return best, round(best_score, 4)
+
+
+@dataclass(frozen=True)
+class NextSeason:
+    anime_id: str
+    title: str
+    episode: str          # its first episode
+    label: str            # "Season 3"
+    media: Media
 
 
 # -- Catalog -------------------------------------------------------------------------
@@ -238,6 +249,32 @@ class Catalog:
                 return result
         self.store.cache_put(miss_key, "1", NOT_STREAMABLE_TTL)
         return None
+
+    # -- seasons ---------------------------------------------------------------------------
+
+    def series(self, media: Media) -> Series:
+        """Every season of the series this show belongs to, plus its movies and specials."""
+        return seasons.build(media, lambda anilist_id: self.anilist.related(anilist_id)[0])
+
+    def next_season(self, anime_id: str, title: str) -> NextSeason | None:
+        """For auto-play at the end of a season: the next season's hianime show and its first
+        episode. Only once the season has finished airing (an airing show's latest episode
+        isn't its last), and only when the next season is out and on hianime."""
+        media = self.enrich(anime_id, title)
+        if media is None or (media.status or "") != "FINISHED":
+            return None
+        nxt = self.series(media).after(media.anilist_id)
+        if nxt is None or (nxt.media.status or "") not in ("FINISHED", "RELEASING"):
+            return None
+        found = self.find_streamable(nxt.media)
+        if found is None:
+            return None
+        self.store.upsert_show(found.anime_id, found.title, found.poster)
+        new_id, new_title, eps = self.episodes_for(found.anime_id, found.title)
+        if not eps:
+            return None
+        first = min(eps, key=lambda e: episode_key(e.number))
+        return NextSeason(new_id, new_title, first.number, nxt.label, nxt.media)
 
     # anime_id -> the (query, index) pair ani-cli -S needs
     def locate(self, anime_id: str, title: str | None = None) -> Located:
