@@ -26,14 +26,21 @@ class W(QOpenGLWidget):
         except Exception as e:
             s.err = repr(e)
         s.m.command("loadfile", "av://lavfi:testsrc=duration=8:size=320x240:rate=25")
+    paints = 0
     def paintGL(s):
+        W.paints += 1
         if s.r:
             r = s.devicePixelRatio(); s.r.render(s.defaultFramebufferObject(), int(s.width() * r), int(s.height() * r))
-app = QApplication(sys.argv); w = W(); w.resize(320, 240); w.show()
+app = QApplication(sys.argv); w = W(); w.resize(320, 240); w.show(); w.raise_()
 def check():
     img = w.grabFramebuffer()
     cols = {img.pixelColor(x, y).name() for x in range(5, img.width(), 37) for y in range(5, img.height(), 29)}
-    print(f"RESULT api={libmpv.api_version()} colors={len(cols)} err={w.err} gl={w.format().majorVersion()}.{w.format().minorVersion()} size={img.width()}x{img.height()}", flush=True)
+    g = w.grab().toImage()
+    cols2 = {g.pixelColor(x, y).name() for x in range(5, g.width(), 37) for y in range(5, g.height(), 29)}
+    print(f"RESULT api={libmpv.api_version()} colors={len(cols)} grab_colors={len(cols2)} paints={W.paints} "
+          f"vo={w.m.get('video-out-params')!r:.80} pos={w.m.get('time-pos')} hwdec={w.m.get('hwdec-current')} "
+          f"err={w.err} gl={w.format().majorVersion()}.{w.format().minorVersion()} valid={w.isValid()} "
+          f"size={img.width()}x{img.height()} exposed={w.windowHandle().isExposed() if w.windowHandle() else None}", flush=True)
     app.quit()
 QTimer.singleShot(2500, check); app.exec()
 '''
@@ -50,25 +57,3 @@ for path in paths:
         except Exception as exc:
             note(f"{path} core={core}: failed {exc!r}")
 
-# What bundling Homebrew's libmpv would cost: every non-system library it pulls in
-def deps(lib, seen):
-    out = subprocess.run(["otool", "-L", lib], capture_output=True, text=True).stdout.splitlines()[1:]
-    for line in out:
-        d = line.strip().split(" (")[0]
-        if d.startswith("@rpath") or d.startswith("@loader_path"):
-            d = os.path.join(os.path.dirname(lib), d.split("/", 1)[1])
-        d = os.path.realpath(d) if os.path.exists(d) else d
-        if d.startswith(("/usr/lib", "/System")) or d in seen or not os.path.exists(d):
-            continue
-        seen.add(d); deps(d, seen)
-    return seen
-for path in paths:
-    if "IINA" in path:
-        fw = os.path.dirname(path)
-        total = sum(os.path.getsize(os.path.join(fw, f)) for f in os.listdir(fw) if os.path.isfile(os.path.join(fw, f)))
-        note(f"IINA Frameworks: {len(os.listdir(fw))} files, {total / 1e6:.0f} MB")
-    else:
-        s = deps(os.path.realpath(path), set())
-        size = sum(os.path.getsize(p) for p in s) + os.path.getsize(os.path.realpath(path))
-        note(f"bundle cost for {path}: {len(s) + 1} libraries, {size / 1e6:.0f} MB; biggest: "
-             f"{sorted(((os.path.getsize(p) // 1000000, os.path.basename(p)) for p in s), reverse=True)[:8]}")

@@ -19,6 +19,7 @@ from .cards import CardRow, media_card
 from . import theme
 from .content_notes import ContentLine
 from .festive import BowPop
+from .theater import Theater
 from .motion import fade_in
 from .mature import confirm_open, decorate_all, hiding, visible
 from .context import AppContext
@@ -233,10 +234,18 @@ class DetailPage(QScrollArea):
             episodes.addWidget(row)
         episodes.addStretch(1)
 
+        # The built-in player plays here (the video floats over theater.slot)
+        self.theater = Theater(ctx.images)
+        self.theater.back.connect(self.backRequested)
+        self.theater.episodeClicked.connect(self.play)
+        self.theater.listToggled.connect(self._toggle_library)
+        self.theater.setVisible(False)
+
         body = QWidget(objectName="PageBody")
         col = QVBoxLayout(body)
         col.setContentsMargins(0, 0, 0, 0)
         col.setSpacing(0)
+        col.addWidget(self.theater)
         col.addWidget(self.header)
         col.addLayout(episodes, 1)
         self.setWidget(body)
@@ -537,6 +546,7 @@ class DetailPage(QScrollArea):
             return
         progress = self.ctx.store.show_progress(self.anime_id)
         numbers = [ep.number for ep in self.episodes]
+        self.refresh_theater()
         fillers = self.fillers
         skippable = fillers.skippable(numbers) if fillers else set()
         skip = skippable if self.ctx.pref("skip_fillers") else set()
@@ -681,6 +691,7 @@ class DetailPage(QScrollArea):
         show = self.ctx.store.get_show(self.anime_id) if self.anime_id else None
         saved = bool(show and show.in_library)
         self.list_btn.setText("✓  In My List" if saved else "+  My List")
+        self.theater.list_btn.setText(self.list_btn.text())
 
     def _toggle_library(self) -> None:
         if not self.anime_id:
@@ -719,7 +730,8 @@ class DetailPage(QScrollArea):
             self.grid.model_.set_busy(None)
             self._set_status("")
             self._refresh_episode_states()
-        self.toast.emit(f"Playing episode {episode} in {'IINA' if kind == 'iina' else 'mpv'}", False)
+        if kind != "anigui":
+            self.toast.emit(f"Playing episode {episode} in {'IINA' if kind == 'iina' else 'mpv'}", False)
 
     def _on_failed(self, anime_id: str, episode: str, message: str) -> None:
         if anime_id == self.anime_id:
@@ -767,6 +779,64 @@ class DetailPage(QScrollArea):
             i = max(0, self.quality.findData(str(self.ctx.pref("quality"))))
             if i != self.quality.currentIndex():
                 self.quality.setCurrentIndex(i)
+
+    # -- the built-in player's theater -----------------------------------------------------
+
+    @property
+    def theater_on(self) -> bool:
+        return not self.theater.isHidden()
+
+    def set_theater(self, on: bool) -> None:
+        """Show the video slot and episode list in place of the big header (or put the header back)."""
+        if on == self.theater_on:
+            if on:
+                self.refresh_theater()
+            return
+        self.theater.setVisible(on)
+        self.header.setVisible(not on)
+        if on:
+            self.refresh_theater()
+            self.verticalScrollBar().setValue(0)
+        self._update_sticky()
+
+    def refresh_theater(self) -> None:
+        if not self.theater_on:
+            return
+        playing = self.playback.now_playing
+        current = playing[1] if playing and playing[0] == self.anime_id else None
+        progress = self.ctx.store.show_progress(self.anime_id) if self.anime_id else {}
+        xmas = holiday.christmas_episodes_for(self.media.anilist_id if self.media else None)
+        items = []
+        for ep in self.episodes:
+            p = progress.get(ep.number)
+            items.append({"number": ep.number, "title": ep.title if ep.title else "", "still": self.stills.get(ep.number),
+                          "watched": bool(p and p.completed), "playing": ep.number == current,
+                          "christmas": ep.number in xmas})
+        self.theater.rail.set_items(items, f"Episodes · {len(items)}" if items else "Episodes")
+        ep = next((e for e in self.episodes if e.number == current), None)
+        self.theater.ep_title.setText(ep.title if ep and ep.title and has_title_text(ep.title)
+                                      else (f"Episode {current}" if current else ""))
+        self.theater.show_title.setText(self.title.text())
+        door = None
+        if theme.HOLIDAY and self.media and current:
+            door = next((d for d in range(1, 25) if (pick := holiday.advent_pick(d))
+                         and pick.anilist_id == self.media.anilist_id and pick.episode == current), None)
+        self.theater.door_chip.setText(f"🎁 Door {door} · Advent" if door else "")
+        self.theater.door_chip.setVisible(bool(door))
+        day = None
+        if theme.HOLIDAY:
+            import datetime as _dt
+            today = _dt.date.today()
+            start, end = holiday.challenge_window(holiday.season_year(today))
+            if start <= today <= end:
+                day = (today - start).days + 1
+        self.theater.day_chip.setText(f"Day {day} of 12 ⭐" if day else "")
+        self.theater.day_chip.setVisible(bool(day))
+        show = self.ctx.store.get_show(self.anime_id) if self.anime_id else None
+        self.theater.list_btn.setText("✓  In My List" if show and show.in_library else "+  My List")
+        on = theme.HOLIDAY
+        self.theater.set_decor(on and bool(self.ctx.pref("player_lights", True)),
+                               on and bool(self.ctx.pref("player_snow", True)))
 
     def refresh_if_showing(self) -> None:
         self._refresh_episode_states()
