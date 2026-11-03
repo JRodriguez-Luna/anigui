@@ -201,7 +201,8 @@ class HomePage(QScrollArea):
         'theme is ready' banner once a year before it starts."""
         if on:
             if self.hero_snow is None:
-                self.hero_snow = SnowLayer(self.hero)
+                self.hero_snow = SnowLayer(self.hero, settle=True)
+                self.verticalScrollBar().valueChanged.connect(lambda _v: self.hero_snow.melt())
             self.hero_snow.start()
             if self._xmas is None:
                 self.xmas_row.set_loading()

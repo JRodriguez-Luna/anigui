@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
     QStyledItemDelegate, QWidget,
 )
 
-from . import theme
+from . import festive, theme
 from .images import ImageLoader
 
 EP_ROLE = Qt.ItemDataRole.UserRole + 2
@@ -213,8 +213,7 @@ class EpisodeDelegate(QStyledItemDelegate):
         if item.state == "progress" or (item.playing and item.fraction > 0):
             bar = QRectF(still.left(), still.bottom() - 3, still.width(), 3)
             p.fillRect(bar, QColor(255, 255, 255, 60))
-            p.fillRect(QRectF(bar.left(), bar.top(), bar.width() * max(0.04, min(1.0, item.fraction)), 3),
-                       QColor(theme.ACCENT))
+            festive.progress_bar(p, bar, max(0.04, min(1.0, item.fraction)), theme.ACCENT)
 
         if item.kind in ("filler", "recap"):
             self._kind_badge(p, still, item.kind)

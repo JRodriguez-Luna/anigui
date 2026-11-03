@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QStyleOptionViewItem, QVBoxLayout, QWidget,
 )
 
-from . import theme
+from . import festive, theme
 from .images import ImageLoader
 from .motion import Ticker, Tween, reduce_motion, shimmer_phase
 
@@ -151,9 +151,10 @@ class CardDelegate(QStyledItemDelegate):
         if card.progress is not None:
             bar = QRectF(poster.left(), poster.bottom() - 4, poster.width(), 4)
             p.fillRect(bar, QColor(255, 255, 255, 70))
-            p.fillRect(QRectF(bar.left(), bar.top(), bar.width() * max(0.0, min(1.0, card.progress)), 4),
-                       QColor(theme.ACCENT))
+            festive.progress_bar(p, bar, card.progress, theme.ACCENT)
         p.setClipping(False)
+        if not card.is_skeleton:
+            festive.snow_cap(p, poster)
 
         outline = max(lift, 1.0 if hover and reduce_motion() else 0.0) if hasattr(view, "lift") else float(hover)
         if outline > 0:
@@ -223,7 +224,11 @@ class CardDelegate(QStyledItemDelegate):
     def _badge(self, p: QPainter, poster: QRectF, text: str) -> None:
         p.setFont(self.badge_font)
         w = p.fontMetrics().horizontalAdvance(text) + 14
-        pill = QRectF(poster.left() + 8, poster.top() + 8, w, 20)
+        top = 14 if theme.HOLIDAY else 8          # below the snow cap
+        if theme.HOLIDAY and text.startswith("NEW"):
+            festive.gift_tag(p, QRectF(poster.left() + 6, poster.top() + top, w + 10, 20), text)
+            return
+        pill = QRectF(poster.left() + 8, poster.top() + top, w, 20)
         p.setPen(Qt.PenStyle.NoPen)
         # "NEW…" badges use the accent color so new episodes stand out
         p.setBrush(QColor(theme.ACCENT) if text.startswith("NEW") else QColor(10, 10, 15, 190))

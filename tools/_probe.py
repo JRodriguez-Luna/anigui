@@ -5,17 +5,16 @@ from core import http
 from core.anilist import AniListClient
 def note(m): print(f"::notice title=probe::{m}"[:3800])
 al = AniListClient()
-SHOWS = ["Toradora!", "K-ON!", "K-ON!! Season 2", "Laid-Back Camp", "Kaguya-sama Love is War Season 2",
-         "Komi Can't Communicate", "Sword Art Online", "Ouran High School Host Club", "Kimi ni Todoke",
-         "Cardcaptor Sakura", "Hayate the Combat Butler", "Gintama", "Lucky Star", "Clannad", "Nisekoi",
-         "Horimiya", "Spy x Family Season 2", "Kiniro Mosaic", "Non Non Biyori Repeat", "Love Live! School Idol Project",
-         "Hidamari Sketch", "Yuru Yuri", "Gabriel DropOut", "Nichijou", "Love, Chunibyo & Other Delusions",
-         "Saekano", "Golden Time", "Your Lie in April", "Wotakoi", "My Teen Romantic Comedy SNAFU",
-         "My Love Story!!", "Tsurezure Children", "Tonikawa Over the Moon for You", "Rent-a-Girlfriend",
-         "The Quintessential Quintuplets", "Bocchi the Rock!", "Spy x Family", "Kanon 2006", "Toradora",
-         "Teasing Master Takagi-san", "Rascal Does Not Dream of Bunny Girl Senpai", "Aria the Animation",
-         "Natsume's Book of Friends", "Fruits Basket", "Lovely Complex", "Maid Sama!", "Plastic Memories",
-         "Aho Girl", "Bakemonogatari", "Kobayashi's Dragon Maid", "Shirobako", "The Disastrous Life of Saiki K."]
+SHOWS = ["Azumanga Daioh", "Sailor Moon R", "Is the Order a Rabbit??", "Is the Order a Rabbit? BLOOM",
+         "Strike Witches 2", "School Rumble", "White Album 2", "Amagami SS", "Shirokuma Cafe", "Sakura Trick",
+         "Love Live! Sunshine!!", "Laid-Back Camp Season 2", "Kimi ni Todoke 2nd Season", "Hello!! Kiniro Mosaic",
+         "My Teen Romantic Comedy SNAFU TOO!", "ReLIFE", "Haganai", "Clannad After Story", "Kaguya-sama Love is War",
+         "Fruits Basket 2019", "Kiss Him Not Me", "Monthly Girls' Nozaki-kun", "Kemono Michi", "Toaru Kagaku no Railgun",
+         "A Certain Magical Index", "Durarara!!", "Natsume Yuujinchou", "Sweetness and Lightning", "Usagi Drop",
+         "Hinamatsuri", "Kotoura-san", "Charlotte", "Ano Hana", "Tanaka-kun is Always Listless", "Pokemon",
+         "Toradora SOS", "Asobi Asobase", "Kaguya-sama Love is War Ultra Romantic", "Mob Psycho 100",
+         "Golden Time", "Ouran High School Host Club", "Kanojo mo Kanojo", "Akiba Maid War", "Super Cub",
+         "Yuri!!! on Ice", "Bunny Drop", "Hyouka", "Komi Can't Communicate Season 2", "Sound! Euphonium 2"]
 WORDS = re.compile(r"christmas|xmas|santa|holy night|silent night|eve\b|クリスマス|聖夜", re.I)
 seen = set()
 for title in SHOWS:

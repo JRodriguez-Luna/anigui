@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
 from core.anilist import Media
 from core.seasons import Season, Series
 
-from . import theme
+from . import festive, theme
 from .images import ImageLoader
 
 UPCOMING = ("NOT_YET_RELEASED",)
@@ -134,8 +134,11 @@ class SeasonCard(QWidget):
         p.setBrush(QColor(theme.SURFACE_3))
         p.drawRoundedRect(bar, 1.5, 1.5)
         if self.state.fraction:
-            p.setBrush(QColor(theme.GOOD if self.state.done else theme.ACCENT))
-            p.drawRoundedRect(QRectF(bar.x(), bar.y(), bar.width() * self.state.fraction, 3), 1.5, 1.5)
+            if self.state.done or not theme.HOLIDAY:
+                p.setBrush(QColor(theme.GOOD if self.state.done else theme.ACCENT))
+                p.drawRoundedRect(QRectF(bar.x(), bar.y(), bar.width() * self.state.fraction, 3), 1.5, 1.5)
+            else:
+                festive.progress_bar(p, bar, self.state.fraction, theme.ACCENT)
         color = theme.GOOD if self.state.done else (theme.ACCENT_HOVER if self.state.current else theme.MUTED)
         p.setPen(QColor(color))
         line = p.fontMetrics().elidedText(self.line, Qt.TextElideMode.ElideRight, w)

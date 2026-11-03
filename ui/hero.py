@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from PySide6.QtCore import QRectF, Qt, QTimer, Signal
+from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QLinearGradient, QPainter
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QSizePolicy, QVBoxLayout, QWidget
 
@@ -13,6 +13,7 @@ from core.anilist import Media
 from . import theme
 from .cards import format_label
 from .images import ImageLoader
+from . import festive
 from .motion import Fader, crossfade
 from .widgets import WrapLabel
 
@@ -228,7 +229,7 @@ class _Dots(QWidget):
         self.previous, self.t = 0, 1.0
         self._move = Fader(self._set_t, 300, self)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setFixedHeight(14)
+        self.setFixedHeight(18)
 
     def set_count(self, n: int) -> None:
         self.count = n
@@ -263,6 +264,11 @@ class _Dots(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         p.setPen(Qt.PenStyle.NoPen)
+        if theme.HOLIDAY:                       # little ornaments instead of dots
+            for i in range(self.count):
+                festive.ornament(p, QPointF(self._x(i) + 6 + (14 if i > self.current else 0), 8.5),
+                                 5.5 if i == self.current else 4.0, i == self.current)
+            return
         x = 4.0
         for i in range(self.count):
             w = self._width(i)

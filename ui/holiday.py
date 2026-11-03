@@ -26,8 +26,14 @@ class SnowLayer(QWidget):
     """Light snowfall painted over its parent (mouse clicks pass through). Runs only while
     it's on screen, and never with Reduce motion."""
 
-    def __init__(self, parent: QWidget, flakes: int = 70, alpha: int = 215) -> None:
+    PILE_COL = 4         # px per column of settled snow
+    PILE_MAX = 16
+
+    def __init__(self, parent: QWidget, flakes: int = 70, alpha: int = 215, settle: bool = False) -> None:
         super().__init__(parent)
+        self.settle = settle             # let snow pile up along the bottom edge
+        self.piles: list[float] = []
+        self.melting = False
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
         self.count, self.alpha = flakes, alpha
@@ -42,6 +48,7 @@ class SnowLayer(QWidget):
         if obj is self.parent() and event.type() == QEvent.Type.Resize:
             self.setGeometry(self.parent().rect())
             self.flakes = []
+            self.piles = []
         return False
 
     def start(self) -> None:
@@ -77,13 +84,33 @@ class SnowLayer(QWidget):
         if not self.flakes:
             self._seed()
         w, h = self.width(), self.height()
+        if self.settle and len(self.piles) != w // self.PILE_COL + 1:
+            self.piles = [0.0] * (w // self.PILE_COL + 1)
         for f in self.flakes:
             f[1] += f[3]
             f[4] += 0.02
             f[0] += math.sin(f[4]) * 0.35
-            if f[1] > h + 3:
+            floor = h + 3
+            if self.settle and self.piles and not self.melting:
+                k = max(0, min(len(self.piles) - 1, int(f[0] // self.PILE_COL)))
+                floor = h - self.piles[k]
+                if f[1] > floor:
+                    self.piles[k] = min(self.PILE_MAX, self.piles[k] + 0.5)
+            if f[1] > floor:
                 f[0], f[1] = random.uniform(0, w), -3
+        if self.settle and self.piles:
+            if self.melting:
+                self.piles = [max(0.0, v - 0.6) for v in self.piles]
+                self.melting = any(self.piles)
+            else:                                  # soften into drifts
+                ps = self.piles
+                self.piles = [ps[0]] + [(ps[i - 1] + 2 * ps[i] + ps[i + 1]) / 4 for i in range(1, len(ps) - 1)] + [ps[-1]]
         self.update()
+
+    def melt(self) -> None:
+        """Scrolling away melts the drifts (they build up again)."""
+        if self.piles and any(self.piles):
+            self.melting = True
 
     def paintEvent(self, _e) -> None:
         if not self.flakes:
@@ -94,6 +121,16 @@ class SnowLayer(QWidget):
         p.setBrush(QColor(255, 255, 255, self.alpha))
         for x, y, r, _s, _d in self.flakes:
             p.drawEllipse(QPointF(x, y), r, r)
+        if self.settle and self.piles and any(self.piles):
+            h = self.height()
+            drift = QPainterPath()
+            drift.moveTo(0, h)
+            for k, v in enumerate(self.piles):
+                drift.lineTo(k * self.PILE_COL, h - v)
+            drift.lineTo(self.width(), h)
+            drift.closeSubpath()
+            p.setBrush(QColor(244, 247, 250, 235))
+            p.drawPath(drift)
         p.end()
 
 
