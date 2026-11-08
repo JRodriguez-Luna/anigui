@@ -31,6 +31,7 @@ DEFAULTS: dict[str, Any] = {
     "hide_fillers": False,       # leave them out of the episode grid
     "dub_subtitles": False,      # show the (Japanese-timed) subtitles over dubbed audio
     "auto_backup": False,        # a backup a day, newest 7 kept (2.0)
+    "spoiler_shield": False,     # blur episodes you haven't reached (2.0)
     "lock_app": False,           # Touch ID to open AniGUI (2.0)
     "lock_mature": False,        # Touch ID before 18+ shows (2.0)
     "hide_mature": True,         # keep 18+ shows out of suggestions; blur and ask for your own

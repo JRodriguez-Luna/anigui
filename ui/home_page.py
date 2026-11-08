@@ -8,7 +8,7 @@ from PySide6.QtCore import QPoint, Qt, QTimer, Signal
 from PySide6.QtWidgets import QLabel, QMenu, QMessageBox, QScrollArea, QVBoxLayout, QWidget
 
 from core import holiday, recommend
-from core.anilist import current_season
+from core.anilist import Media, current_season
 from core.store import ContinueItem, NewEpisodes, Show
 
 from .mature import decorate_all, flags_for, hiding, visible
@@ -22,7 +22,7 @@ from .holiday import HolidayBanner, SnowLayer
 MAX_COVER_LOOKUPS = 12
 
 
-def continue_card(item: ContinueItem) -> Card:
+def continue_card(item: ContinueItem, rewatching: bool = False) -> Card:
     last = item.last
     if last.completed:
         subtitle, progress = f"Watched episode {last.episode}", None
@@ -30,6 +30,8 @@ def continue_card(item: ContinueItem) -> Card:
         subtitle, progress = f"Episode {last.episode} · {last.fraction:.0%}", last.fraction
     else:
         subtitle, progress = f"Started episode {last.episode}", 0.04
+    if rewatching:
+        subtitle = "Rewatching · " + subtitle
     return Card(key=f"show:{item.show.anime_id}", title=item.show.title, subtitle=subtitle,
                 cover=item.show.poster, progress=progress, badge=f"EP {last.episode}", payload=item.show)
 
@@ -73,6 +75,7 @@ class HomePage(QScrollArea):
         self.clear_btn = self.continue_row.add_action("Clear", "Clear your watch history")
         self.clear_btn.clicked.connect(self.confirm_clear_history)
         self.continue_row.cardMenuRequested.connect(self._continue_menu)
+        self.notInterested = None              # (set below) a suggestion you don't want
         self.surprise_btn = self.continue_row.add_action("🎁 Surprise me", "Play something from a show you're watching or saved")
         self.surprise_btn.setObjectName("SurpriseButton")
         self.surprise_btn.clicked.connect(self.surprise_me)
@@ -101,6 +104,8 @@ class HomePage(QScrollArea):
         rows.addWidget(self.holiday_banner)
         for row in self.rows:
             row.cardActivated.connect(lambda card: self.openItem.emit(card.payload))
+            if row is not self.continue_row:
+                row.cardMenuRequested.connect(self._suggestion_menu)
         # Make it yours (2.0): each row sits in a holder, so you can hide rows and change their
         # order without touching when a row shows itself (empty rows still hide)
         self.holders: dict[str, QWidget] = {}
@@ -152,7 +157,9 @@ class HomePage(QScrollArea):
         new_by_id = {n.show.anime_id: n for n in fresh}
         self.new_row.set_cards(decorate_all(self.ctx, [new_card(n) for n in fresh]))
         items = self.ctx.store.continue_watching(limit=20)
-        self.continue_row.set_cards(decorate_all(self.ctx, [continue_card(i) for i in items]))
+        store = self.ctx.store
+        self.continue_row.set_cards(decorate_all(self.ctx, [continue_card(i, bool(store.rewatch(i.show.anime_id)))
+                                                            for i in items]))
         library = self.ctx.store.library()
         self.library_row.set_cards(decorate_all(self.ctx, [show_card(s, new_by_id.get(s.anime_id))
                                                            for s in library]))
@@ -384,6 +391,23 @@ class HomePage(QScrollArea):
         shown, _hidden = visible(self.ctx, items)
         self.xmas_row.set_cards(decorate_all(self.ctx, [media_card(m) for m in shown]))
         self.xmas_row.setVisible(bool(shown) and theme.HOLIDAY)
+
+    def _suggestion_menu(self, card, pos) -> None:
+        """Right-click a suggestion: Not interested (2.0)."""
+        media = card.payload
+        if not isinstance(media, Media):
+            return
+        menu = QMenu(self)
+        menu.addAction("Not interested").triggered.connect(lambda: self.not_interested(media))
+        menu.exec(pos)
+
+    def not_interested(self, media: Media) -> None:
+        self.ctx.store.set_not_interested(media.anilist_id, media.display_title, True)
+        self.apply_content_filter()
+        window = self.window()
+        if hasattr(window, "toast"):
+            window.toast.show_message(f"You won't see {media.display_title} in suggestions. "
+                                      "(Settings → Content brings it back.)")
 
     def apply_content_filter(self) -> None:
         """Hide 18+ shows changed: redo the rows from what's already loaded."""

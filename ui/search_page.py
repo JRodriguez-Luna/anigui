@@ -234,7 +234,7 @@ class SearchPage(QWidget):
 
     def _show_browse(self, query: str, what: str, items) -> None:
         self._last_browse = (query, what, items)
-        items, hidden = visible(self.ctx, items)
+        items, hidden = visible(self.ctx, items, suggest=False)
         self._set_hidden(hidden)
         if not items:
             self.status.setText("")

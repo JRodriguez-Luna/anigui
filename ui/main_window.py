@@ -187,6 +187,9 @@ class MainWindow(QMainWindow):
         self.detail.theater.slot.bringBack.connect(lambda: self.player_host.pop_in())
         self.player_host.set_drawer_content(self.detail.theater.rail)
         self.detail.theater.all_btn.clicked.connect(lambda: self.player_host.toggle_drawer())
+        # Rewatch mode: auto-play moving on moves your rewatch place too
+        self.playback.episodeChanged.connect(
+            lambda aid, ep: self.ctx.store.rewatch(aid) and self.ctx.store.advance_rewatch(aid, ep))
         self.player_host.drawerChanged.connect(
             lambda on: self.detail.theater.all_btn.setText("✕  Hide episodes" if on else "☰  All episodes"))
         ctx.player.embed = self.player_host.start
@@ -625,6 +628,11 @@ class MainWindow(QMainWindow):
     def _pref_changed(self, key: str, _value) -> None:
         if key in ("accent", "app_icon"):
             self.apply_yours()
+        elif key == "not_interested_changed":
+            self.home.apply_content_filter()
+            self.detail.apply_content_filter()
+        elif key == "spoiler_shield":
+            self.detail.refresh_if_showing()
         elif key == "your_name":
             self.home.update_greeting()
         elif key == "home_rows":

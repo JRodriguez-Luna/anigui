@@ -55,9 +55,14 @@ def status_known(ctx: AppContext, item) -> bool:
     return ctx.store.maturity(anilist_id) is not None
 
 
-def visible(ctx: AppContext, medias: Iterable[Media]) -> tuple[list[Media], int]:
-    """The shows to suggest, and how many were left out by Hide 18+ shows."""
+def visible(ctx: AppContext, medias: Iterable[Media], suggest: bool = True) -> tuple[list[Media], int]:
+    """The shows to suggest, and how many were left out by Hide 18+ shows. Suggestions also
+    leave out shows you said you're not interested in (2.0); search (suggest=False) doesn't."""
     medias = list(medias)
+    if suggest:
+        skip = ctx.store.not_interested_ids()
+        if skip:
+            medias = [m for m in medias if getattr(m, "anilist_id", None) not in skip]
     if not hiding(ctx):
         return medias, 0
     kept = [m for m in medias if not m.maturity.mature]

@@ -6,7 +6,7 @@ from dataclasses import replace
 
 from PySide6.QtCore import QPointF, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
-    QButtonGroup, QHBoxLayout, QLabel, QPushButton, QScrollArea, QVBoxLayout, QWidget,
+    QButtonGroup, QHBoxLayout, QLabel, QMenu, QPushButton, QScrollArea, QVBoxLayout, QWidget,
 )
 
 from core import holiday
@@ -121,7 +121,11 @@ class DetailPage(QScrollArea):
         self.synopsis.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
 
         self.play_btn = QPushButton("▶  Play", objectName="Primary", cursor=Qt.CursorShape.PointingHandCursor)
-        self.play_btn.clicked.connect(lambda: self.play_target and self.play(self.play_target))
+        self.play_btn.clicked.connect(self._play_clicked)
+        self.rewatch_btn = QPushButton("Stop rewatching", objectName="LinkButton", cursor=Qt.CursorShape.PointingHandCursor)
+        self.rewatch_btn.setToolTip("Go back to where you were before (your watched episodes never changed)")
+        self.rewatch_btn.clicked.connect(self._stop_rewatch)
+        self.rewatch_btn.setVisible(False)
         self.list_btn = QPushButton("+  Save", objectName="Glass", cursor=Qt.CursorShape.PointingHandCursor)
         self.list_btn.clicked.connect(self._toggle_library)
         self.lists_btn = ListsButton(ctx.store)           # your own lists (2.0)
@@ -146,6 +150,7 @@ class DetailPage(QScrollArea):
         actions = QHBoxLayout()
         actions.setSpacing(10)
         actions.addWidget(self.play_btn)
+        actions.addWidget(self.rewatch_btn)
         actions.addWidget(self.list_btn)
         actions.addWidget(self.lists_btn)
         actions.addSpacing(14)
@@ -245,6 +250,7 @@ class DetailPage(QScrollArea):
         for row in (self.related_row, self.recs_row):
             row.setContentsMargins(5, 0, 5, 0)
             row.cardActivated.connect(lambda card: self.openItem.emit(card.payload))
+            row.cardMenuRequested.connect(self._suggestion_menu)
             row.setVisible(False)
             episodes.addSpacing(22)
             episodes.addWidget(row)
@@ -624,7 +630,14 @@ class DetailPage(QScrollArea):
         skippable = fillers.skippable(numbers) if fillers else set()
         skip = skippable if self.ctx.pref("skip_fillers") else set()
         target, kind = self.ctx.catalog.resume_episode(self.anime_id, self.episodes, skip=skip)
+        rw = self.ctx.store.rewatch(self.anime_id)          # Rewatch mode (2.0): your place this time round
+        if rw:
+            target = next((e for e in self.episodes if e.number == rw[0]), target)
+            p = progress.get(target.number) if target else None
+            kind = "rewatching_resume" if (p and not p.completed and p.position > 30) else "rewatching"
+        self.rewatch_btn.setVisible(bool(rw))
         self.play_target = target.number if target else None
+        self._up_next_number = target.number if target else None
         busy = self.playback.active
         playing = self.playback.now_playing
         pages = page_ranges(numbers)
@@ -642,9 +655,12 @@ class DetailPage(QScrollArea):
         for ep in self.episodes[first:last]:
             p = progress.get(ep.number)
             state = "watched" if p and p.completed else ("progress" if p else "new")
+            shield = self._shielded(ep.number, p, playing[1] if playing and playing[0] == self.anime_id else None)
             item = EpisodeItem(
-                number=ep.number, title=ep.title, state=state, fraction=p.fraction if p else 0.0,
-                up_next=bool(target and kind in ("next", "resume") and ep.number == target.number),
+                shield=shield,
+                number=ep.number, title=None if shield else ep.title, state=state, fraction=p.fraction if p else 0.0,
+                up_next=bool(target and kind in ("next", "resume", "rewatching", "rewatching_resume")
+                             and ep.number == target.number),
                 busy=None,
                 playing=bool(playing and playing == (self.anime_id, ep.number)),
                 still=self.stills.get(ep.number),
@@ -663,9 +679,15 @@ class DetailPage(QScrollArea):
         if busy and busy[0] == self.anime_id:
             self.grid.model_.set_busy(busy[1], "Starting…")
         labels = {"play": "▶  Play Episode {}", "resume": "▶  Resume Episode {}",
-                  "next": "▶  Play Episode {}", "rewatch": "↺  Watch Again"}
+                  "next": "▶  Play Episode {}", "rewatch": "↺  Watch Again",
+                  "rewatching": "↺  Rewatch Episode {}", "rewatching_resume": "↺  Resume Episode {}"}
+        if kind == "rewatching_resume":
+            kind_for_time = "resume"
+        else:
+            kind_for_time = kind
         text = labels[kind].format(target.number if target else "")
-        resume_at = self.playback.resume_position(self.anime_id, target.number) if target and kind == "resume" else None
+        resume_at = (self.playback.resume_position(self.anime_id, target.number)
+                     if target and kind_for_time == "resume" else None)
         if resume_at:
             mins, secs = divmod(int(resume_at), 60)
             text += f"  ·  {mins}:{secs:02d}"
@@ -673,6 +695,15 @@ class DetailPage(QScrollArea):
         self.play_btn.setEnabled(target is not None)
         self._update_sticky()
         self._refresh_seasons()
+
+    def _shielded(self, number: str, p, playing: str | None) -> bool:
+        """Spoiler shield: episodes past where you are keep their picture blurred and their
+        title hidden (the one you're on, and anything watched, show normally)."""
+        if not self.ctx.pref("spoiler_shield") or (p and p.completed) or number == playing:
+            return False
+        if p is not None:                          # partway through
+            return False
+        return number != getattr(self, "_up_next_number", None)
 
     def _coming_soon(self, numbers: list[str]) -> EpisodeItem | None:
         """The next episode of an airing show, if it's the one right after the last listed."""
@@ -824,9 +855,46 @@ class DetailPage(QScrollArea):
             return
         state = "watched" if p.completed else "progress"
         self.grid.model_.update_progress(episode, state, p.fraction, playing=True)
+        rw = self.ctx.store.rewatch(anime_id)
+        if p.completed and rw and rw[0] == episode:           # on to the next one this time round
+            numbers = [e.number for e in self.episodes]
+            i = numbers.index(episode) if episode in numbers else -1
+            self.ctx.store.advance_rewatch(anime_id, numbers[i + 1] if 0 <= i < len(numbers) - 1 else None)
+
+    def _suggestion_menu(self, card, pos) -> None:
+        media = card.payload
+        if not isinstance(media, Media):
+            return
+        menu = QMenu(self)
+        menu.addAction("Not interested").triggered.connect(lambda: self._not_interested(media))
+        menu.exec(pos)
+
+    def _not_interested(self, media: Media) -> None:
+        self.ctx.store.set_not_interested(media.anilist_id, media.display_title, True)
+        self.apply_content_filter()
+        self.libraryChanged.emit()          # (Home drops it too)
+        self.toast.emit(f"You won't see {media.display_title} in suggestions.", False)
+
+    def _play_clicked(self) -> None:
+        if not self.play_target:
+            return
+        if self.play_btn.text().startswith("↺  Watch Again") and self.anime_id:
+            self.ctx.store.start_rewatch(self.anime_id, self.play_target)     # Rewatch mode (2.0)
+        self.play(self.play_target)
+
+    def _stop_rewatch(self) -> None:
+        if self.anime_id:
+            self.ctx.store.stop_rewatch(self.anime_id)
+            self._refresh_episode_states()
+            self.libraryChanged.emit()
 
     def _mark(self, episode: str, action: str) -> None:
         if not self.anime_id:
+            return
+        if action == "rewatch":
+            self.ctx.store.start_rewatch(self.anime_id, episode)
+            self._refresh_episode_states()
+            self.libraryChanged.emit()
             return
         if action == "upto":
             for ep in self.episodes:
@@ -891,7 +959,9 @@ class DetailPage(QScrollArea):
             p = progress.get(ep.number)
             named = has_title(EpisodeItem(number=ep.number, title=ep.title))
             info = self.ep_details.get(ep.number) or {}
-            items.append({"number": ep.number, "title": ep.title if named else "", "still": self.stills.get(ep.number),
+            shield = self._shielded(ep.number, p, current)
+            items.append({"number": ep.number, "title": ep.title if (named and not shield) else "",
+                          "still": self.stills.get(ep.number), "shield": shield,
                           "watched": bool(p and p.completed), "playing": ep.number == current,
                           "christmas": ep.number in xmas, "kind": fillers.kind(ep.number) if fillers else None,
                           "date": nice_date(info.get("date"))})

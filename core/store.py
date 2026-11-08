@@ -96,6 +96,17 @@ CREATE TABLE IF NOT EXISTS events (               -- for your timeline: saved, l
     detail   TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS events_recent ON events(at DESC);
+CREATE TABLE IF NOT EXISTS not_interested (       -- kept out of Home and suggestions (2.0)
+    anilist_id INTEGER PRIMARY KEY,
+    title      TEXT NOT NULL,
+    at         REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS rewatch (              -- Rewatch mode (2.0): where you are this time round
+    anime_id   TEXT PRIMARY KEY REFERENCES shows(anime_id) ON DELETE CASCADE,
+    episode    TEXT NOT NULL,             -- the next episode to watch
+    round      INTEGER NOT NULL DEFAULT 1,
+    started_at REAL NOT NULL
+);
 CREATE TABLE IF NOT EXISTS cache (
     key        TEXT PRIMARY KEY,
     value      TEXT NOT NULL,
@@ -300,6 +311,7 @@ class Store:
             c.execute("UPDATE OR IGNORE list_items SET anime_id = ? WHERE anime_id = ?", (new_id, old_id))
             c.execute("UPDATE OR IGNORE show_notes SET anime_id = ? WHERE anime_id = ?", (new_id, old_id))
             c.execute("UPDATE events SET anime_id = ? WHERE anime_id = ?", (new_id, old_id))
+            c.execute("UPDATE OR IGNORE rewatch SET anime_id = ? WHERE anime_id = ?", (new_id, old_id))
             c.execute("DELETE FROM shows WHERE anime_id = ?", (old_id,))  # cascades old progress
 
     def find_by_anilist(self, anilist_id: int) -> Show | None:
@@ -538,6 +550,55 @@ class Store:
             out[i] = Moment(m.at, m.day, m.kind, m.anime_id, m.detail, row["title"], row["poster"])
         out.sort(key=lambda m: m.at, reverse=True)
         return out
+
+    # -- Not interested (2.0) -----------------------------------------------------------
+
+    def set_not_interested(self, anilist_id: int, title: str, on: bool = True) -> None:
+        with self._tx() as c:
+            if on:
+                c.execute("INSERT OR REPLACE INTO not_interested VALUES (?, ?, ?)", (anilist_id, title, time.time()))
+            else:
+                c.execute("DELETE FROM not_interested WHERE anilist_id = ?", (anilist_id,))
+
+    def not_interested_ids(self) -> set[int]:
+        return {r[0] for r in self._conn().execute("SELECT anilist_id FROM not_interested")}
+
+    def not_interested(self) -> list[tuple[int, str]]:
+        return [(r[0], r[1]) for r in self._conn().execute(
+            "SELECT anilist_id, title FROM not_interested ORDER BY at DESC")]
+
+    # -- Rewatch mode (2.0) ---------------------------------------------------------------
+
+    def start_rewatch(self, anime_id: str, first_episode: str) -> int:
+        """Start (another) rewatch from `first_episode`. Your watched marks stay. Returns which
+        time round this is (1 = your first rewatch)."""
+        with self._tx() as c:
+            old = c.execute("SELECT round FROM rewatch WHERE anime_id = ?", (anime_id,)).fetchone()
+            rnd = (old[0] + 1) if old else 1
+            c.execute("INSERT OR REPLACE INTO rewatch VALUES (?, ?, ?, ?)", (anime_id, first_episode, rnd, time.time()))
+            if not self.private:
+                c.execute("INSERT INTO events (at, kind, anime_id, detail) VALUES (?, 'rewatch', ?, ?)",
+                          (time.time(), anime_id, str(rnd)))
+        return rnd
+
+    def rewatch(self, anime_id: str) -> tuple[str, int] | None:
+        """(next episode, round) while you're rewatching this show."""
+        r = self._conn().execute("SELECT episode, round FROM rewatch WHERE anime_id = ? AND episode != ''",
+                                 (anime_id,)).fetchone()
+        return (r[0], r[1]) if r else None
+
+    def advance_rewatch(self, anime_id: str, next_episode: str | None) -> None:
+        """Finished one: on to the next (None: the rewatch is done; the count is kept)."""
+        with self._tx() as c:
+            c.execute("UPDATE rewatch SET episode = ? WHERE anime_id = ?", (next_episode or "", anime_id))
+
+    def stop_rewatch(self, anime_id: str) -> None:
+        with self._tx() as c:
+            c.execute("UPDATE rewatch SET episode = '' WHERE anime_id = ?", (anime_id,))
+
+    def rewatch_count(self, anime_id: str) -> int:
+        r = self._conn().execute("SELECT round FROM rewatch WHERE anime_id = ?", (anime_id,)).fetchone()
+        return r[0] if r else 0
 
     # -- progress ------------------------------------------------------------------
 

@@ -169,7 +169,7 @@ def test_menu_has_tracks_speed_and_holiday_switches(win, monkeypatch):
     monkeypatch.setattr(theme, "HOLIDAY", True)
     menu = host._menu()
     names = [a.text() for a in menu.actions()]
-    assert names[:3] == ["Audio", "Subtitles", "Speed"] and "Lights" in names and "Snow around the player" in names
+    assert names[:4] == ["Audio", "Subtitles", "Sleep timer", "Speed"] and "Lights" in names and "Snow around the player" in names
     lights = next(a for a in menu.actions() if a.text() == "Lights")
     lights.toggle()
     assert win.ctx.pref("player_lights") is False

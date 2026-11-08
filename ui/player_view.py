@@ -379,6 +379,8 @@ class PlayerControls(QWidget):
             self._fade.stop()
         self.update()
 
+    sleep_text = ""
+
     def show_message(self, text: str, ms: int) -> None:
         self.message = (text, time.monotonic() + ms / 1000)
         self._msg_timer.start(max(500, ms))
@@ -549,6 +551,10 @@ class PlayerControls(QWidget):
         p.setPen(muted)
         p.drawText(QRectF(x - 6, y - 10, 160, 20), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
                    f"{fmt_time(self.position)} / {fmt_time(self.duration)}")
+        if self.sleep_text:                      # Sleep timer (2.0)
+            p.setPen(QColor("#C9B8FF"))
+            p.drawText(QRectF(x + 120, y - 10, 160, 20), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                       ("❄ " if theme.HOLIDAY else "☾ ") + self.sleep_text)
         x = r.right() - pad - 10
         for name, icon in (("full", "unfull" if self.mode == "full" else "full"), ("popout", "popout"),
                            ("mini", "pip"), ("menu", "gear"), ("list", "list")):
@@ -940,6 +946,13 @@ class PlayerHost(QWidget):
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.awake = KeepAwake()              # the Mac stays awake while an episode plays
         self._volume = 100.0
+        # Sleep timer (2.0): after a while, or at the end of this episode, fade out and pause
+        self.sleep_at: float | None = None          # monotonic time it goes off
+        self.sleep_after_episode = False
+        self._sleep_tick = QTimer(self, interval=1000)
+        self._sleep_tick.timeout.connect(self._sleep_check)
+        self._fade_steps = 0
+        self._fade_from = 100.0
         self._tracks: list[dict] = []
         self._speed = 1.0
         self._was_maximized = False
@@ -1030,6 +1043,9 @@ class PlayerHost(QWidget):
     def stop(self) -> None:
         """The session ended (or you closed the player)."""
         self.awake.release()
+        self.sleep_at, self.sleep_after_episode = None, False      # (a sleep timer ends with the player)
+        self._sleep_tick.stop()
+        self.controls.sleep_text = ""
         if self.mode == "full":
             self._leave_full()
         if self.mode == "pop":
@@ -1096,6 +1112,10 @@ class PlayerHost(QWidget):
         c.update()
 
     def _on_countdown(self, label: str, seconds: int) -> None:
+        if self.sleep_after_episode and self.session is not None:
+            self.session.cancel_countdown()        # Sleep timer: this was the last one tonight
+            self._sleep_now()
+            return
         self.controls.next_title = label
         self.controls.set_countdown(label, seconds)
 
@@ -1237,6 +1257,15 @@ class PlayerHost(QWidget):
                 act.triggered.connect(lambda _c=False, i=t.get("id"), p=prop: self._cmd("set_property", p, i))
             if not tracks and kind == "audio":
                 sub.addAction("Only one").setEnabled(False)
+        sleep = menu.addMenu("Sleep timer")
+        for label, value in (("Off", None), ("15 minutes", 15), ("30 minutes", 30), ("45 minutes", 45),
+                             ("1 hour", 60), ("End of this episode", "episode")):
+            act = sleep.addAction(label)
+            act.setCheckable(True)
+            on = (value is None and self.sleep_at is None and not self.sleep_after_episode) or \
+                 (value == "episode" and self.sleep_after_episode)
+            act.setChecked(on)
+            act.triggered.connect(lambda _c=False, v=value: self.set_sleep(v))
         speed = menu.addMenu("Speed")
         for value in SPEEDS:
             act = speed.addAction("Normal" if value == 1.0 else f"{value:g}×")
@@ -1492,3 +1521,55 @@ class PlayerHost(QWidget):
         if obj is self.popout and event.type() == QEvent.Type.Resize and self.mode == "pop":
             self.place()
         return False
+
+    # -- sleep timer (2.0) -----------------------------------------------------------------
+
+    def set_sleep(self, value) -> None:
+        """None: off. A number: minutes. "episode": at the end of this episode."""
+        self.sleep_after_episode = value == "episode"
+        self.sleep_at = time.monotonic() + float(value) * 60 if isinstance(value, (int, float)) else None
+        if self.sleep_at is not None or self.sleep_after_episode:
+            self._sleep_tick.start()
+            self.controls.show_message("Sleep timer: " + ("at the end of this episode" if self.sleep_after_episode
+                                                          else f"{int(value)} minutes"), 2000)
+        else:
+            self._sleep_tick.stop()
+            self.controls.show_message("Sleep timer off", 1500)
+        self._sleep_check()
+
+    def _sleep_check(self) -> None:
+        c = self.controls
+        if self.sleep_after_episode:
+            c.sleep_text = "end of episode"
+        elif self.sleep_at is not None:
+            left = self.sleep_at - time.monotonic()
+            if left <= 0:
+                self._sleep_now()
+                return
+            c.sleep_text = f"{int(left // 60) + 1} min" if left >= 60 else f"{int(left)} s"
+        else:
+            c.sleep_text = ""
+        c.update()
+
+    def _sleep_now(self) -> None:
+        """Fade the sound out over a few seconds, then pause."""
+        self.sleep_at = None
+        self.sleep_after_episode = False
+        self._sleep_tick.stop()
+        self.controls.sleep_text = ""
+        self._fade_from = self._volume
+        self._fade_steps = 8
+        self._fade_down()
+
+    def _fade_down(self) -> None:
+        if self.session is None:
+            return
+        if self._fade_steps > 0:
+            self._fade_steps -= 1
+            self._cmd("set_property", "volume", self._fade_from * self._fade_steps / 8)
+            QTimer.singleShot(600, self._fade_down)
+            return
+        self._cmd("set_property", "pause", True)
+        self._cmd("set_property", "volume", self._fade_from)
+        self.controls.show_message("Sweet dreams ❄  Paused by the sleep timer" if theme.HOLIDAY
+                                   else "Good night ☾  Paused by the sleep timer", 6000)

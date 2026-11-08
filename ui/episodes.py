@@ -36,6 +36,7 @@ class EpisodeItem:
     kind: str | None = None   # "filler" | "recap" (Anime Filler List), None = story episode
     upcoming: str | None = None  # "Thu 9:30 PM · in 3d 4h": the next episode, not out yet
     christmas: bool = False      # a Christmas episode (tagged while the holiday theme is on)
+    shield: bool = False         # Spoiler shield (2.0): picture blurred, title hidden until you get there
 
 
 class EpisodeModel(QAbstractListModel):
@@ -209,7 +210,8 @@ class EpisodeDelegate(QStyledItemDelegate):
             p.setOpacity(0.42)
         elif item.kind and not (item.playing or item.up_next):
             p.setOpacity(0.8)      # fillers step back a little so story episodes stand out
-        pm = self.images.pixmap(item.still, self.W - 2, self.STILL_H - 1) if (self.images and item.still) else None
+        get = self.images.blurred if (self.images and item.shield) else (self.images.pixmap if self.images else None)
+        pm = get(item.still, self.W - 2, self.STILL_H - 1) if (self.images and item.still) else None
         fade = self.images.alpha(item.still) if pm is not None else 1.0
         final = (pm is not None and fade >= 1) or not item.still
         if pm is None or fade < 1:
@@ -401,6 +403,8 @@ class EpisodeGrid(QListView):
         else:
             menu.addAction("Mark as watched", lambda: self.markRequested.emit(item.number, "watched"))
         menu.addAction(f"Mark episodes up to {item.number} as watched", lambda: self.markRequested.emit(item.number, "upto"))
+        menu.addSeparator()
+        menu.addAction(f"Rewatch from episode {item.number}", lambda: self.markRequested.emit(item.number, "rewatch"))
         menu.exec(self.viewport().mapToGlobal(pos))
 
     def wheelEvent(self, event) -> None:

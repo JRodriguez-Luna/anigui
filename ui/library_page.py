@@ -49,6 +49,8 @@ def moment_text(m: Moment) -> str:
         return "Saved it"
     if m.kind == "listed":
         return f"Added to {m.detail}"
+    if m.kind == "rewatch":
+        return "Started rewatching it" + (f" (time {int(m.detail) + 1})" if m.detail.isdigit() and int(m.detail) > 1 else "")
     if m.kind == "rated":
         return f"Rated it {stars(int(m.detail))}" if m.detail.isdigit() else "Rated it"
     return m.kind
@@ -93,7 +95,7 @@ class TimelineDelegate(QStyledItemDelegate):
         else:
             p.fillRect(thumb, QColor(theme.SURFACE_2))
         p.setClipping(False)
-        dot = {"watched": theme.ACCENT, "saved": "#E0405C", "listed": "#5B9BF0", "rated": "#F5C04A"}.get(m.kind, theme.MUTED)
+        dot = {"watched": theme.ACCENT, "saved": "#E0405C", "listed": "#5B9BF0", "rated": "#F5C04A", "rewatch": "#43B87A"}.get(m.kind, theme.MUTED)
         x = thumb.right() + 16
         p.setPen(QColor(theme.TEXT))
         p.setFont(theme.font(14, QFont.Weight.DemiBold))

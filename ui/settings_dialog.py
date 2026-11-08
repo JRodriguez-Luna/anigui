@@ -196,6 +196,11 @@ class SettingsDialog(QDialog):
         return [
             SettingRow("Hide 18+ shows", "Keeps them out of Home, Search, the Calendar and Related. Shows you added "
                        "yourself stay, with blurred posters, and ask before opening.", self._check("hide_mature")),
+            SettingRow("Spoiler shield", "Episodes you haven't reached keep their picture blurred and their title "
+                       "hidden. The one you're on, and anything you've watched, show as usual.",
+                       self._check("spoiler_shield")),
+            SettingRow("Not interested", "Shows you right-clicked away from Home and suggestions. Search still "
+                       "finds them.", self._button("Bring one back…", self._bring_back)),
             self._note("A show counts as 18+ when AniList's community rates nudity (70+ out of 100) or sexual "
                        "violence (60+) as a big part of it. Fan service, violence and gore alone don't, but they're "
                        "listed under Content on the show page, and nudity is listed from 60. Hover a tag there to see its "
@@ -321,6 +326,20 @@ class SettingsDialog(QDialog):
             self._note("Importing reads your list once and never writes to AniList or MyAnimeList. Shows hianime "
                        "doesn't have are skipped. A backup is made first, so you can undo it with Restore."),
         ]
+
+    def _bring_back(self) -> None:
+        from PySide6.QtGui import QCursor
+        from PySide6.QtWidgets import QMenu
+
+        items = self.ctx.store.not_interested()
+        menu = QMenu(self)
+        if not items:
+            menu.addAction("Nothing here: you haven't hidden any shows").setEnabled(False)
+        for anilist_id, title in items:
+            menu.addAction(title).triggered.connect(
+                lambda _c=False, i=anilist_id, t=title: (self.ctx.store.set_not_interested(i, t, False),
+                                                         self.ctx.set_pref("not_interested_changed", i)))
+        menu.exec(QCursor.pos())
 
     def _appearance(self) -> list[QWidget]:
         import datetime as dt

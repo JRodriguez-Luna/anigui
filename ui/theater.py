@@ -253,8 +253,8 @@ class RailDelegate(QStyledItemDelegate):
         p.save()
         p.setClipPath(clip)
         p.fillRect(thumb, QColor(theme.SURFACE_3))
-        pm = self.images.pixmap(item.get("still"), int(thumb.width()), int(thumb.height())) if (
-            self.images and item.get("still")) else None
+        pm = (self.images.blurred if item.get("shield") else self.images.pixmap)(
+            item.get("still"), int(thumb.width()), int(thumb.height())) if (self.images and item.get("still")) else None
         if pm is not None:
             if item.get("watched") and not now:
                 p.setOpacity(0.5)
@@ -454,8 +454,8 @@ class StripDelegate(QStyledItemDelegate):
         p.save()
         p.setClipPath(clip)
         p.fillRect(thumb, QColor(theme.SURFACE_3))
-        pm = self.images.pixmap(item.get("still"), int(thumb.width()), int(thumb.height())) if (
-            self.images and item.get("still")) else None
+        pm = (self.images.blurred if item.get("shield") else self.images.pixmap)(
+            item.get("still"), int(thumb.width()), int(thumb.height())) if (self.images and item.get("still")) else None
         final = pm is not None or not item.get("still")
         if pm is not None:
             p.drawPixmap(thumb.toRect(), pm)
