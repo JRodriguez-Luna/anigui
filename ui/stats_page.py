@@ -5,7 +5,7 @@ from __future__ import annotations
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
-    QFrame, QGridLayout, QHBoxLayout, QLabel, QScrollArea, QToolTip, QVBoxLayout, QWidget,
+    QFrame, QGridLayout, QHBoxLayout, QLabel, QPushButton, QScrollArea, QToolTip, QVBoxLayout, QWidget,
 )
 
 from core import stats as core_stats
@@ -166,6 +166,7 @@ class GenreBars(QWidget):
 
 class StatsPage(QScrollArea):
     openItem = Signal(object)  # Show
+    wrappedRequested = Signal()  # Wrapped (2.0)
 
     def set_holiday(self, on: bool) -> None:
         """The title sits on a knitted sweater band while the holiday theme is on."""
@@ -250,7 +251,15 @@ class StatsPage(QScrollArea):
         col = QVBoxLayout(body)
         col.setContentsMargins(44, 36, 44, 40)
         col.setSpacing(14)
-        col.addWidget(self.title_box)
+        from .wrapped_page import wrapped_year
+        self.wrapped_btn = QPushButton(f"✨  Your {wrapped_year()} Wrapped", objectName="Primary",
+                                       cursor=Qt.CursorShape.PointingHandCursor)
+        self.wrapped_btn.setToolTip("Your year in anime, made on this Mac")
+        self.wrapped_btn.clicked.connect(self.wrappedRequested)
+        title_row = QHBoxLayout()
+        title_row.addWidget(self.title_box, 1)
+        title_row.addWidget(self.wrapped_btn, 0, Qt.AlignmentFlag.AlignVCenter)
+        col.addLayout(title_row)
         col.addWidget(self.subtitle)
         col.addWidget(self.empty)
         col.addWidget(self.content)

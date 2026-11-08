@@ -102,6 +102,10 @@ QListWidget#HomeRows {{ background: rgba(0,0,0,0.2); border: 1px solid rgba(255,
     padding: 4px; font-size: 13px; }}
 QListWidget#HomeRows::item {{ padding: 6px 8px; border-radius: 6px; }}
 QListWidget#HomeRows::item:hover {{ background: rgba(255,255,255,0.06); }}
+QPushButton#WrapArrow {{ background: rgba(255,255,255,0.16); border: none; border-radius: 22px; min-width: 44px;
+    min-height: 44px; font-size: 26px; font-weight: 700; color: #FFFFFF; }}
+QPushButton#WrapArrow:hover {{ background: rgba(255,255,255,0.28); }}
+QPushButton#WrapArrow:disabled {{ background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.3); }}
 #Greeting {{ color: rgba(255, 255, 255, 0.86); font-size: 15px; font-weight: 700; background: rgba(0, 0, 0, 0.28);
     border-radius: 12px; padding: 5px 12px; }}
 #SidebarFooter {{ color: {FAINT}; font-size: 11px; padding: 6px; }}

@@ -316,6 +316,22 @@ jobs:
           ok = len(xmas) == len(CHRISTMAS_IDS)
           print(f"::{'notice' if ok else 'warning'} title=holiday::{'PASS' if ok else 'CHECK'} Christmas shelf: "
                 f"{len(xmas)} shows, e.g. {[m.display_title for m in xmas[:4]]}")
+          # Import (2.0): AniList accepts the list query (an unknown user means the query itself is valid),
+          # and MAL ids map to AniList
+          from core import importer as _imp
+          try:
+              _imp.from_anilist(al, "anigui-check-no-such-user-8271")
+              ok, detail = False, "no error for a user that doesn't exist"
+          except _imp.ImportError_ as exc:
+              ok, detail = "No AniList user" in str(exc), str(exc)
+          print(f"::{'notice' if ok else 'error'} title=import::{'PASS' if ok else 'FAIL'} AniList list query: {detail}")
+          try:
+              _data = al._query(_imp.Q_BY_MAL, {"ids": [52991, 1], "page": 1}, ttl=0)
+              _ids = sorted(m.get("idMal") for m in _data["Page"]["media"])
+              ok, detail = _ids == [1, 52991], str(_ids)
+          except Exception as exc:  # noqa: BLE001
+              ok, detail = False, repr(exc)
+          print(f"::{'notice' if ok else 'error'} title=import::{'PASS' if ok else 'FAIL'} MAL ids on AniList: {detail}")
           # The advent calendar: every door's episode is still on hianime
           import tempfile as _tmp
           from pathlib import Path as _Path

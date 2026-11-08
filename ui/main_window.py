@@ -18,6 +18,7 @@ from core import __version__
 from core import self_update, setup, updates
 from core.player import Player
 from core.store import SAVED
+from core import wrapped
 
 from .alerts import AlertsController, describe
 from .mature import confirm_open, flags_for, status_known
@@ -28,6 +29,7 @@ from .icons import nav_icon
 from . import theme
 from .cinema import Ambient
 from .fps import FrameMeter
+from .wrapped_page import WrappedPage, wrapped_year
 from .your_data import DataTools
 from .yours import tinted_icon
 from .lock import Gate, LockScreen
@@ -74,8 +76,10 @@ class MainWindow(QMainWindow):
         self.holidays = HolidaysPage(ctx)          # in the sidebar while the holiday theme is on
         self.privacy_page = PrivacyPage(ctx)       # What leaves your Mac (2.0)
         self.privacy_page.backRequested.connect(self.back)
+        self.wrapped_page = WrappedPage(ctx.images)   # Wrapped (2.0)
+        self.wrapped_page.backRequested.connect(self.back)
         for page in (self.home, self.search, self.library, self.calendar, self.stats, self.detail, self.holidays,
-                     self.privacy_page):
+                     self.privacy_page, self.wrapped_page):
             self.stack.addWidget(page)
         self.history: list[QWidget] = []
         self.show_history: list = []   # earlier shows when one show page leads to another
@@ -208,6 +212,7 @@ class MainWindow(QMainWindow):
         self.calendar.libraryChanged.connect(self._local_changed)
         self.library.listsChanged.connect(self._lists_changed)
         self.library.listMenu.connect(self._list_menu)
+        self.stats.wrappedRequested.connect(lambda: self.open_wrapped())
         self._lists_changed()
         self.calendar.toast.connect(lambda text, err: self.toast.show_message(text, error=err))
         self.home.playItem.connect(lambda media: self.open_item(media, autoplay=True))
@@ -417,6 +422,21 @@ class MainWindow(QMainWindow):
             else:
                 shown |= ids
         return hidden - shown
+
+    def open_wrapped(self, year: int | None = None) -> None:
+        """Your year in anime (worked out in the background: genres may need AniList's cache)."""
+        year = year or wrapped_year()
+        anilist = self.ctx.catalog.anilist
+
+        def media_for(anilist_id):
+            return anilist.media(anilist_id)
+
+        def show(w):
+            self.wrapped_page.set_data(w, str(self.ctx.pref("your_name") or ""))
+            self.go(self.wrapped_page)
+            self.wrapped_page.setFocus()
+        self.ctx.runner.submit(wrapped.compute, self.ctx.store, year, media_for, on_done=show,
+                               on_error=lambda msg: self.toast.show_message(msg, True), group="wrapped")
 
     def _data_changed(self) -> None:
         """A restore or an import changed your data: show it everywhere."""

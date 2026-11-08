@@ -455,3 +455,43 @@ def test_import_puts_shows_in_lists(tmp_path):
     again = importer.apply(s, Catalog(), entries)                  # running it twice doubles nothing
     assert again.episodes == 0 and again.rated == 0 and s.get_list(names["Watching"].list_id).count == 1
     assert seen[-1] == (3, 3)
+
+
+# -- wrapped -------------------------------------------------------------------------------------
+
+def test_wrapped_numbers(tmp_path):
+    import datetime as dt
+    from core import wrapped
+    s = store(tmp_path)
+    y = 2026
+    for d in range(5):                                  # 5 days in a row of show-0
+        for e in range(3):
+            s.log_watch("show-0", str(d * 3 + e + 1), 1400, dt.date(y, 3, 1) + dt.timedelta(days=d))
+    s.log_watch("show-1", "1", 1400, dt.date(y, 7, 4))
+    s.log_watch("show-2", "1", 1400, dt.date(y - 1, 7, 4))     # last year doesn't count
+    s.set_rating("show-1", 10)
+    w = wrapped.compute(s, y, today=dt.date(y, 12, 20))
+    assert w.hours == round(16 * 1400 / 3600) and w.shows == 2 and w.days_watched == 6
+    assert w.top[0].anime_id == "show-0" and w.longest_streak == 5
+    assert w.busiest_month[0] == 3 and w.first_show == "Show 0"
+    assert w.favorite[0] == "Show 1" and w.favorite[2] == 10
+    assert w.kind[0] in ("Loyal", "Binge-watcher", "Steady", "Devoted", "Explorer", "Night owl")
+    assert wrapped.compute(s, y - 2).empty
+
+
+def test_wrapped_page(win, tmp_path):
+    import datetime as dt
+    from ui.wrapped_page import wrapped_year
+    assert wrapped_year(dt.date(2027, 1, 3)) == 2026 and wrapped_year(dt.date(2026, 12, 3)) == 2026
+    s = win.ctx.store
+    for d in range(4):
+        s.log_watch(STARFALL, str(d + 1), 1400, dt.date.today() - dt.timedelta(days=d))
+    win.stats.wrapped_btn.click()
+    page = win.wrapped_page
+    assert pump(lambda: win.stack.currentWidget() is page, 5)
+    assert page.slides[0] == "intro" and "kind" in page.slides
+    page.go(1)
+    assert page.index == 1 and page.prev_btn.isEnabled()
+    out = page.save_picture(str(tmp_path / "w.png"))
+    from PySide6.QtGui import QImage
+    assert QImage(str(out)).size().width() == 1080
