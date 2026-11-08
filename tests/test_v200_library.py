@@ -210,3 +210,88 @@ def test_deleting_a_list_keeps_the_shows(win, monkeypatch):
     win._delete_list(lid)
     assert s.get_list(lid) is None and lid not in win.libnav.subs
     assert win.library.list_id is None and s.get_show(STARFALL) is not None
+
+
+# -- privacy -------------------------------------------------------------------------------------
+
+class FakeTouchID:
+    def __init__(self, answer=True):
+        self.answer, self.asked = answer, []
+
+    def available(self):
+        return True
+
+    def ask(self, reason, done):
+        self.asked.append(reason)
+        done(self.answer)
+
+
+def test_private_mode_saves_nothing(win):
+    s = win.ctx.store
+    before = s.get_progress(STARFALL, "4")
+    win.private_action.trigger()                                   # ⌘⇧N
+    assert s.private and win.private_pill.isVisible() and "Private" in win.windowTitle()
+    p = s.record_progress(STARFALL, "4", 1400, 1420)
+    assert p.completed                                             # (the player still knows)
+    s.log_watch(STARFALL, "4", 900)
+    assert s.get_progress(STARFALL, "4") == before and not s.watch_log()
+    win.private_pill.click()
+    assert not s.private and not win.private_pill.isVisible()
+
+
+def test_locked_list_asks_and_hides_its_shows(win):
+    s = win.ctx.store
+    fake = FakeTouchID()
+    win.gate.backend = fake
+    lid = s.create_list("Secret")
+    s.add_to_list(lid, STARFALL)
+    s.set_rating(STARFALL, 8)
+    win._lists_changed()
+    win._lock_list(lid, True)
+    assert s.get_list(lid).locked and STARFALL in win._hidden_ids()
+    win.open_library(None)
+    win.library.set_tab("ratings")
+    assert win.library.grid.cards.cards() == []                   # its shows stay out of the overview
+    win.open_library(lid)
+    assert pump(lambda: win.library.list_id == lid)
+    assert fake.asked == ["open your list “Secret”"]
+    win.open_library(None)
+    win.open_library(lid)
+    assert len(fake.asked) == 1                                    # once until AniGUI quits / Lock Now
+    win.lock_now()
+    fake.answer = False
+    win.open_library(lid)
+    pump(lambda: False, 0.3)
+    assert win.library.list_id is None and len(fake.asked) == 2
+
+
+def test_app_lock_covers_until_unlocked(win):
+    fake = FakeTouchID(answer=False)
+    win.gate.backend = fake
+    win.ctx.set_pref("lock_app", True)
+    win.lock_now()
+    assert win.lock_screen.isVisible()
+    win.lock_screen.button.click()
+    assert pump(lambda: len(fake.asked) == 1) and win.lock_screen.isVisible()
+    fake.answer = True
+    win.lock_screen.button.click()
+    assert pump(lambda: not win.lock_screen.isVisible())
+    assert fake.asked == ["open AniGUI", "open AniGUI"]
+
+
+def test_what_leaves_your_mac(win):
+    from core import http, privacy
+    privacy.LOG.clear()
+    try:
+        http.request("http://127.0.0.1:9/nothing", timeout=0.2)
+    except OSError:
+        pass
+    win.go(win.privacy_page)
+    page = win.privacy_page
+    assert pump(lambda: page.live.count() >= 4)
+    assert page.live.itemAtPosition(0, 0).widget().text() == "127.0.0.1"
+    assert privacy.destination_for("graphql.anilist.co") == "AniList"
+    assert privacy.destination_for("s4.anilist.co") == "AniList"   # (same family)
+    assert privacy.destination_for("cdn.somevideo.net") == "Video hosts"
+    names = {d.name for d in privacy.DESTINATIONS}
+    assert {"AniList", "hianime", "GitHub", "AniSkip"} <= names

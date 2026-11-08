@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from urllib.parse import urlparse
 from pathlib import Path
 
+from . import privacy
 from .env import child_env, find_curl, find_player, which
 from . import paths
 from .hianime import UNREACHABLE_MESSAGE, normalize_query
@@ -248,6 +249,7 @@ def friendly(message: str) -> str:
 # -- Synchronous resolve (used by tests and the terminal tool) -----------------
 
 def resolve_stream(req: ResolveRequest, timeout: float = DEFAULT_TIMEOUT) -> StreamInfo:
+    privacy.LOG.record("https://hianime.at/")          # (ani-cli asks hianime for the video)
     ani_cli = find_ani_cli()
     shim = install_shim()
     fd, capture = tempfile.mkstemp(prefix="anigui-", suffix=".args")

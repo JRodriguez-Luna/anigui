@@ -20,7 +20,7 @@ from core.player import Player
 from core.store import SAVED
 
 from .alerts import AlertsController, describe
-from .mature import confirm_open, status_known
+from .mature import confirm_open, flags_for, status_known
 from .context import AppContext
 from .detail_page import DetailPage
 from .home_page import HomePage
@@ -28,6 +28,8 @@ from .icons import nav_icon
 from . import theme
 from .cinema import Ambient
 from .fps import FrameMeter
+from .lock import Gate, LockScreen
+from .privacy_page import PrivacyPage
 from .library import LibraryNav, ask_new_list
 from .festive import ChristmasCard, CountdownChip, Fireworks, Flurry, SidebarLights, first_name, greeting_lines
 from .motion import reduce_motion
@@ -68,7 +70,10 @@ class MainWindow(QMainWindow):
 
         self.stack = QStackedWidget()
         self.holidays = HolidaysPage(ctx)          # in the sidebar while the holiday theme is on
-        for page in (self.home, self.search, self.library, self.calendar, self.stats, self.detail, self.holidays):
+        self.privacy_page = PrivacyPage(ctx)       # What leaves your Mac (2.0)
+        self.privacy_page.backRequested.connect(self.back)
+        for page in (self.home, self.search, self.library, self.calendar, self.stats, self.detail, self.holidays,
+                     self.privacy_page):
             self.stack.addWidget(page)
         self.history: list[QWidget] = []
         self.show_history: list = []   # earlier shows when one show page leads to another
@@ -84,6 +89,14 @@ class MainWindow(QMainWindow):
         side.setSpacing(4)
         self.brand = Brand()
         side.addWidget(self.brand)
+        self.private_pill = QPushButton("🕶  Private mode", objectName="PrivatePill",
+                                        cursor=Qt.CursorShape.PointingHandCursor)
+        self.private_pill.setToolTip("Private mode is on: what you watch isn't added to your history, Continue "
+                                     "Watching or timeline. Click to turn it off.")
+        self.private_pill.clicked.connect(lambda: self.set_private(False))
+        self.private_pill.hide()
+        side.addWidget(self.private_pill)
+        side.addSpacing(4)
         for label, icon, page, keys in (("Home", "home", self.home, "Ctrl+1"), ("Search", "search", self.search, "Ctrl+2"),
                                         ("Library", "heart", self.library, "Ctrl+3"),
                                         ("Holidays", "tree", self.holidays, "Ctrl+6"),
@@ -212,6 +225,14 @@ class MainWindow(QMainWindow):
 
         QShortcut(QKeySequence.StandardKey.Find, self, activated=lambda: (self.go(self.search), self.search.focus_search()))
         QShortcut(QKeySequence("Esc"), self, activated=self._escape)
+        # Touch ID locks (2.0)
+        self.gate = Gate(parent=self)
+        self.lock_screen = LockScreen(self.centralWidget())
+        self.lock_screen.unlockRequested.connect(self.unlock_app)
+        self.library.hidden = self._hidden_ids
+        if ctx.pref("lock_app"):
+            self.lock_screen.cover()
+            QTimer.singleShot(500, self.unlock_app)
         # ⌘⌥F: a frame-rate readout, for checking smoothness on a real Mac
         self.frame_meter = FrameMeter(self.centralWidget())
         QShortcut(QKeySequence("Ctrl+Alt+F"), self, activated=self.frame_meter.toggle)
@@ -272,6 +293,12 @@ class MainWindow(QMainWindow):
         self.go(self.home, remember=False)
 
     def open_item(self, item, autoplay: bool | str = False) -> None:
+        if self.ctx.pref("lock_mature") and flags_for(self.ctx, item)[0] and not self.gate.is_open("mature"):
+            self.gate.require("mature", "open 18+ shows", lambda: self._open_item_now(item, autoplay))
+            return
+        self._open_item_now(item, autoplay)
+
+    def _open_item_now(self, item, autoplay: bool | str = False) -> None:
         if not confirm_open(self.ctx, item, self, ask=self.mature_ask):
             return
         self.detail.pending_mature_checked = status_known(self.ctx, item)
@@ -298,6 +325,16 @@ class MainWindow(QMainWindow):
     # -- My Library (2.0) ---------------------------------------------------------------
 
     def open_library(self, list_id: int | None = None) -> None:
+        sl = self.ctx.store.get_list(list_id) if list_id is not None else None
+        if sl is not None and sl.locked and not self.gate.is_open(f"list:{list_id}"):
+            self.gate.require(f"list:{list_id}", f"open your list “{sl.name}”",
+                              lambda: self._open_library_now(list_id),
+                              otherwise=lambda: self.libnav.select(self.library.list_id
+                                                                   if self.stack.currentWidget() is self.library else None))
+            return
+        self._open_library_now(list_id)
+
+    def _open_library_now(self, list_id: int | None = None) -> None:
         if list_id is None:
             self.library.show_overview()
         else:
@@ -335,8 +372,74 @@ class MainWindow(QMainWindow):
             down.setEnabled(i < len(ids) - 1)
             down.triggered.connect(lambda: (store.move_list(list_id, i + 1), self._lists_changed()))
             menu.addSeparator()
+            if sl.locked:
+                menu.addAction("Remove Touch ID lock").triggered.connect(lambda: self._lock_list(list_id, False))
+            else:
+                lock = menu.addAction("Lock with Touch ID")
+                lock.setEnabled(self.gate.available())
+                lock.triggered.connect(lambda: self._lock_list(list_id, True))
+            menu.addSeparator()
             menu.addAction("Delete list…").triggered.connect(lambda: self._delete_list(list_id))
         menu.exec(pos)
+
+    def _lock_list(self, list_id: int, locked: bool) -> None:
+        def apply():
+            self.ctx.store.set_list_locked(list_id, locked)
+            if locked:
+                self.gate.unlocked.discard(f"list:{list_id}")
+                if self.stack.currentWidget() is self.library and self.library.list_id == list_id:
+                    self.open_library(None)
+            self._lists_changed()
+        if locked:
+            apply()
+        else:      # taking a lock off needs the lock
+            sl = self.ctx.store.get_list(list_id)
+            self.gate.require(f"list:{list_id}", f"unlock your list “{sl.name}”", apply)
+
+    def _hidden_ids(self) -> set[str]:
+        """Shows that are only in locked lists you haven't opened: kept out of All shows,
+        Ratings, Tags and the timeline too."""
+        store = self.ctx.store
+        hidden, shown = set(), set()
+        for sl in store.lists():
+            ids = {s.anime_id for s in store.list_shows(sl.list_id)}
+            if sl.locked and not self.gate.is_open(f"list:{sl.list_id}"):
+                hidden |= ids
+            else:
+                shown |= ids
+        return hidden - shown
+
+    # -- privacy (2.0) ------------------------------------------------------------------
+
+    def set_private(self, on: bool) -> None:
+        on = bool(on)
+        if self.ctx.store.private == on:
+            return
+        self.ctx.store.private = on
+        self.private_action.blockSignals(True)
+        self.private_action.setChecked(on)
+        self.private_action.blockSignals(False)
+        self.private_pill.setText(("❄  " if theme.HOLIDAY else "🕶  ") + "Private mode")
+        self.private_pill.setVisible(on)
+        self.setWindowTitle("AniGUI · Private" if on else "AniGUI")
+        self.toast.show_message("Private mode: what you watch isn't saved until you turn it off or quit."
+                                if on else "Private mode is off.")
+
+    def unlock_app(self) -> None:
+        self.gate.require("app", "open AniGUI", self.lock_screen.hide)
+
+    def lock_now(self) -> None:
+        self.gate.lock_all()
+        if self.stack.currentWidget() is self.library and self.library.list_id is not None:
+            sl = self.ctx.store.get_list(self.library.list_id)
+            if sl and sl.locked:
+                self.open_library(None)
+        elif self.stack.currentWidget() is self.library:
+            self.library.refresh()
+        if self.ctx.pref("lock_app") and self.gate.available():
+            if self.player_host.active:
+                self.player_host.close_player()
+            self.lock_screen.cover()
 
     def _rename_list(self, list_id: int) -> None:
         sl = self.ctx.store.get_list(list_id)
@@ -400,10 +503,23 @@ class MainWindow(QMainWindow):
         self.go_actions["Back"] = back
 
         history = bar.addMenu("History")
+        self.private_action = QAction("Private Mode", self, checkable=True, shortcut=QKeySequence("Ctrl+Shift+N"))
+        self.private_action.toggled.connect(self.set_private)
+        history.addAction(self.private_action)
+        history.addSeparator()
         clear = history.addAction("Clear Watch History…")
         clear.triggered.connect(self.home.confirm_clear_history)
 
+        privacy_menu = bar.addMenu("Privacy")
+        lock_now = QAction("Lock Now", self, shortcut=QKeySequence("Ctrl+Alt+L"))
+        lock_now.triggered.connect(self.lock_now)
+        privacy_menu.addAction(lock_now)
+        leaves = QAction("What Leaves Your Mac", self)
+        leaves.triggered.connect(lambda: self.go(self.privacy_page))
+        privacy_menu.addAction(leaves)
+
     def open_settings(self, section: str | None = None) -> SettingsDialog:
+        self.ctx.lock_available = self.gate.available()
         if self._settings is None:
             dlg = SettingsDialog(self.ctx, self)
             dlg.clearHistoryRequested.connect(self.home.confirm_clear_history)
@@ -411,6 +527,7 @@ class MainWindow(QMainWindow):
             dlg.checkUpdatesRequested.connect(self.check_updates_now)
             dlg.whatsNewRequested.connect(lambda: self.show_whats_new())
             dlg.checkEpisodesRequested.connect(lambda: self.alerts.check_now(manual=True))
+            dlg.privacyPageRequested.connect(lambda: (dlg.close(), self.go(self.privacy_page)))
             self.alerts.status.connect(dlg.set_episodes_status)
             self._settings = dlg
         self._settings.set_versions(self._ani_cli_version)

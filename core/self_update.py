@@ -26,7 +26,7 @@ import urllib.request
 from pathlib import Path
 from typing import Callable
 
-from . import http, signing
+from . import http, privacy, signing
 from .setup import SetupError
 
 Progress = Callable[[int, int], None]     # bytes done, total (0 if unknown)
@@ -69,6 +69,7 @@ def download(url: str, dest: Path, progress: Progress = lambda _d, _t: None,
              cancelled: Callable[[], bool] = lambda: False, opener=None) -> Path:
     req = urllib.request.Request(url, headers={"User-Agent": http.USER_AGENT})
     try:
+        privacy.LOG.record(req.full_url if hasattr(req, "full_url") else str(req))
         resp = (opener or (lambda r: urllib.request.urlopen(r, timeout=60, context=http._SSL)))(req)
     except OSError as exc:
         raise UpdateError(f"Couldn't download the update: {exc}") from exc

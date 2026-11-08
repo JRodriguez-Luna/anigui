@@ -7,6 +7,8 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 
+from . import privacy
+
 try:
     import certifi
 
@@ -27,6 +29,7 @@ class Response:
 def request(url: str, data: bytes | None = None, headers: dict[str, str] | None = None,
             timeout: float = 15.0) -> Response:
     """Return a Response for any HTTP status. Raises OSError only for network failures."""
+    privacy.LOG.record(url)                  # What leaves your Mac (2.0)
     hdrs = {"User-Agent": USER_AGENT, **(headers or {})}
     req = urllib.request.Request(url, data=data, headers=hdrs, method="POST" if data is not None else "GET")
     try:

@@ -53,8 +53,10 @@ class SettingsDialog(QDialog):
     checkUpdatesRequested = Signal()
     checkEpisodesRequested = Signal()
     whatsNewRequested = Signal()
+    privacyPageRequested = Signal()
 
-    SECTIONS = ("Playback", "Skipping", "Content", "Appearance", "New Episodes", "History", "Connection", "Updates")
+    SECTIONS = ("Playback", "Skipping", "Content", "Privacy", "Appearance", "New Episodes", "History", "Connection",
+                "Updates")
 
     def __init__(self, ctx: AppContext, parent=None, section: str | None = None) -> None:
         super().__init__(parent)
@@ -68,7 +70,8 @@ class SettingsDialog(QDialog):
         self.nav.setFixedWidth(190)
         self.nav.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.pages = QStackedWidget()
-        for name, build in zip(self.SECTIONS, (self._playback, self._skipping, self._content, self._appearance,
+        for name, build in zip(self.SECTIONS, (self._playback, self._skipping, self._content, self._privacy,
+                                               self._appearance,
                                                self._episodes,
                                                self._history, self._connection, self._updates)):
             self.nav.addItem(QListWidgetItem(name))
@@ -193,6 +196,27 @@ class SettingsDialog(QDialog):
                        "listed under Content on the show page, and nudity is listed from 60. Hover a tag there to see its "
                        "rating and where the 18+ line is."),
         ]
+
+    def _privacy(self) -> list[QWidget]:
+        can = bool(getattr(self.ctx, "lock_available", True))
+        app_lock, mature_lock = self._check("lock_app"), self._check("lock_mature")
+        for box in (app_lock, mature_lock):
+            box.setEnabled(can)
+        rows = [
+            SettingRow("Lock AniGUI", "Asks for Touch ID (or your Mac's password) when AniGUI opens, and after "
+                       "Lock Now (⌘⌥L in the Privacy menu).", app_lock),
+            SettingRow("Lock 18+ shows", "Asks once before the first 18+ show you open, until AniGUI quits.",
+                       mature_lock),
+            SettingRow("Private mode", "While it's on, what you watch isn't added to your history, Continue Watching "
+                       "or your timeline. Turn it on and off with ⌘⇧N (History menu). It turns off when AniGUI quits.",
+                       None),
+            SettingRow("What leaves your Mac", "Every place AniGUI connects to, what it sends and why, and what it "
+                       "has contacted since it opened.", self._button("Show", self.privacyPageRequested.emit)),
+            self._note("To lock one of your lists, use its ⋯ menu (or right-click it in the sidebar). "
+                       "AniGUI never sees your fingerprint or password, only whether it worked."
+                       + ("" if can else " This Mac can't ask for Touch ID or a password, so locks are off.")),
+        ]
+        return rows
 
     def _appearance(self) -> list[QWidget]:
         import datetime as dt

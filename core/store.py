@@ -546,6 +546,10 @@ class Store:
         """Save playback position. Crossing 90% of the duration marks it watched; it stays watched."""
         done = bool(duration and duration > 0 and position / duration >= COMPLETE_RATIO)
         now = time.time()
+        if self.private:          # Private mode: where you are lives only until AniGUI closes
+            old = self.get_progress(anime_id, episode)
+            return Progress(anime_id, episode, max(0.0, position), duration,
+                            done or bool(old and old.completed), source, now)
         with self._tx() as c:
             c.execute(
                 """INSERT INTO progress (anime_id, episode, position, duration, completed, source, updated_at)
@@ -624,7 +628,7 @@ class Store:
     # -- watch log (for stats) ------------------------------------------------------
 
     def log_watch(self, anime_id: str, episode: str, seconds: float, day: dt.date | None = None) -> None:
-        if seconds <= 0:
+        if seconds <= 0 or self.private:
             return
         day = (day or dt.date.today()).isoformat()
         with self._tx() as c:

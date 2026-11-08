@@ -165,6 +165,7 @@ class LibraryPage(QWidget):
         self.list_id: int | None = None          # None: the overview
         self.tab = "all"
         self.tag: str | None = None
+        self.hidden = lambda: set()               # shows only in locked lists (main window sets this)
 
         self.title = QLabel("My Library", objectName="LibraryTitle")
         self.count = QLabel("", objectName="SectionCount")
@@ -259,8 +260,9 @@ class LibraryPage(QWidget):
             return
         self.title.setText("My Library")
         self.subtitle.setText("Everything here stays on this Mac. Nothing about it is sent anywhere.")
+        hide = self.hidden()
         if self.tab == "timeline":
-            moments = store.timeline()
+            moments = [m for m in store.timeline() if m.anime_id not in hide]
             self.count.setText("")
             self.timeline.set_moments(moments)
             if moments:
@@ -269,15 +271,15 @@ class LibraryPage(QWidget):
                 self.empty.setText("Your timeline fills in as you watch, save, list and rate shows.")
                 self.stack.setCurrentWidget(self.empty)
         elif self.tab == "ratings":
-            rated = store.rated()
+            rated = [(s, r) for s, r in store.rated() if s.anime_id not in hide]
             cards = [replace(show_card(s), subtitle=stars(r)) for s, r in rated]
             self._grid_cards(cards, [s for s, _ in rated], "Rate shows on their page (under Yours) and they'll line up here, best first.")
         elif self.tab == "tags":
-            self._tags()
+            self._tags(hide)
         else:
-            self._grid(store.library_all(), "Save a show, add one to a list, or rate one, and it shows up here.")
+            self._grid([s for s in store.library_all() if s.anime_id not in hide], "Save a show, add one to a list, or rate one, and it shows up here.")
 
-    def _tags(self) -> None:
+    def _tags(self, hide: set[str]) -> None:
         while self.tag_row.count():
             w = self.tag_row.takeAt(0).widget()
             if w:
@@ -293,7 +295,7 @@ class LibraryPage(QWidget):
             group.addButton(b)
             self.tag_row.addWidget(b)
         self.tag_row.addStretch(1)
-        shows = self.ctx.store.tagged(self.tag) if self.tag else []
+        shows = [s for s in self.ctx.store.tagged(self.tag) if s.anime_id not in hide] if self.tag else []
         self._grid(shows, "Tag shows on their page (under Yours): “cozy”, “rewatch”, “with friends”…")
 
     def _grid(self, shows: list[Show], empty: str) -> None:

@@ -70,6 +70,14 @@ def self_test() -> int:
                 m.close()
             except Exception as exc:  # noqa: BLE001
                 problems.append(f"built-in player: {exc}")
+        # Touch ID locks (2.0): reach LocalAuthentication without asking anything
+        if sys.platform == "darwin":
+            from core.touchid import TouchID
+            tid = TouchID()
+            if not tid.ok:
+                problems.append("Touch ID: LocalAuthentication not reachable")
+            else:
+                print(f"self-test: Touch ID ok (can ask on this Mac: {tid.available()})")
     except Exception as exc:  # noqa: BLE001
         problems.append(f"{type(exc).__name__}: {exc}")
     for p in problems:

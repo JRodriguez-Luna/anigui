@@ -14,6 +14,7 @@ import unicodedata
 import subprocess
 from dataclasses import dataclass
 
+from . import privacy
 from .env import find_curl, is_macos
 
 BASE_URL = "https://hianime.at"
@@ -110,6 +111,7 @@ class HianimeClient:
     # -- HTTP -----------------------------------------------------------------
 
     def fetch(self, url: str, referer: str | None = None) -> FetchResult:
+        privacy.LOG.record(url)
         """Raw request: never raises for network trouble; callers classify the result."""
         cmd = [self.curl, "-sL", "-A", USER_AGENT, "--max-time", str(int(self.timeout))]
         if is_macos():

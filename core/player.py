@@ -6,6 +6,7 @@ import os
 import subprocess
 import tempfile
 
+from . import privacy
 from .ani_cli import StreamInfo, is_web_url
 from .env import child_env, find_player
 
@@ -130,6 +131,7 @@ class Player:
 
         If the chosen player isn't installed, the other one is used.
         """
+        privacy.LOG.record(info.url)
         if preferred == "anigui" and self.embed is not None and self.embed_available():
             ipc = self.ipc_path if track else None
             if ipc and os.path.exists(ipc):

@@ -85,6 +85,19 @@ QLineEdit#TagBox:focus {{ border-color: {ACCENT}; }}
 QPlainTextEdit#NoteBox {{ background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px;
     padding: 6px 8px; font-size: 13px; color: {TEXT}; }}
 QPlainTextEdit#NoteBox:focus {{ border-color: {ACCENT}; }}
+/* Privacy (2.0) */
+QFrame#NeverPanel {{ background: rgba(63, 174, 106, 0.10); border: 1px solid rgba(63, 174, 106, 0.35); border-radius: 14px; }}
+#NeverLine {{ color: {TEXT}; font-size: 13px; }}
+QFrame#DestCard {{ background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; }}
+#DestName {{ font-size: 15px; font-weight: 800; }}
+#DestLine {{ color: {MUTED}; font-size: 12px; }}
+#DestHosts {{ color: {FAINT}; font-size: 11px; font-family: Menlo, monospace; }}
+#LiveHost {{ color: {TEXT}; font-size: 12px; font-family: Menlo, monospace; }}
+#LockTitle {{ font-size: 24px; font-weight: 800; }}
+#LockSub {{ color: {MUTED}; font-size: 14px; }}
+QPushButton#PrivatePill {{ background: rgba(140, 100, 255, 0.22); color: #E2D8FF; border: 1px solid rgba(160, 130, 255, 0.5);
+    border-radius: 12px; padding: 5px 10px; font-size: 12px; font-weight: 700; text-align: left; }}
+QPushButton#PrivatePill:hover {{ background: rgba(140, 100, 255, 0.34); }}
 #SidebarFooter {{ color: {FAINT}; font-size: 11px; padding: 6px; }}
 #SidebarHeading {{ color: {FAINT}; font-size: 11px; font-weight: 800; letter-spacing: 1.5px; }}
 #Sidebar QComboBox {{ font-size: 12px; padding: 6px 10px; }}
