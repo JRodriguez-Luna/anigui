@@ -209,12 +209,12 @@ class CalendarPage(QScrollArea):
                 col.insertWidget(1 + k, card)
         if week.count and not self.mine:
             self.status.setText("The hottest airing shows right now, ranked by AniList activity this week (#1 is the "
-                                "most talked about). Right-click one to add it to My List.")
+                                "most talked about). Right-click one to save it.")
         elif week.count:
             self.status.setText(f"{week.count} episode{'s' if week.count != 1 else ''} from your shows"
                                 f"{' this week' if self.offset == 0 else ''}.")
         elif self.mine:
-            self.status.setText("Nothing from My List airs this week. Add airing shows to My List, or switch to "
+            self.status.setText("Nothing you saved airs this week. Save airing shows, or switch to "
                                 "Trending to find some.")
         else:
             self.status.setText("No trending shows air this week.")
@@ -231,9 +231,9 @@ class CalendarPage(QScrollArea):
     def _menu(self, entry: cal.Entry, pos: QPoint) -> None:
         menu = QMenu(self)
         if entry.in_library:
-            menu.addAction("Remove from My List").triggered.connect(lambda: self._set_library(entry, False))
+            menu.addAction("Remove from Saved").triggered.connect(lambda: self._set_library(entry, False))
         else:
-            menu.addAction("Add to My List").triggered.connect(lambda: self._set_library(entry, True))
+            menu.addAction("Save").triggered.connect(lambda: self._set_library(entry, True))
         menu.addAction("Open Show").triggered.connect(lambda: self._open(entry))
         menu.exec(pos)
 
@@ -252,7 +252,7 @@ class CalendarPage(QScrollArea):
             if anime_id is None:
                 self.toast.emit(f"{entry.title} isn't on hianime yet, so it can't be added.", True)
                 return
-            self.toast.emit(f"{'Added' if add else 'Removed'} {entry.title} {'to' if add else 'from'} My List", False)
+            self.toast.emit(f"{'Saved' if add else 'Removed'} {entry.title}" + ("" if add else " from Saved"), False)
             self.libraryChanged.emit()
             self.refresh()
 

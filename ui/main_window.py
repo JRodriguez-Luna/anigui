@@ -8,7 +8,7 @@ import html
 from PySide6.QtCore import QPoint, QRect, QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import QAction, QDesktopServices, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
-    QApplication, QMessageBox, QButtonGroup, QHBoxLayout, QLabel, QMainWindow, QPushButton, QScrollArea, QStackedWidget,
+    QApplication, QMessageBox, QButtonGroup, QHBoxLayout, QInputDialog, QLabel, QMenu, QMainWindow, QPushButton, QScrollArea, QStackedWidget,
     QVBoxLayout, QWidget,
 )
 
@@ -17,6 +17,7 @@ from core.anilist import Media
 from core import __version__
 from core import self_update, setup, updates
 from core.player import Player
+from core.store import SAVED
 
 from .alerts import AlertsController, describe
 from .mature import confirm_open, status_known
@@ -27,6 +28,7 @@ from .icons import nav_icon
 from . import theme
 from .cinema import Ambient
 from .fps import FrameMeter
+from .library import LibraryNav, ask_new_list
 from .festive import ChristmasCard, CountdownChip, Fireworks, Flurry, SidebarLights, first_name, greeting_lines
 from .motion import reduce_motion
 from .holiday import Brand, holiday_icon
@@ -83,10 +85,24 @@ class MainWindow(QMainWindow):
         self.brand = Brand()
         side.addWidget(self.brand)
         for label, icon, page, keys in (("Home", "home", self.home, "Ctrl+1"), ("Search", "search", self.search, "Ctrl+2"),
-                                        ("My List", "heart", self.library, "Ctrl+3"),
+                                        ("Library", "heart", self.library, "Ctrl+3"),
                                         ("Holidays", "tree", self.holidays, "Ctrl+6"),
                                         ("Stats", "stats", self.stats, "Ctrl+4"),
                                         ("Calendar", "calendar", self.calendar, "Ctrl+5")):
+            if page is self.library:
+                # My Library (2.0): your lists nest under it
+                self.libnav = LibraryNav(self.nav)
+                self.libnav.set_open(bool(ctx.pref("sidebar_lists_open", True)))
+                self.libnav.folded.connect(lambda on: ctx.set_pref("sidebar_lists_open", on))
+                self.libnav.openOverview.connect(lambda: self.open_library(None))
+                self.libnav.openList.connect(self.open_library)
+                self.libnav.newList.connect(self._new_list)
+                self.libnav.listMenu.connect(self._list_menu)
+                self.libnav.header.setToolTip(QKeySequence(keys).toString(QKeySequence.SequenceFormat.NativeText))
+                self.nav_keys.append((label, page, keys))
+                self.nav_buttons[page] = self.libnav.header
+                side.addWidget(self.libnav)
+                continue
             btn = QPushButton(f"  {label}", objectName="NavButton", checkable=True,
                               cursor=Qt.CursorShape.PointingHandCursor)
             btn.setIcon(nav_icon(icon))
@@ -175,6 +191,9 @@ class MainWindow(QMainWindow):
         self.holidays.playEpisode.connect(lambda media, episode: self.open_item(media, autoplay=episode))
         self.home.surprise.connect(lambda item, episode: self.open_item(item, autoplay=episode or True))
         self.calendar.libraryChanged.connect(self._local_changed)
+        self.library.listsChanged.connect(self._lists_changed)
+        self.library.listMenu.connect(self._list_menu)
+        self._lists_changed()
         self.calendar.toast.connect(lambda text, err: self.toast.show_message(text, error=err))
         self.home.playItem.connect(lambda media: self.open_item(media, autoplay=True))
         self.home.historyChanged.connect(self.detail.refresh_if_showing)
@@ -227,7 +246,10 @@ class MainWindow(QMainWindow):
         crossfade(self.stack, slide_in=page)       # the old page fades out as the new one rises in
         self.stack.setCurrentWidget(page)
         if page in self.nav_buttons:
-            self.nav_buttons[page].setChecked(True)
+            btn = self.nav_buttons[page]
+            btn.blockSignals(True)            # (its own toggled handler would navigate again)
+            btn.setChecked(True)
+            btn.blockSignals(False)
         if page is self.home:
             self.home.refresh_local()
         elif page is self.library:
@@ -271,8 +293,77 @@ class MainWindow(QMainWindow):
 
     def _local_changed(self) -> None:
         self.home.refresh_local()
+        self._lists_changed()
+
+    # -- My Library (2.0) ---------------------------------------------------------------
+
+    def open_library(self, list_id: int | None = None) -> None:
+        if list_id is None:
+            self.library.show_overview()
+        else:
+            self.library.show_list(list_id)
+        self.go(self.library)
+        self.libnav.select(list_id)
+
+    def _lists_changed(self) -> None:
+        self.libnav.set_lists(self.ctx.store.lists())
         if self.stack.currentWidget() is self.library:
             self.library.refresh()
+            self.libnav.select(self.library.list_id)
+
+    def _new_list(self) -> None:
+        lid = ask_new_list(self.ctx.store, self)
+        if lid is not None:
+            self._lists_changed()
+            self.open_library(lid)
+
+    def _list_menu(self, list_id: int, pos) -> None:
+        store = self.ctx.store
+        sl = store.get_list(list_id)
+        if sl is None:
+            return
+        menu = QMenu(self)
+        menu.addAction("Open").triggered.connect(lambda: self.open_library(list_id))
+        if list_id != SAVED:
+            ids = [x.list_id for x in store.lists() if x.list_id != SAVED]
+            i = ids.index(list_id)
+            menu.addAction("Rename…").triggered.connect(lambda: self._rename_list(list_id))
+            up = menu.addAction("Move up")
+            up.setEnabled(i > 0)
+            up.triggered.connect(lambda: (store.move_list(list_id, i - 1), self._lists_changed()))
+            down = menu.addAction("Move down")
+            down.setEnabled(i < len(ids) - 1)
+            down.triggered.connect(lambda: (store.move_list(list_id, i + 1), self._lists_changed()))
+            menu.addSeparator()
+            menu.addAction("Delete list…").triggered.connect(lambda: self._delete_list(list_id))
+        menu.exec(pos)
+
+    def _rename_list(self, list_id: int) -> None:
+        sl = self.ctx.store.get_list(list_id)
+        text = f"{sl.emoji} {sl.name}" if sl.emoji else sl.name
+        name, ok = QInputDialog.getText(self, "Rename list", "Name (start with an emoji if you like):", text=text)
+        if ok and name.strip():
+            parts = name.strip().split(" ", 1)
+            emoji = None
+            if len(parts) == 2 and parts[0] and not parts[0][0].isalnum() and len(parts[0]) <= 3:
+                emoji, name = parts[0], parts[1]
+            self.ctx.store.rename_list(list_id, name, emoji)
+            self._lists_changed()
+
+    def _delete_list(self, list_id: int) -> None:
+        sl = self.ctx.store.get_list(list_id)
+        box = QMessageBox(QMessageBox.Icon.Question, "Delete list",
+                          f"Delete “{sl.name}”?", parent=self)
+        box.setInformativeText("Only the list goes. The shows, what you watched, your ratings and notes all stay.")
+        box.addButton("Delete list", QMessageBox.ButtonRole.DestructiveRole)
+        keep = box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(keep)
+        box.exec()
+        if box.clickedButton() is not keep:
+            self.ctx.store.delete_list(list_id)
+            if self.library.list_id == list_id:
+                self.open_library(None)
+            self._lists_changed()
 
     # -- menus and settings -------------------------------------------------------------
 

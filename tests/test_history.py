@@ -76,7 +76,7 @@ def test_upgrades_v1_database(tmp_path):
     conn.close()
     store = Store(db)
     assert store.clear_history(tmp_path / "missing") == 0
-    assert store._conn().execute("PRAGMA user_version").fetchone()[0] == 2
+    assert store._conn().execute("PRAGMA user_version").fetchone()[0] == 3   # (2.0 adds My Library)
 
 
 def _pump(cond, timeout=5.0):

@@ -585,7 +585,7 @@ class Theater(QWidget):
         self.show_title.setTextFormat(Qt.TextFormat.PlainText)
         self.show_meta = QLabel("", objectName="Muted")
         self.show_meta.setTextFormat(Qt.TextFormat.PlainText)
-        self.list_btn = QPushButton("+  My List", objectName="Glass", cursor=Qt.CursorShape.PointingHandCursor)
+        self.list_btn = QPushButton("+  Save", objectName="Glass", cursor=Qt.CursorShape.PointingHandCursor)
         self.list_btn.clicked.connect(self.listToggled)
         self.summary = WrapLabel("", 900, objectName="Synopsis")
         self.summary.setTextFormat(Qt.TextFormat.PlainText)

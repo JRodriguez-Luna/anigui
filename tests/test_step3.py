@@ -138,7 +138,7 @@ def test_library_toggle_and_back(win):
     win.open_item(win.home.trending_row.model().cards()[2].payload)  # Ashen Blade
     pump(lambda: win.detail.list_btn.isEnabled())
     win.detail.list_btn.click()
-    assert win.detail.list_btn.text() == "✓  In My List"
+    assert win.detail.list_btn.text() == "✓  Saved"
     win.back()
     assert win.stack.currentWidget() is win.home
     assert "Ashen Blade" in [c.title for c in win.home.library_row.model().cards()]

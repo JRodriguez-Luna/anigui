@@ -79,7 +79,7 @@ class HomePage(QScrollArea):
         self.surprise_btn.setVisible(False)
         self.trending_row = CardRow("Trending Now", ctx.images)
         self.season_row = CardRow(f"{season.title()} {year}", ctx.images)
-        self.library_row = CardRow("My List", ctx.images)
+        self.library_row = CardRow("Saved", ctx.images)
         self.xmas_row = CardRow("Christmas anime ❄", ctx.images)     # while the holiday theme is on
         # "Because you watched …": filled once your history is in (refresh_local)
         self.because_rows = [CardRow("", ctx.images) for _ in range(recommend.MAX_ROWS)]

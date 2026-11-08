@@ -55,6 +55,36 @@ QToolTip {{ background: {SURFACE_2}; color: {TEXT}; border: 1px solid {BORDER}; 
 }}
 #NavButton:hover {{ background: rgba(255, 255, 255, 0.07); color: {TEXT}; }}
 #NavButton:checked {{ background: rgba(255, 255, 255, 0.11); color: {TEXT}; border-left: 3px solid {ACCENT}; }}
+/* My Library in the sidebar (2.0): your lists nest under Library */
+#NavSub {{
+    text-align: left; padding: 6px 10px 6px 42px; border: none; border-radius: {RADIUS}px;
+    background: transparent; color: {MUTED}; font-size: 13px; font-weight: 600;
+}}
+#NavSub:hover {{ background: rgba(255, 255, 255, 0.06); color: {TEXT}; }}
+#NavSub:checked {{ background: rgba(255, 255, 255, 0.10); color: {TEXT}; }}
+#NavNew {{
+    text-align: left; padding: 5px 10px 5px 42px; border: none; background: transparent;
+    color: {FAINT}; font-size: 12px; font-weight: 600;
+}}
+#NavNew:hover {{ color: {TEXT}; }}
+QToolButton#NavChevron {{ border: none; background: transparent; color: {FAINT}; font-size: 12px; }}
+QToolButton#NavChevron:hover {{ color: {TEXT}; }}
+#LibraryTitle {{ font-size: 26px; font-weight: 800; }}
+#LibrarySub {{ color: {MUTED}; font-size: 13px; }}
+QPushButton#TagFilter {{ padding: 6px 12px; font-size: 12px; border-radius: 14px; }}
+QPushButton#TagFilter:checked {{ background: {ACCENT}; color: #FFFFFF; border-color: {ACCENT}; }}
+QListView#Timeline {{ background: transparent; }}
+QFrame#YoursPanel {{ background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; }}
+#YoursTitle {{ font-size: 15px; font-weight: 800; }}
+#YoursHint {{ color: {FAINT}; font-size: 12px; font-weight: 600; }}
+QPushButton#TagChip {{ padding: 4px 10px; font-size: 12px; border-radius: 12px; background: rgba(255,255,255,0.10); border: none; }}
+QPushButton#TagChip:hover {{ background: rgba(255,255,255,0.18); }}
+QLineEdit#TagBox {{ padding: 5px 10px; font-size: 12px; border-radius: 12px; background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.10); }}
+QLineEdit#TagBox:focus {{ border-color: {ACCENT}; }}
+QPlainTextEdit#NoteBox {{ background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px;
+    padding: 6px 8px; font-size: 13px; color: {TEXT}; }}
+QPlainTextEdit#NoteBox:focus {{ border-color: {ACCENT}; }}
 #SidebarFooter {{ color: {FAINT}; font-size: 11px; padding: 6px; }}
 #SidebarHeading {{ color: {FAINT}; font-size: 11px; font-weight: 800; letter-spacing: 1.5px; }}
 #Sidebar QComboBox {{ font-size: 12px; padding: 6px 10px; }}

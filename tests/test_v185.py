@@ -133,7 +133,7 @@ def test_go_menu_has_every_page_and_back(win):
     keys = {name: a.shortcut().toString() for name, a in win.go_actions.items()}
     assert keys["Home"] == "Ctrl+1" and keys["Calendar"] == "Ctrl+5"
     assert keys["Back"]
-    win.go_actions["My List"].trigger()
+    win.go_actions["Library"].trigger()
     assert win.stack.currentWidget() is win.library
     win.go_actions["Back"].trigger()
     assert win.stack.currentWidget() is win.home

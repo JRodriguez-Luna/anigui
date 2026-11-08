@@ -1,0 +1,212 @@
+"""2.0: My Library data (lists, ratings, tags, notes, timeline)."""
+
+import datetime as dt
+import sqlite3
+
+from core.store import SAVED, Store, stars
+
+
+def store(tmp_path):
+    s = Store(tmp_path / "a.db")
+    for i in range(4):
+        s.upsert_show(f"show-{i}", f"Show {i}", f"https://img/{i}.jpg")
+    return s
+
+
+def test_saved_is_your_old_my_list(tmp_path):
+    s = store(tmp_path)
+    s.set_in_library("show-1", True)
+    lists = s.lists()
+    assert lists[0].list_id == SAVED and lists[0].name == "Saved" and lists[0].count == 1
+    assert [x.anime_id for x in s.list_shows(SAVED)] == ["show-1"]
+    s.add_to_list(SAVED, "show-2")
+    assert s.get_show("show-2").in_library
+
+
+def test_your_own_lists(tmp_path):
+    s = store(tmp_path)
+    a = s.create_list("Comfort shows", "🍵")
+    b = s.create_list("With Xochitl")
+    s.add_to_list(a, "show-0")
+    s.add_to_list(a, "show-1")
+    s.add_to_list(a, "show-1")                       # twice is still once
+    s.add_to_list(b, "show-1")
+    assert [(x.name, x.emoji, x.count) for x in s.lists()[1:]] == [("Comfort shows", "🍵", 2), ("With Xochitl", None, 1)]
+    assert s.lists_for("show-1") == {a, b}
+    s.move_list(b, 0)
+    assert [x.list_id for x in s.lists()] == [SAVED, b, a]
+    s.rename_list(a, "Cozy", "☕")
+    assert s.get_list(a).name == "Cozy"
+    s.remove_from_list(a, "show-0")
+    assert [x.anime_id for x in s.list_shows(a)] == ["show-1"]
+    s.delete_list(a)
+    assert s.get_list(a) is None and s.get_show("show-1") is not None   # shows stay
+    s.delete_list(SAVED)                             # can't delete Saved
+    assert s.lists()[0].list_id == SAVED
+
+
+def test_rating_tags_and_note(tmp_path):
+    s = store(tmp_path)
+    s.set_rating("show-0", 9)
+    s.set_tags("show-0", ["Cozy", "cozy", " rewatch  later ", "a|b"])
+    s.set_note("show-0", "  Ep 7 made me cry  ")
+    n = s.notes("show-0")
+    assert n.rating == 9 and n.tags == ("Cozy", "rewatch later", "a b") and n.note == "Ep 7 made me cry"
+    assert stars(9) == "★★★★½" and stars(10) == "★★★★★" and stars(None) == ""
+    s.set_tags("show-1", ["cozy"])
+    assert s.all_tags()[0] == ("Cozy", 2)
+    assert {x.anime_id for x in s.tagged("COZY")} == {"show-0", "show-1"}
+    assert [(sh.anime_id, r) for sh, r in s.rated()] == [("show-0", 9)]
+    s.set_rating("show-0", None)
+    s.set_tags("show-0", [])
+    s.set_note("show-0", "")
+    assert s.notes("show-0").rating is None
+    assert s._conn().execute("SELECT COUNT(*) FROM show_notes WHERE anime_id='show-0'").fetchone()[0] == 0
+
+
+def test_timeline(tmp_path):
+    s = store(tmp_path)
+    today = dt.date.today()
+    s.log_watch("show-0", "3", 1300, today)
+    s.log_watch("show-0", "4", 1300, today)
+    s.log_watch("show-0", "5", 20, today)            # a peek isn't watching
+    s.log_watch("show-1", "1", 1400, today - dt.timedelta(days=1))
+    s.set_in_library("show-2", True)
+    lid = s.create_list("Cozy")
+    s.add_to_list(lid, "show-3")
+    s.set_rating("show-3", 8)
+    s.set_rating("show-3", 10)                       # changed your mind: one entry
+    moments = s.timeline()
+    kinds = [(m.kind, m.anime_id, m.detail) for m in moments]
+    assert ("watched", "show-0", "3, 4") in kinds and ("watched", "show-1", "1") in kinds
+    assert ("saved", "show-2", "") in kinds and ("listed", "show-3", "Cozy") in kinds
+    assert [k for k in kinds if k[0] == "rated"] == [("rated", "show-3", "10")]
+    assert moments[0].title and moments == sorted(moments, key=lambda m: m.at, reverse=True)
+
+
+def test_private_mode_leaves_no_trace_in_the_timeline(tmp_path):
+    s = store(tmp_path)
+    s.private = True
+    s.set_in_library("show-0", True)
+    s.set_rating("show-0", 6)
+    assert s.timeline() == [] and s.notes("show-0").rating == 6
+
+
+def test_renaming_a_show_keeps_its_lists_and_notes(tmp_path):
+    s = store(tmp_path)
+    lid = s.create_list("Cozy")
+    s.add_to_list(lid, "show-0")
+    s.set_rating("show-0", 7)
+    s.rename_show("show-0", "show-0-new", "Show 0")
+    assert [x.anime_id for x in s.list_shows(lid)] == ["show-0-new"]
+    assert s.notes("show-0-new").rating == 7
+
+
+def test_upgrading_a_1_11_database_keeps_everything(tmp_path):
+    path = tmp_path / "old.db"
+    old = sqlite3.connect(path)
+    old.executescript("""
+        CREATE TABLE shows (anime_id TEXT PRIMARY KEY, title TEXT NOT NULL, poster TEXT, anilist_id INTEGER,
+            match_score REAL, match_manual INTEGER NOT NULL DEFAULT 0, in_library INTEGER NOT NULL DEFAULT 0,
+            library_added_at REAL, updated_at REAL NOT NULL);
+        INSERT INTO shows VALUES ('frieren-18542', 'Frieren', NULL, 154587, 1.0, 0, 1, 1000, 1000);
+        PRAGMA user_version = 2;
+    """)
+    old.close()
+    s = Store(path)
+    assert s._conn().execute("PRAGMA user_version").fetchone()[0] == 3
+    assert [x.anime_id for x in s.list_shows(SAVED)] == ["frieren-18542"]   # My List is now Saved
+    assert s.lists()[0].count == 1
+
+
+# -- the interface -------------------------------------------------------------------------------
+
+import sys  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from test_step4 import STARFALL, pump, win  # noqa: E402,F401
+
+
+def open_starfall(w):
+    w.open_item(w.ctx.store.get_show(STARFALL))
+    assert pump(lambda: w.detail.anime_id == STARFALL and w.detail.yours.isVisible())
+
+
+def test_lists_nest_under_library_in_the_sidebar(win):
+    nav = win.libnav
+    assert SAVED in nav.subs and nav.subs[SAVED].text() == "Saved"
+    lid = win.ctx.store.create_list("Comfort shows", "🍵")
+    win.ctx.store.add_to_list(lid, STARFALL)
+    win._lists_changed()
+    assert nav.subs[lid].text() == "🍵  Comfort shows" and nav.subs[lid].sl.count == 1
+    nav.subs[lid].click()
+    assert pump(lambda: win.stack.currentWidget() is win.library and win.library.list_id == lid)
+    assert nav.subs[lid].isChecked() and not nav.header.isChecked()
+    assert [c.payload.anime_id for c in win.library.grid.cards.cards()] == [STARFALL]
+    nav.chevron.click()                                           # fold the lists away
+    assert not nav.box.isVisible() and win.ctx.pref("sidebar_lists_open") is False
+    nav.header.click()
+    assert pump(lambda: win.library.list_id is None)
+    assert win.library.title.text() == "My Library" and nav.header.isChecked()
+
+
+def test_rate_tag_and_note_on_the_show_page(win):
+    open_starfall(win)
+    y = win.detail.yours
+    y.stars.changed.emit(7)
+    y._rated(7)
+    assert win.ctx.store.notes(STARFALL).rating == 7 and y.rating_text.text() == "3.5 / 5"
+    y.tag_box.setText("cozy")
+    y._add_tag()
+    assert win.ctx.store.notes(STARFALL).tags == ("cozy",)
+    y.note.setPlainText("Stopped at the festival arc")
+    assert pump(lambda: win.ctx.store.notes(STARFALL).note == "Stopped at the festival arc", 3)
+    win.go(win.home)
+    open_starfall(win)
+    assert win.detail.yours.stars.rating == 7 and win.detail.yours.note.toPlainText() == "Stopped at the festival arc"
+
+
+def test_add_to_a_list_from_the_show_page(win):
+    lid = win.ctx.store.create_list("With friends")
+    win._lists_changed()
+    open_starfall(win)
+    b = win.detail.lists_btn
+    assert b.text() == "☰  Lists"
+    b._build()
+    act = next(a for a in b.menu_.actions() if a.text() == "With friends")
+    act.setChecked(True)
+    assert win.ctx.store.lists_for(STARFALL) >= {lid} and b.text() == "☰  In 1 list"
+    assert pump(lambda: win.libnav.subs[lid].sl.count == 1)
+    win.detail.list_btn.click()
+    assert win.detail.list_btn.text() == "✓  Saved" and SAVED in win.ctx.store.lists_for(STARFALL)
+
+
+def test_overview_tabs(win):
+    s = win.ctx.store
+    s.set_rating(STARFALL, 10)
+    s.set_tags(STARFALL, ["cozy"])
+    s.log_watch(STARFALL, "4", 900)
+    win.open_library(None)
+    lib = win.library
+    assert STARFALL in [c.payload.anime_id for c in lib.grid.cards.cards()]
+    lib.set_tab("ratings")
+    assert [c.subtitle for c in lib.grid.cards.cards()] == ["★★★★★"]
+    lib.set_tab("tags")
+    assert lib.tag == "cozy" and lib.tag_bar.isVisible()
+    lib.set_tab("timeline")
+    assert lib.stack.currentWidget() is lib.timeline and lib.timeline.model_.rowCount() >= 2
+
+
+def test_deleting_a_list_keeps_the_shows(win, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+    s = win.ctx.store
+    lid = s.create_list("Temp")
+    s.add_to_list(lid, STARFALL)
+    win._lists_changed()
+    win.open_library(lid)
+    monkeypatch.setattr(QMessageBox, "exec", lambda self: None)
+    monkeypatch.setattr(QMessageBox, "clickedButton", lambda self: None)     # (not Cancel)
+    win._delete_list(lid)
+    assert s.get_list(lid) is None and lid not in win.libnav.subs
+    assert win.library.list_id is None and s.get_show(STARFALL) is not None

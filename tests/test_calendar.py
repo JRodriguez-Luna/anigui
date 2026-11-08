@@ -185,4 +185,4 @@ def test_add_to_my_list_from_calendar(win):
     assert not ashen.entry.in_library
     page._set_library(ashen.entry, True)
     assert pump(lambda: win.ctx.store.get_show(ASHEN).in_library)
-    assert pump(lambda: "Added Ashen Blade" in win.toast.text())
+    assert pump(lambda: "Saved Ashen Blade" in win.toast.text())

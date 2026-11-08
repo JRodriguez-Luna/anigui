@@ -276,9 +276,9 @@ def test_episode_and_show_under_the_video(win):
     assert pump(lambda: "Oct 31, 2026" in t.ep_meta.text())       # episode 5: date and length (Kitsu)
     assert t.ep_meta.text().startswith("Episode 5") and "24 min" in t.ep_meta.text()
     assert t.summary.text() == "In episode 5, everything changes at the academy."
-    assert t.show_title.text() == "Starfall Academy" and "+  My List" in t.list_btn.text()
+    assert t.show_title.text() == "Starfall Academy" and "+  Save" in t.list_btn.text()
     t.listToggled.emit()
-    assert pump(lambda: "In My List" in t.list_btn.text())
+    assert pump(lambda: "Saved" in t.list_btn.text())
     dated = [i for i in t.rail.visible_items() if i["date"]]
     assert dated and dated[0]["date"] == "Oct 3, 2026"
 

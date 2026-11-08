@@ -236,10 +236,10 @@ def test_adding_to_my_list_is_a_gift(win, plain_theme, motion_on):
         win.detail._toggle_library()                                         # take it off first
     toasts.clear()
     win.detail._toggle_library()
-    assert toasts == ["🎁 Added to My List"] and win.detail.bow.isVisible()
+    assert toasts == ["🎁 Saved"] and win.detail.bow.isVisible()
     assert win.toast.property("kind") == "holiday"
     win.detail._toggle_library()                                             # removing: no gift
-    assert toasts == ["🎁 Added to My List"]
+    assert toasts == ["🎁 Saved"]
 
 
 def test_toasts_are_plain_out_of_season(win, plain_theme):

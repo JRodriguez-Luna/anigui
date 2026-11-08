@@ -18,6 +18,7 @@ from core.store import episode_key
 from .cards import CardRow, media_card
 from . import theme
 from .content_notes import ContentLine
+from .library import ListsButton, YourNotes
 from .festive import BowPop
 from .theater import Theater, nice_date
 from .motion import fade_in
@@ -121,8 +122,10 @@ class DetailPage(QScrollArea):
 
         self.play_btn = QPushButton("▶  Play", objectName="Primary", cursor=Qt.CursorShape.PointingHandCursor)
         self.play_btn.clicked.connect(lambda: self.play_target and self.play(self.play_target))
-        self.list_btn = QPushButton("+  My List", objectName="Glass", cursor=Qt.CursorShape.PointingHandCursor)
+        self.list_btn = QPushButton("+  Save", objectName="Glass", cursor=Qt.CursorShape.PointingHandCursor)
         self.list_btn.clicked.connect(self._toggle_library)
+        self.lists_btn = ListsButton(ctx.store)           # your own lists (2.0)
+        self.lists_btn.changed.connect(self.libraryChanged)
         self.bow = BowPop(self)
         self.sub_btn = QPushButton("Sub", objectName="Toggle", checkable=True, cursor=Qt.CursorShape.PointingHandCursor)
         self.dub_btn = QPushButton("Dub", objectName="Toggle", checkable=True, cursor=Qt.CursorShape.PointingHandCursor)
@@ -144,6 +147,7 @@ class DetailPage(QScrollArea):
         actions.setSpacing(10)
         actions.addWidget(self.play_btn)
         actions.addWidget(self.list_btn)
+        actions.addWidget(self.lists_btn)
         actions.addSpacing(14)
         actions.addWidget(self.sub_btn)
         actions.addWidget(self.dub_btn)
@@ -217,6 +221,10 @@ class DetailPage(QScrollArea):
         episodes = QVBoxLayout()
         episodes.setContentsMargins(39, 10, 39, 40)
         episodes.setSpacing(12)
+        self.yours = YourNotes(ctx.store)                 # your rating, tags and note (2.0)
+        self.yours.setVisible(False)
+        episodes.addWidget(self.yours)
+        episodes.addSpacing(10)
         episodes.addWidget(self.seasons_row)
         episodes.addSpacing(8)
         # The episode grid (it steps aside while the built-in player's list is showing)
@@ -336,6 +344,9 @@ class DetailPage(QScrollArea):
         self.play_btn.setEnabled(False)
         self.play_btn.setText("▶  Play")
         self.list_btn.setEnabled(False)
+        self.yours.load(None)
+        self.yours.setVisible(False)
+        self.lists_btn.set_show(None)
         self.verticalScrollBar().setValue(0)
         self.ep_details, self._details_for = {}, None
         self.set_theater(False)
@@ -752,8 +763,12 @@ class DetailPage(QScrollArea):
     def _refresh_library_button(self) -> None:
         show = self.ctx.store.get_show(self.anime_id) if self.anime_id else None
         saved = bool(show and show.in_library)
-        self.list_btn.setText("✓  In My List" if saved else "+  My List")
+        self.list_btn.setText("✓  Saved" if saved else "+  Save")
         self.theater.list_btn.setText(self.list_btn.text())
+        self.lists_btn.set_show(self.anime_id)
+        if self.yours.anime_id != self.anime_id:
+            self.yours.load(self.anime_id)
+        self.yours.setVisible(self.anime_id is not None)
 
     def _toggle_library(self) -> None:
         if not self.anime_id:
@@ -764,7 +779,7 @@ class DetailPage(QScrollArea):
         self._refresh_library_button()
         self.libraryChanged.emit()
         if adding and theme.HOLIDAY:
-            self.toast.emit("🎁 Added to My List", False)
+            self.toast.emit("🎁 Saved", False)
             btn = self.list_btn
             self.bow.pop(QPointF(btn.mapTo(self, btn.rect().center())))
 
@@ -922,7 +937,7 @@ class DetailPage(QScrollArea):
         if summary != t._summary_full:
             t.set_summary(summary)
         show = self.ctx.store.get_show(self.anime_id) if self.anime_id else None
-        t.list_btn.setText("✓  In My List" if show and show.in_library else "+  My List")
+        t.list_btn.setText("✓  Saved" if show and show.in_library else "+  Save")
         on = theme.HOLIDAY
         t.set_decor(on and bool(self.ctx.pref("player_lights", True)), on and bool(self.ctx.pref("player_snow", True)))
         self._load_details()

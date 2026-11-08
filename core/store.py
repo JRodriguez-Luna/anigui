@@ -17,7 +17,7 @@ from typing import Any
 
 from . import paths
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3          # 3: My Library (lists, ratings, tags, notes, timeline), 2.0
 COMPLETE_RATIO = 0.90  # past 90% counts as watched (credits)
 
 _SCHEMA = """
@@ -68,6 +68,34 @@ CREATE TABLE IF NOT EXISTS mature_flags (
     notes      TEXT NOT NULL,         -- content notes, joined with '|'
     allowed    INTEGER NOT NULL DEFAULT 0   -- "Don't ask again for this show"
 );
+CREATE TABLE IF NOT EXISTS lists (               -- My Library: your own lists (2.0)
+    list_id    INTEGER PRIMARY KEY,
+    name       TEXT NOT NULL,
+    emoji      TEXT,
+    position   REAL NOT NULL,             -- order in the sidebar
+    locked     INTEGER NOT NULL DEFAULT 0,  -- needs Touch ID to open
+    created_at REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS list_items (
+    list_id  INTEGER NOT NULL REFERENCES lists(list_id) ON DELETE CASCADE,
+    anime_id TEXT NOT NULL REFERENCES shows(anime_id) ON DELETE CASCADE,
+    added_at REAL NOT NULL,
+    PRIMARY KEY (list_id, anime_id)
+);
+CREATE TABLE IF NOT EXISTS show_notes (           -- your rating, tags and note for a show
+    anime_id   TEXT PRIMARY KEY REFERENCES shows(anime_id) ON DELETE CASCADE,
+    rating     INTEGER,                   -- 1..10 = half stars (10 = five stars)
+    tags       TEXT NOT NULL DEFAULT '',  -- joined with '|'
+    note       TEXT NOT NULL DEFAULT '',
+    updated_at REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS events (               -- for your timeline: saved, listed, rated
+    at       REAL NOT NULL,
+    kind     TEXT NOT NULL,
+    anime_id TEXT NOT NULL,
+    detail   TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS events_recent ON events(at DESC);
 CREATE TABLE IF NOT EXISTS cache (
     key        TEXT PRIMARY KEY,
     value      TEXT NOT NULL,
@@ -118,6 +146,43 @@ class NewEpisodes:
         return max(1, int(episode_key(self.latest) - episode_key(self.seen)))
 
 
+SAVED = 0     # the built-in Saved list (shows.in_library: My List before 2.0)
+
+
+@dataclass(frozen=True)
+class ShowList:
+    list_id: int
+    name: str
+    emoji: str | None
+    locked: bool
+    count: int
+
+
+@dataclass(frozen=True)
+class ShowNotes:
+    rating: int | None        # 1..10 half stars
+    tags: tuple[str, ...]
+    note: str
+
+
+@dataclass(frozen=True)
+class Moment:
+    at: float
+    day: str                  # YYYY-MM-DD
+    kind: str                 # watched | saved | listed | rated
+    anime_id: str
+    detail: str               # episodes ("3, 4, 5"), list name, or the rating
+    title: str = ""
+    poster: str | None = None
+
+
+def stars(rating: int | None) -> str:
+    """10 -> ★★★★★, 7 -> ★★★½"""
+    if not rating:
+        return ""
+    return "★" * (rating // 2) + ("½" if rating % 2 else "")
+
+
 def episode_key(number: str | None) -> float:
     try:
         return float(number) if number is not None else -1.0
@@ -136,6 +201,7 @@ class Store:
         self.path = Path(path) if path else paths.database_path()
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._local = threading.local()
+        self.private = False          # Private mode: nothing new goes into your history (2.0)
         self._migrate()
 
     # -- connection handling -------------------------------------------------------
@@ -231,6 +297,9 @@ class Store:
             )
             c.execute("UPDATE OR IGNORE episode_watch SET anime_id = ? WHERE anime_id = ?", (new_id, old_id))
             c.execute("UPDATE OR IGNORE watch_log SET anime_id = ? WHERE anime_id = ?", (new_id, old_id))
+            c.execute("UPDATE OR IGNORE list_items SET anime_id = ? WHERE anime_id = ?", (new_id, old_id))
+            c.execute("UPDATE OR IGNORE show_notes SET anime_id = ? WHERE anime_id = ?", (new_id, old_id))
+            c.execute("UPDATE events SET anime_id = ? WHERE anime_id = ?", (new_id, old_id))
             c.execute("DELETE FROM shows WHERE anime_id = ?", (old_id,))  # cascades old progress
 
     def find_by_anilist(self, anilist_id: int) -> Show | None:
@@ -243,7 +312,12 @@ class Store:
     # -- library ("My List") ------------------------------------------------------
 
     def set_in_library(self, anime_id: str, value: bool) -> None:
+        """The Saved list (My List before 2.0)."""
         with self._tx() as c:
+            was = c.execute("SELECT in_library FROM shows WHERE anime_id = ?", (anime_id,)).fetchone()
+            if value and was is not None and not was[0] and not self.private:
+                c.execute("INSERT INTO events (at, kind, anime_id, detail) VALUES (?, 'saved', ?, '')",
+                          (time.time(), anime_id))
             c.execute(
                 """UPDATE shows SET in_library = ?,
                        library_added_at = CASE WHEN ? THEN COALESCE(library_added_at, ?) ELSE NULL END
@@ -256,6 +330,214 @@ class Store:
             "SELECT * FROM shows WHERE in_library = 1 ORDER BY library_added_at DESC"
         ).fetchall()
         return [_show(r) for r in rows]
+
+    # -- My Library: lists (2.0) -----------------------------------------------------
+
+    def lists(self) -> list["ShowList"]:
+        """Saved (the old My List) first, then your lists in their order."""
+        c = self._conn()
+        saved = c.execute("SELECT COUNT(*) FROM shows WHERE in_library = 1").fetchone()[0]
+        out = [ShowList(SAVED, "Saved", None, False, saved)]
+        for r in c.execute(
+            """SELECT l.*, (SELECT COUNT(*) FROM list_items i WHERE i.list_id = l.list_id) AS n
+               FROM lists l ORDER BY position, list_id"""
+        ):
+            out.append(ShowList(r["list_id"], r["name"], r["emoji"], bool(r["locked"]), r["n"]))
+        return out
+
+    def library_all(self) -> list[Show]:
+        """Every show that's yours: saved, in a list, rated, tagged or noted. Newest first."""
+        rows = self._conn().execute(
+            """SELECT s.*, MAX(COALESCE(s.library_added_at, 0),
+                              COALESCE((SELECT MAX(added_at) FROM list_items i WHERE i.anime_id = s.anime_id), 0),
+                              COALESCE((SELECT updated_at FROM show_notes n WHERE n.anime_id = s.anime_id), 0)) AS mine
+               FROM shows s
+               WHERE s.in_library = 1
+                  OR EXISTS (SELECT 1 FROM list_items i WHERE i.anime_id = s.anime_id)
+                  OR EXISTS (SELECT 1 FROM show_notes n WHERE n.anime_id = s.anime_id)
+               ORDER BY mine DESC""").fetchall()
+        return [_show(r) for r in rows]
+
+    def get_list(self, list_id: int) -> "ShowList | None":
+        return next((sl for sl in self.lists() if sl.list_id == list_id), None)
+
+    def create_list(self, name: str, emoji: str | None = None) -> int:
+        name = name.strip() or "New list"
+        with self._tx() as c:
+            pos = c.execute("SELECT COALESCE(MAX(position), 0) + 1 FROM lists").fetchone()[0]
+            cur = c.execute("INSERT INTO lists (name, emoji, position, created_at) VALUES (?, ?, ?, ?)",
+                            (name, emoji or None, pos, time.time()))
+            return int(cur.lastrowid)
+
+    def rename_list(self, list_id: int, name: str, emoji: str | None = None) -> None:
+        if list_id == SAVED:
+            return
+        with self._tx() as c:
+            c.execute("UPDATE lists SET name = ?, emoji = ? WHERE list_id = ?",
+                      (name.strip() or "Untitled", emoji or None, list_id))
+
+    def delete_list(self, list_id: int) -> None:
+        """Deletes the list, not the shows (or anything you watched)."""
+        if list_id == SAVED:
+            return
+        with self._tx() as c:
+            c.execute("DELETE FROM lists WHERE list_id = ?", (list_id,))
+
+    def move_list(self, list_id: int, index: int) -> None:
+        """Put a list at `index` among your lists (Saved always stays first)."""
+        ids = [sl.list_id for sl in self.lists() if sl.list_id != SAVED]
+        if list_id not in ids:
+            return
+        ids.remove(list_id)
+        ids.insert(max(0, min(index, len(ids))), list_id)
+        with self._tx() as c:
+            for pos, lid in enumerate(ids, 1):
+                c.execute("UPDATE lists SET position = ? WHERE list_id = ?", (pos, lid))
+
+    def set_list_locked(self, list_id: int, locked: bool) -> None:
+        with self._tx() as c:
+            c.execute("UPDATE lists SET locked = ? WHERE list_id = ?", (int(locked), list_id))
+
+    def list_shows(self, list_id: int) -> list[Show]:
+        if list_id == SAVED:
+            return self.library()
+        rows = self._conn().execute(
+            """SELECT s.* FROM list_items i JOIN shows s ON s.anime_id = i.anime_id
+               WHERE i.list_id = ? ORDER BY i.added_at DESC""", (list_id,)).fetchall()
+        return [_show(r) for r in rows]
+
+    def add_to_list(self, list_id: int, anime_id: str) -> None:
+        if list_id == SAVED:
+            self.set_in_library(anime_id, True)
+            return
+        with self._tx() as c:
+            cur = c.execute("INSERT OR IGNORE INTO list_items (list_id, anime_id, added_at) VALUES (?, ?, ?)",
+                            (list_id, anime_id, time.time()))
+            if cur.rowcount and not self.private:
+                name = c.execute("SELECT name FROM lists WHERE list_id = ?", (list_id,)).fetchone()
+                c.execute("INSERT INTO events (at, kind, anime_id, detail) VALUES (?, 'listed', ?, ?)",
+                          (time.time(), anime_id, name[0] if name else ""))
+
+    def remove_from_list(self, list_id: int, anime_id: str) -> None:
+        if list_id == SAVED:
+            self.set_in_library(anime_id, False)
+            return
+        with self._tx() as c:
+            c.execute("DELETE FROM list_items WHERE list_id = ? AND anime_id = ?", (list_id, anime_id))
+
+    def lists_for(self, anime_id: str) -> set[int]:
+        c = self._conn()
+        out = {r[0] for r in c.execute("SELECT list_id FROM list_items WHERE anime_id = ?", (anime_id,))}
+        saved = c.execute("SELECT in_library FROM shows WHERE anime_id = ?", (anime_id,)).fetchone()
+        if saved and saved[0]:
+            out.add(SAVED)
+        return out
+
+    # -- My Library: your rating, tags and note (2.0) --------------------------------
+
+    def notes(self, anime_id: str) -> "ShowNotes":
+        r = self._conn().execute("SELECT * FROM show_notes WHERE anime_id = ?", (anime_id,)).fetchone()
+        if r is None:
+            return ShowNotes(None, (), "")
+        return ShowNotes(r["rating"], tuple(t for t in r["tags"].split("|") if t), r["note"])
+
+    def _save_notes(self, anime_id: str, **changes) -> None:
+        old = self.notes(anime_id)
+        rating = changes.get("rating", old.rating)
+        tags = changes.get("tags", old.tags)
+        note = changes.get("note", old.note)
+        with self._tx() as c:
+            if rating is None and not tags and not note:
+                c.execute("DELETE FROM show_notes WHERE anime_id = ?", (anime_id,))
+                return
+            c.execute(
+                """INSERT INTO show_notes (anime_id, rating, tags, note, updated_at) VALUES (?, ?, ?, ?, ?)
+                   ON CONFLICT(anime_id) DO UPDATE SET rating = excluded.rating, tags = excluded.tags,
+                       note = excluded.note, updated_at = excluded.updated_at""",
+                (anime_id, rating, "|".join(tags), note, time.time()))
+
+    def set_rating(self, anime_id: str, rating: int | None) -> None:
+        """rating: 1..10 half stars (10 = ★★★★★), or None to clear."""
+        if rating is not None:
+            rating = max(1, min(10, int(rating)))
+        if rating == self.notes(anime_id).rating:
+            return
+        self._save_notes(anime_id, rating=rating)
+        if rating is not None and not self.private:
+            with self._tx() as c:
+                c.execute("DELETE FROM events WHERE kind = 'rated' AND anime_id = ? AND at > ?",
+                          (anime_id, time.time() - 600))      # changing your mind isn't news
+                c.execute("INSERT INTO events (at, kind, anime_id, detail) VALUES (?, 'rated', ?, ?)",
+                          (time.time(), anime_id, str(rating)))
+
+    def set_tags(self, anime_id: str, tags) -> None:
+        clean: list[str] = []
+        for t in tags:
+            t = " ".join(str(t).replace("|", " ").split())[:40]
+            if t and t.lower() not in (x.lower() for x in clean):
+                clean.append(t)
+        self._save_notes(anime_id, tags=tuple(clean))
+
+    def set_note(self, anime_id: str, note: str) -> None:
+        self._save_notes(anime_id, note=note.strip())
+
+    def all_tags(self) -> list[tuple[str, int]]:
+        """Every tag you've used, most used first."""
+        counts: dict[str, int] = {}
+        names: dict[str, str] = {}
+        for (raw,) in self._conn().execute("SELECT tags FROM show_notes WHERE tags != ''"):
+            for t in raw.split("|"):
+                if t:
+                    counts[t.lower()] = counts.get(t.lower(), 0) + 1
+                    names.setdefault(t.lower(), t)
+        return sorted(((names[k], n) for k, n in counts.items()), key=lambda kv: (-kv[1], kv[0].lower()))
+
+    def tagged(self, tag: str) -> list[Show]:
+        rows = self._conn().execute(
+            """SELECT s.*, n.tags FROM show_notes n JOIN shows s ON s.anime_id = n.anime_id
+               WHERE n.tags != '' ORDER BY n.updated_at DESC""").fetchall()
+        want = tag.lower()
+        return [_show(r) for r in rows if want in (t.lower() for t in r["tags"].split("|"))]
+
+    def rated(self) -> list[tuple[Show, int]]:
+        rows = self._conn().execute(
+            """SELECT s.*, n.rating FROM show_notes n JOIN shows s ON s.anime_id = n.anime_id
+               WHERE n.rating IS NOT NULL ORDER BY n.rating DESC, n.updated_at DESC""").fetchall()
+        return [(_show(r), r["rating"]) for r in rows]
+
+    # -- My Library: your timeline (2.0) ---------------------------------------------
+
+    def timeline(self, days: int = 90) -> list["Moment"]:
+        """What you did, newest first: episodes watched (one entry per show per day), shows
+        saved or added to a list, and ratings. All from this Mac; nothing is sent anywhere."""
+        c = self._conn()
+        since_day = (dt.date.today() - dt.timedelta(days=days)).isoformat()
+        out: list[Moment] = []
+        watched: dict[tuple[str, str], list] = {}
+        for day, aid, ep, secs in c.execute(
+                "SELECT day, anime_id, episode, seconds FROM watch_log WHERE day >= ?", (since_day,)):
+            if secs >= 60:
+                watched.setdefault((day, aid), []).append(ep)
+        last_at = dict(c.execute(
+            """SELECT anime_id, MAX(updated_at) FROM progress GROUP BY anime_id""").fetchall())
+        for (day, aid), eps in watched.items():
+            eps.sort(key=episode_key)
+            when = dt.datetime.fromisoformat(day + "T12:00:00").timestamp()
+            last = last_at.get(aid)
+            if last and dt.date.fromtimestamp(last).isoformat() == day:
+                when = last
+            out.append(Moment(when, day, "watched", aid, ", ".join(eps)))
+        since = dt.datetime.fromisoformat(since_day + "T00:00:00").timestamp()
+        for at, kind, aid, detail in c.execute(
+                "SELECT at, kind, anime_id, detail FROM events WHERE at >= ?", (since,)):
+            out.append(Moment(at, dt.date.fromtimestamp(at).isoformat(), kind, aid, detail))
+        titles = {r["anime_id"]: r for r in c.execute("SELECT anime_id, title, poster FROM shows")}
+        out = [m for m in out if m.anime_id in titles]
+        for i, m in enumerate(out):
+            row = titles[m.anime_id]
+            out[i] = Moment(m.at, m.day, m.kind, m.anime_id, m.detail, row["title"], row["poster"])
+        out.sort(key=lambda m: m.at, reverse=True)
+        return out
 
     # -- progress ------------------------------------------------------------------
 
