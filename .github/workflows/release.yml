@@ -130,6 +130,9 @@ jobs:
               global fails
               fails += 0 if ok else 1
               print(f"::{'notice' if ok else 'error'} title=setup::{'PASS' if ok else 'FAIL'} {msg}")
+          def outage(exc):
+              # GitHub's own servers having a bad moment (HTTP 5xx) isn't a bug in AniGUI
+              return "HTTP 5" in str(exc)
           try:
               setup.install_ani_cli()
               path = ani_cli.find_ani_cli()
@@ -143,7 +146,10 @@ jobs:
               tag, dmg = setup.latest_iina_web()
               report(dmg.endswith(".dmg") and tag in dmg, f"IINA via GitHub web pages: {tag} {dmg}")
           except Exception as exc:
-              report(False, f"IINA web fallback: {exc}")
+              if outage(exc):
+                  print(f"::warning title=setup::IINA web fallback not checked (GitHub outage): {exc}")
+              else:
+                  report(False, f"IINA web fallback: {exc}")
           try:
               import glob
               for existing in glob.glob("/Applications/IINA.app"):
@@ -153,7 +159,10 @@ jobs:
               found = setup.find_player("iina")
               report(bool(found) and (app / "Contents" / "MacOS" / "iina-cli").exists(), f"IINA installed at {app}; found {found}")
           except Exception as exc:
-              report(False, f"IINA install: {exc}")
+              if outage(exc):
+                  print(f"::warning title=setup::IINA install not checked (GitHub outage): {exc}")
+              else:
+                  report(False, f"IINA install: {exc}")
           status = setup.current_status()
           report(status.ready, f"Setup status ready={status.ready} ({status.ani_cli_version}, {status.player})")
           net = setup.check_network()
