@@ -141,3 +141,106 @@ def test_scrolling_moves_the_artwork(win):
     bar = win.home.verticalScrollBar()
     bar.setValue(min(200, bar.maximum()))
     assert pump(lambda: amb.band_rect().top() < top or bar.maximum() == 0)
+
+
+# -- the pop-out player -------------------------------------------------------------------------
+
+from PySide6.QtCore import QPoint, QPointF, QRect, Qt  # noqa: E402
+from PySide6.QtGui import QGuiApplication  # noqa: E402
+
+
+def pop(win):
+    play_inside(win)
+    host = win.player_host
+    assert pump(lambda: host.mode == "theater")
+    host._action("popout")
+    assert pump(lambda: host.mode == "pop" and host.popout.isVisible())
+    return host
+
+
+def test_pop_out_floats_above_everything(win):
+    host = pop(win)
+    w = host.popout
+    assert host.parentWidget() is w and host.video.parentWidget() is host
+    assert w.windowFlags() & Qt.WindowType.WindowStaysOnTopHint
+    assert abs(w.height() - w.width() * 9 / 16) <= 1                 # 16:9
+    area = QGuiApplication.primaryScreen().availableGeometry()
+    assert area.contains(w.geometry())
+    assert win.detail.theater.slot.popped                             # the page says where it went
+    assert win.playback.session.alive                                 # still the same episode
+
+
+def test_drag_it_anywhere_but_not_off_screen(win):
+    host = pop(win)
+    w = host.popout
+    start = w.geometry()
+    host.controls.dragBy.emit(QPointF(-150, -90))
+    assert w.geometry().topLeft() == start.topLeft() + QPoint(-150, -90)
+    host.controls.dragBy.emit(QPointF(-100000, 100000))
+    area = QGuiApplication.primaryScreen().availableGeometry()
+    assert area.contains(w.geometry())
+    host._action("moved")
+    g = w.geometry()
+    assert win.ctx.pref("popout_rect") == [g.x(), g.y(), g.width()]
+
+
+def test_resize_from_a_corner_stays_16_9(win):
+    host = pop(win)
+    w = host.popout
+    w.setGeometry(QRect(100, 100, 480, 270))
+    grip = [g for g in host.grips if g.corner == (1, 1)][0]
+    assert grip.isVisible()
+    grip._start = (QPointF(580, 370), w.geometry())
+
+    class Move:
+        def __init__(self, x, y):
+            self.p = QPointF(x, y)
+
+        def globalPosition(self):
+            return self.p
+    grip.mouseMoveEvent(Move(700, 370))
+    assert w.width() == 600 and w.height() == 338 and w.pos() == QPoint(100, 100)
+    grip.mouseMoveEvent(Move(0, 0))
+    assert w.width() == 288                                           # not smaller than this
+    grip.mouseReleaseEvent(None)
+    assert win.ctx.pref("popout_rect")[2] == 288
+
+
+def test_bring_it_back(win):
+    host = pop(win)
+    win.detail.theater.slot.bringBack.emit()
+    assert pump(lambda: host.mode == "theater" and not host.popout.isVisible())
+    assert host.parentWidget() is win.centralWidget()
+    assert not win.detail.theater.slot.popped
+    assert win.playback.session.alive
+
+
+def test_back_to_anigui_button_opens_the_show(win):
+    host = pop(win)
+    win.go(win.home)
+    host._action("popin")
+    assert pump(lambda: win.stack.currentWidget() is win.detail and host.mode == "theater")
+
+
+def test_closing_the_pop_out_stops_the_player(win):
+    host = pop(win)
+    host.popout.close()                                # ⌘W on the floating window
+    assert pump(lambda: not host.active and not host.popout.isVisible(), 8)
+    assert host.parentWidget() is win.centralWidget()
+
+
+def test_remembers_where_you_put_it(win):
+    host = pop(win)
+    host.popout.setGeometry(QRect(140, 120, 400, 225))
+    host._action("popin")
+    assert pump(lambda: host.mode == "theater")
+    host._action("popout")
+    assert pump(lambda: host.mode == "pop")
+    assert host.popout.geometry() == QRect(140, 120, 400, 225)
+
+
+def test_switching_to_dub_stays_popped_out(win):
+    host = pop(win)
+    t = win.detail.theater
+    t.audio.setCurrentIndex(t.audio.findData(True))
+    assert pump(lambda: host.active and host.mode == "pop" and host.popout.isVisible(), 8)

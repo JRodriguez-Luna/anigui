@@ -15,11 +15,11 @@ import random
 import sys
 import time
 
-from PySide6.QtCore import QPoint, QPointF, QRect, QRectF, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QCursor, QFont, QPainter, QPainterPath, QPen, QSurfaceFormat
+from PySide6.QtCore import QEvent, QPoint, QPointF, QRect, QRectF, Qt, QTimer, Signal
+from PySide6.QtGui import QColor, QCursor, QFont, QGuiApplication, QPainter, QPainterPath, QPen, QSurfaceFormat
 from PySide6.QtWidgets import QFrame, QMenu, QVBoxLayout, QWidget
 
-from core import libmpv
+from core import libmpv, macwin
 from core.power import KeepAwake
 
 from . import festive, theme
@@ -231,6 +231,25 @@ def _icon(p: QPainter, kind: str, c: QPointF, s: float, color: QColor) -> None:
             arm = -0.4 * h if out else 0.4 * h
             p.drawLine(corner, corner + QPointF(sx * arm, 0))
             p.drawLine(corner, corner + QPointF(0, sy * arm))
+    elif kind in ("popout", "popin"):
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.setPen(pen)
+        frame = QPainterPath()
+        frame.moveTo(h * 0.1, -h * 0.75)
+        frame.lineTo(-h * 0.8, -h * 0.75)
+        frame.lineTo(-h * 0.8, h * 0.75)
+        frame.lineTo(h * 0.8, h * 0.75)
+        frame.lineTo(h * 0.8, -h * 0.1)
+        p.drawPath(frame)
+        a, b = QPointF(-h * 0.15, h * 0.15), QPointF(h * 0.85, -h * 0.85)
+        if kind == "popin":
+            a, b = b, a
+        p.drawLine(a, b)
+        d = QPointF(b.x() - a.x(), b.y() - a.y())
+        n = math.hypot(d.x(), d.y()) or 1
+        ux, uy = d.x() / n, d.y() / n
+        for side in (1, -1):
+            p.drawLine(b, b - QPointF(ux * h * 0.45 - side * uy * h * 0.3, uy * h * 0.45 + side * ux * h * 0.3))
     elif kind == "list":
         p.setBrush(Qt.BrushStyle.NoBrush)
         p.setPen(pen)
@@ -297,7 +316,7 @@ class PlayerControls(QWidget):
 
     def set_paused(self, paused: bool) -> None:
         self.paused = paused
-        wanted = paused and theme.HOLIDAY and festive_on("player_snow") and self.mode != "mini"
+        wanted = paused and theme.HOLIDAY and festive_on("player_snow") and self.mode not in ("mini", "pop")
         if wanted and not reduce_motion():
             self._snow.start()
         else:
@@ -330,7 +349,7 @@ class PlayerControls(QWidget):
         self._hide.start()
 
     def _auto_hide(self) -> None:
-        if self.keep_visible() or (self.underMouse() and self.mode == "mini"):
+        if self.keep_visible() or (self.underMouse() and self.mode in ("mini", "pop")):
             self._hide.start()
             return
         self._set_shown(False)
@@ -377,7 +396,7 @@ class PlayerControls(QWidget):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         self._hits = {}
         r = QRectF(self.rect())
-        mini = self.mode == "mini"
+        mini = self.mode in ("mini", "pop")
         if theme.HOLIDAY and self.mode != "full":
             self._snow_cap(p, r)
         if self.flakes:
@@ -393,11 +412,11 @@ class PlayerControls(QWidget):
             p.setOpacity(a)
             self._paint_controls(p, r, mini)
             p.restore()
-        if self.skip_label and not mini:
+        if self.skip_label and self.mode != "mini":
             self._paint_skip(p, r)
         if self.countdown is not None:
             self._paint_up_next(p, r, mini)
-        if self.message and not mini:
+        if self.message and self.mode != "mini":
             self._paint_message(p, r)
         if theme.HOLIDAY and self.mode == "theater" and festive_on("player_bow"):
             self._bow(p, r)
@@ -449,9 +468,25 @@ class PlayerControls(QWidget):
         pad = 16 if not mini else 10
         cap = 10 if theme.HOLIDAY and self.mode != "full" else 0
         if mini:
-            self._button(p, "expand", QPointF(r.left() + 18, r.top() + 20 + cap / 2), 16, white)
-            self._button(p, "close", QPointF(r.right() - 18, r.top() + 20 + cap / 2), 14, white)
-            self._button(p, "play", r.center(), 34, white, "pause" if not self.paused else "play", circle=True)
+            top = r.top() + 20 + cap / 2
+            if self.mode == "pop":
+                self._button(p, "popin", QPointF(r.left() + 20, top), 16, white)
+                if r.width() >= 380:
+                    p.setFont(theme.font(12, QFont.Weight.DemiBold))
+                    p.setPen(muted)
+                    title = QRectF(r.left() + 44, top - 10, r.width() - 88, 20)
+                    p.drawText(title, Qt.AlignmentFlag.AlignCenter, p.fontMetrics().elidedText(
+                        self.title, Qt.TextElideMode.ElideRight, int(title.width())))
+            else:
+                self._button(p, "expand", QPointF(r.left() + 18, top), 16, white)
+                self._button(p, "popout", QPointF(r.right() - 52, top), 16, white)
+            self._button(p, "close", QPointF(r.right() - 18, top), 14, white)
+            big = 34 if r.width() < 420 else 42
+            self._button(p, "play", r.center(), big, white, "pause" if not self.paused else "play", circle=True)
+            if self.mode == "pop" and r.width() >= 300:
+                gap = big * 1.9
+                self._button(p, "back10", r.center() - QPointF(gap, 0), 24, white)
+                self._button(p, "fwd10", r.center() + QPointF(gap, 0), 24, white)
         else:
             back_w = self._back_chip(p, r, cap, 1.0)
             p.setFont(theme.font(13, QFont.Weight.DemiBold))
@@ -510,8 +545,8 @@ class PlayerControls(QWidget):
         p.drawText(QRectF(x - 6, y - 10, 160, 20), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
                    f"{fmt_time(self.position)} / {fmt_time(self.duration)}")
         x = r.right() - pad - 10
-        for name, icon in (("full", "unfull" if self.mode == "full" else "full"), ("mini", "pip"), ("menu", "gear"),
-                           ("list", "list")):
+        for name, icon in (("full", "unfull" if self.mode == "full" else "full"), ("popout", "popout"),
+                           ("mini", "pip"), ("menu", "gear"), ("list", "list")):
             self._button(p, name, QPointF(x, y), 20, white, icon)
             x -= 40
 
@@ -697,6 +732,8 @@ class PlayerControls(QWidget):
 
     def leaveEvent(self, _e) -> None:
         self.hover = ""
+        if self.mode == "pop" and not self.keep_visible():
+            self._set_shown(False)             # the floating window shows only the picture until you point at it
         self.update()
 
     def mousePressEvent(self, e) -> None:
@@ -716,8 +753,8 @@ class PlayerControls(QWidget):
             self.skip.emit()
         elif hit.startswith("upnext:"):
             self.upNext.emit(hit == "upnext:play")
-        elif self.mode == "mini":
-            self._press = e.globalPosition()           # a drag moves it, a click opens the show
+        elif self.mode in ("mini", "pop"):
+            self._press = e.globalPosition()           # a drag moves it; a click opens the show (or pauses)
             self._moved = False
         elif not was_hidden:
             self.action.emit("play")         # click the picture: pause / play
@@ -726,11 +763,17 @@ class PlayerControls(QWidget):
         self.dragging = False
         if getattr(self, "_press", None) is not None:
             if not self._moved:
-                self.action.emit("expand")
+                self.action.emit("play" if self.mode == "pop" else "expand")
+            elif self.mode == "pop":
+                self.action.emit("moved")
             self._press = None
 
     def mouseDoubleClickEvent(self, e) -> None:
-        if not self._hit(e.position()) and self.mode != "mini":
+        if self._hit(e.position()):
+            return
+        if self.mode == "pop":
+            self.action.emit("popin")          # double-click the floating video: back into AniGUI
+        elif self.mode != "mini":
             self.action.emit("full")
 
 
@@ -743,6 +786,89 @@ _prefs: dict[str, bool] = {}
 
 
 # -- the host -----------------------------------------------------------------------------------------
+
+# -- the pop-out window ---------------------------------------------------------------------
+
+POP_MIN_W = 288
+POP_DEFAULT_W = 480
+
+
+def clamp_to_screen(rect: QRect) -> QRect:
+    """Keep the floating video whole on a screen (the one its middle is on)."""
+    screen = QGuiApplication.screenAt(rect.center()) or QGuiApplication.primaryScreen()
+    if screen is None:
+        return rect
+    area = screen.availableGeometry()
+    w = max(POP_MIN_W, min(rect.width(), area.width()))
+    h = round(w * 9 / 16)
+    if h > area.height():
+        h = area.height()
+        w = round(h * 16 / 9)
+    x = max(area.left(), min(area.right() - w + 1, rect.x()))
+    y = max(area.top(), min(area.bottom() - h + 1, rect.y()))
+    return QRect(x, y, w, h)
+
+
+class PopOutWindow(QWidget):
+    """The video in its own small window, above every app (and every Space on a Mac), so you
+    can watch while you do something else. Drag it anywhere; pull a corner to resize."""
+
+    closing = Signal()
+
+    def __init__(self) -> None:
+        super().__init__(None, Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint
+                         | Qt.WindowType.WindowStaysOnTopHint)
+        self.setWindowTitle("AniGUI")
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
+        self.setStyleSheet("background: #000000;")
+        self.setMinimumSize(POP_MIN_W, round(POP_MIN_W * 9 / 16))
+        self.floating = False
+
+    def showEvent(self, e) -> None:
+        super().showEvent(e)
+        if not self.floating and QGuiApplication.platformName() == "cocoa":   # (a real Mac window)
+            self.floating = macwin.float_everywhere(int(self.winId()))
+
+    def closeEvent(self, e) -> None:
+        e.ignore()                 # ⌘W: close the player, not just its window
+        self.closing.emit()
+
+
+class _Grip(QWidget):
+    """A corner of the pop-out: pull it to resize (the picture stays 16:9)."""
+
+    resized = Signal()
+
+    def __init__(self, corner: tuple[int, int], parent: QWidget) -> None:
+        super().__init__(parent)
+        self.corner = corner
+        self.setFixedSize(16, 16)
+        diag = corner in ((1, 1), (-1, -1))
+        self.setCursor(Qt.CursorShape.SizeFDiagCursor if diag else Qt.CursorShape.SizeBDiagCursor)
+        self._start: tuple[QPointF, QRect] | None = None
+
+    def mousePressEvent(self, e) -> None:
+        if e.button() == Qt.MouseButton.LeftButton:
+            self._start = (e.globalPosition(), self.window().geometry())
+
+    def mouseMoveEvent(self, e) -> None:
+        if self._start is None:
+            return
+        origin, geo = self._start
+        sx, sy = self.corner
+        d = e.globalPosition() - origin
+        grow = max(d.x() * sx, d.y() * sy * 16 / 9)
+        w = max(POP_MIN_W, round(geo.width() + grow))
+        h = round(w * 9 / 16)
+        x = geo.right() - w + 1 if sx < 0 else geo.left()      # the opposite corner stays put
+        y = geo.bottom() - h + 1 if sy < 0 else geo.top()
+        self.window().setGeometry(clamp_to_screen(QRect(x, y, w, h)))
+
+    def mouseReleaseEvent(self, _e) -> None:
+        if self._start is not None:
+            self._start = None
+            self.resized.emit()
+
 
 class PlayerHost(QWidget):
     """Floats above the pages and places the video where it belongs."""
@@ -778,6 +904,13 @@ class PlayerHost(QWidget):
         self._tracks: list[dict] = []
         self._speed = 1.0
         self._was_maximized = False
+        self.home = parent                    # where I live when not popped out
+        self.popout: PopOutWindow | None = None
+        self.grips: list[_Grip] = []
+        # A new player starting soon after a popped-out one stopped (dub, another episode)
+        # goes straight back out
+        self._repop = QTimer(self, singleShot=True, interval=5000)
+        self._user_closing = False
         self.hide()
         self._refresh_prefs()
         ctx.events.changed.connect(lambda key, _v: key.startswith("player_") and self._refresh_prefs())
@@ -806,6 +939,9 @@ class PlayerHost(QWidget):
         if self.mode in ("hidden",):
             self.mode = "pending"
         self.place()
+        if self._repop.isActive():
+            self._repop.stop()
+            self.pop_out()
 
     def attach(self, session) -> None:
         """The playback session for this video: its control socket drives the controls."""
@@ -857,6 +993,11 @@ class PlayerHost(QWidget):
         self.awake.release()
         if self.mode == "full":
             self._leave_full()
+        if self.mode == "pop":
+            self.pop_in()
+            if not self._user_closing:
+                self._repop.start()
+        self._user_closing = False
         self.stop_engine()
         self.session = None
         self.mode = "hidden"
@@ -864,6 +1005,8 @@ class PlayerHost(QWidget):
         self.closed.emit()
 
     def close_player(self) -> None:
+        self._user_closing = True
+        self._repop.stop()
         if self.session is not None and not self.session.closed:
             self.session.close()            # saves; ended → stop()
         else:
@@ -957,6 +1100,12 @@ class PlayerHost(QWidget):
             self.toggle_drawer()
         elif name == "expand":
             self.expandRequested.emit()
+        elif name == "popout":
+            self.pop_out()
+        elif name == "popin":
+            self.pop_in(show_app=True)
+        elif name == "moved":
+            self._save_popout()
         elif name == "close":
             self.close_player()
         elif name == "full":
@@ -987,8 +1136,10 @@ class PlayerHost(QWidget):
             self._cmd("set_property", "volume", max(0.0, self._volume - 5))
         elif key == Qt.Key.Key_M:
             self._action("mute")
-        elif key == Qt.Key.Key_F:
+        elif key == Qt.Key.Key_F and self.mode != "pop":
             self._action("full")
+        elif key == Qt.Key.Key_P:
+            self.pop_in(show_app=True) if self.mode == "pop" else self.pop_out()
         elif key == Qt.Key.Key_N:
             self._action("next")
         elif key == Qt.Key.Key_E:
@@ -1069,6 +1220,8 @@ class PlayerHost(QWidget):
         """theater | mini | full. A forced mini sticks until you go back to the show."""
         if mode == self.mode:
             return
+        if self.mode == "pop":
+            self.pop_in()
         if self.mode == "full" and mode != "full":
             self._leave_full()
         if mode == "full":
@@ -1092,6 +1245,23 @@ class PlayerHost(QWidget):
         if self.video is None:
             self.hide()
             return
+        if self.mode == "pop" and self.popout is not None:
+            inner = self.popout.rect()
+            self.setGeometry(inner)
+            self.video.setGeometry(inner)
+            self.controls.setGeometry(inner)
+            self.controls.mode = "pop"
+            self.drawer.hide()
+            for g in self.grips:
+                sx, sy = g.corner
+                g.move(inner.right() - g.width() + 1 if sx > 0 else 0, inner.bottom() - g.height() + 1 if sy > 0 else 0)
+                g.show()
+                g.raise_()
+            self.show()
+            self.video.show()
+            return
+        for g in self.grips:
+            g.hide()
         parent = self.parentWidget()
         target = None
         slot = self.slot() if self.slot else None
@@ -1156,7 +1326,79 @@ class PlayerHost(QWidget):
         self.drawer.setVisible(show)
 
     def _drag_mini(self, delta: QPointF) -> None:
+        if self.mode == "pop" and self.popout is not None:
+            geo = self.popout.geometry()
+            self.popout.setGeometry(clamp_to_screen(geo.translated(int(delta.x()), int(delta.y()))))
+            return
         if self.mode != "mini":
             return
         self.mini_pos = QPointF(self.pos()) + delta
         self.place()
+
+    # -- the pop-out window ------------------------------------------------------------------
+
+    def pop_out(self) -> None:
+        """Move the video into its own floating window."""
+        if self.video is None or self.mode == "pop":
+            return
+        if self.mode == "full":
+            self._leave_full()
+        if self.popout is None:
+            self.popout = PopOutWindow()
+            self.popout.closing.connect(self.close_player)
+            self.grips = [_Grip(c, self) for c in ((-1, -1), (1, -1), (1, 1), (-1, 1))]
+            for g in self.grips:
+                g.resized.connect(self._save_popout)
+            self.popout.installEventFilter(self)
+        self.popout.setGeometry(self._popout_rect())
+        self.setParent(self.popout)
+        self.drawer_open = False
+        self._set_mode_quiet("pop")
+        self.popout.show()
+        self.place()
+        self.setFocus()
+        self.controls.poke()
+
+    def pop_in(self, show_app: bool = False) -> None:
+        """Back into AniGUI's window (where it was: the show page, or the corner)."""
+        if self.mode != "pop":
+            return
+        self._repop.stop()
+        self._save_popout()
+        self.setParent(self.home)
+        for g in self.grips:
+            g.hide()
+        self.mode = "pending"
+        self.forced_mini = False
+        if self.popout is not None:
+            self.popout.hide()
+        self.place()
+        if self.mode == "pending":
+            self._set_mode_quiet("mini")
+        if show_app:
+            win = self.home.window()
+            win.showNormal() if win.isMinimized() else None
+            win.raise_()
+            win.activateWindow()
+            self.expandRequested.emit()
+
+    def _popout_rect(self) -> QRect:
+        saved = self.ctx.pref("popout_rect")
+        if isinstance(saved, (list, tuple)) and len(saved) == 3:
+            x, y, w = (int(v) for v in saved)
+            return clamp_to_screen(QRect(x, y, w, round(w * 9 / 16)))
+        screen = QGuiApplication.screenAt(self.home.window().geometry().center()) or QGuiApplication.primaryScreen()
+        area = screen.availableGeometry() if screen else QRect(0, 0, 1440, 900)
+        w = POP_DEFAULT_W
+        h = round(w * 9 / 16)
+        return clamp_to_screen(QRect(area.right() - w - 24, area.bottom() - h - 24, w, h))
+
+    def _save_popout(self) -> None:
+        if self.popout is not None and self.popout.isVisible():
+            g = self.popout.geometry()
+            self.ctx.set_pref("popout_rect", [g.x(), g.y(), g.width()])
+
+    def eventFilter(self, obj, event) -> bool:
+        if obj is self.popout and event.type() == QEvent.Type.Resize and self.mode == "pop":
+            self.place()
+        return False

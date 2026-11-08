@@ -145,6 +145,9 @@ class MainWindow(QMainWindow):
         self.player_host.closed.connect(self._sync_theater)
         self.player_host.expandRequested.connect(self._expand_player)
         self.player_host.backRequested.connect(self._player_back)
+        self.player_host.modeChanged.connect(lambda m: self.detail.theater.slot.set_popped(m == "pop"))
+        self.player_host.closed.connect(lambda: self.detail.theater.slot.set_popped(False))
+        self.detail.theater.slot.bringBack.connect(lambda: self.player_host.pop_in())
         self.player_host.set_drawer_content(self.detail.theater.rail)
         self.detail.theater.all_btn.clicked.connect(lambda: self.player_host.toggle_drawer(True))
         ctx.player.embed = self.player_host.start

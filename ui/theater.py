@@ -38,6 +38,7 @@ class VideoSlot(QWidget):
     height wins, mpv letterboxes the picture in the middle."""
 
     moved = Signal()
+    bringBack = Signal()   # clicked while the video is popped out
     RESERVE = 170          # the title row and the top of the episode strip stay in view
 
     def __init__(self, parent=None) -> None:
@@ -66,8 +67,38 @@ class VideoSlot(QWidget):
         super().moveEvent(e)
         self.moved.emit()
 
+    def set_popped(self, on: bool) -> None:
+        """The video is in its own floating window: say so here, and a click brings it back."""
+        self.popped = on
+        self.setCursor(Qt.CursorShape.PointingHandCursor if on else Qt.CursorShape.ArrowCursor)
+        self.update()
+
+    def mousePressEvent(self, e) -> None:
+        if getattr(self, "popped", False) and e.button() == Qt.MouseButton.LeftButton:
+            self.bringBack.emit()
+        super().mousePressEvent(e)
+
     def paintEvent(self, _e) -> None:
-        QPainter(self).fillRect(self.rect(), QColor("#000000"))
+        p = QPainter(self)
+        p.fillRect(self.rect(), QColor("#000000"))
+        if getattr(self, "popped", False):
+            p.setRenderHint(QPainter.RenderHint.Antialiasing)
+            c = QPointF(self.rect().center())
+            # a small window with an arrow out of it
+            p.setPen(QPen(QColor(255, 255, 255, 150), 2))
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            p.drawRoundedRect(QRectF(c.x() - 26, c.y() - 52, 52, 34), 5, 5)
+            p.setBrush(QColor(theme.ACCENT))
+            p.setPen(Qt.PenStyle.NoPen)
+            p.drawRoundedRect(QRectF(c.x() + 2, c.y() - 36, 22, 15), 3, 3)
+            p.setPen(QColor(theme.TEXT))
+            p.setFont(theme.font(17, QFont.Weight.Bold))
+            p.drawText(QRectF(0, c.y() - 6, self.width(), 26), Qt.AlignmentFlag.AlignCenter,
+                       "Playing in the pop-out window")
+            p.setPen(QColor(theme.MUTED))
+            p.setFont(theme.font(13, QFont.Weight.DemiBold))
+            p.drawText(QRectF(0, c.y() + 22, self.width(), 22), Qt.AlignmentFlag.AlignCenter,
+                       "Click to bring it back here")
 
 
 class Lights(QWidget):
