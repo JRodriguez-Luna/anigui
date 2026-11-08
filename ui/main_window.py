@@ -25,6 +25,7 @@ from .detail_page import DetailPage
 from .home_page import HomePage
 from .icons import nav_icon
 from . import theme
+from .cinema import Ambient
 from .festive import ChristmasCard, CountdownChip, Fireworks, Flurry, SidebarLights, first_name, greeting_lines
 from .motion import reduce_motion
 from .holiday import Brand, holiday_icon
@@ -133,6 +134,8 @@ class MainWindow(QMainWindow):
         row.addWidget(sidebar)
         row.addWidget(content, 1)
         self.setCentralWidget(central)
+        # 2.0 Cinema: one backdrop behind everything, so artwork runs under the glass sidebar
+        self.ambient = Ambient(ctx.images, central, sidebar.width())
         self.toast = Toast(central)
         self.flurry = Flurry(central)
         self.fireworks = Fireworks(central)
@@ -151,6 +154,7 @@ class MainWindow(QMainWindow):
         self.detail.theater.slot.moved.connect(self.player_host.place)
         self.detail.verticalScrollBar().valueChanged.connect(lambda _v: self.player_host.place())
         self.stack.currentChanged.connect(lambda _i: self._sync_theater())
+        self._update_ambient()
         self.christmas_card = ChristmasCard(central)
         self.fireworks.raise_()
         self.countdown.clicked.connect(self.flurry.play)
@@ -381,6 +385,17 @@ class MainWindow(QMainWindow):
         playing = self._playing_show()
         self.detail.set_theater(playing is not None and self.detail.anime_id == playing)
         self.player_host.place()
+        self._update_ambient()
+
+    def _update_ambient(self) -> None:
+        """What the window's backdrop shows: this page's artwork, or the show's glow while watching."""
+        page = self.stack.currentWidget()
+        if page is self.home:
+            self.ambient.follow(self.home.hero, "band")
+        elif page is self.detail:
+            self.ambient.follow(self.detail.header, "glow" if self.detail.theater_on else "band")
+        else:
+            self.ambient.follow(None)
 
     def _player_slot(self):
         d = self.detail
@@ -410,11 +425,6 @@ class MainWindow(QMainWindow):
             if show is not None:
                 self.open_item(show)
         self._sync_theater()
-
-    def resizeEvent(self, event) -> None:
-        super().resizeEvent(event)
-        if hasattr(self, "player_host"):
-            self.player_host.place()
 
     # -- holiday theme --------------------------------------------------------------------
 
@@ -697,5 +707,7 @@ class MainWindow(QMainWindow):
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
+        if hasattr(self, "player_host"):
+            self.player_host.place()
         if self.toast.isVisible():
             self.toast.reposition()

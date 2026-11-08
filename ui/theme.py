@@ -42,18 +42,19 @@ def font(px: float, weight: QFont.Weight = QFont.Weight.Normal) -> QFont:
 STYLESHEET = f"""
 * {{ outline: none; }}
 QWidget {{ background: transparent; color: {TEXT}; font-size: 13px; }}
-QMainWindow, #Page, #PageBody {{ background: {BG}; }}
+QMainWindow {{ background: {BG}; }}
+#Page, #PageBody {{ background: transparent; }}   /* the window's backdrop (cinema.Ambient) shows through */
 QToolTip {{ background: {SURFACE_2}; color: {TEXT}; border: 1px solid {BORDER}; padding: 4px 8px; }}
 
 /* Sidebar */
-#Sidebar {{ background: {SIDEBAR}; border-right: 1px solid {BORDER}; }}
+#Sidebar {{ background: rgba(12, 12, 18, 0.62); border-right: 1px solid rgba(255, 255, 255, 0.07); }}
 #Brand {{ font-size: 21px; font-weight: 800; color: {TEXT}; padding: 4px 6px 18px 6px; }}
 #NavButton {{
     text-align: left; padding: 10px 14px; border: none; border-radius: {RADIUS}px;
-    color: {MUTED}; font-size: 14px; font-weight: 600;
+    background: transparent; color: {MUTED}; font-size: 14px; font-weight: 600;
 }}
-#NavButton:hover {{ background: {SURFACE}; color: {TEXT}; }}
-#NavButton:checked {{ background: {SURFACE_2}; color: {TEXT}; border-left: 3px solid {ACCENT}; }}
+#NavButton:hover {{ background: rgba(255, 255, 255, 0.07); color: {TEXT}; }}
+#NavButton:checked {{ background: rgba(255, 255, 255, 0.11); color: {TEXT}; border-left: 3px solid {ACCENT}; }}
 #SidebarFooter {{ color: {FAINT}; font-size: 11px; padding: 6px; }}
 #SidebarHeading {{ color: {FAINT}; font-size: 11px; font-weight: 800; letter-spacing: 1.5px; }}
 #Sidebar QComboBox {{ font-size: 12px; padding: 6px 10px; }}
@@ -121,7 +122,7 @@ QLineEdit#JumpBox {{
 QLineEdit#JumpBox:focus {{ border-color: {ACCENT}; }}
 #JumpError {{ color: #FF8A80; font-size: 12px; }}
 #FillerNote {{ color: #E9B44C; font-size: 13px; font-weight: 600; }}
-QWidget#StickyBar {{ background: rgba(14, 14, 20, 0.97); border-bottom: 1px solid {BORDER}; }}
+QWidget#StickyBar {{ background: rgba(14, 14, 20, 0.90); border-bottom: 1px solid rgba(255, 255, 255, 0.07); }}
 #StickyTitle {{ font-size: 15px; font-weight: 800; }}
 #MatureBadge {{ background: {MATURE}; color: #FFFFFF; font-size: 11px; font-weight: 800; padding: 2px 7px; border-radius: 5px; }}
 #ContentPill {{ background: {SURFACE_3}; color: #D6D6E0; font-size: 12px; padding: 3px 9px; border-radius: 6px; }}

@@ -180,6 +180,10 @@ def main() -> int:
     from ui.main_window import MainWindow
     from ui.theme import apply_theme
 
+    # One family of OpenGL contexts for every window: the video keeps its context when it
+    # moves into the pop-out window and back, so it plays straight through (2.0)
+    from PySide6.QtCore import QCoreApplication, Qt
+    QCoreApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
     app = QApplication(sys.argv)
     app.setApplicationName("AniGUI")
     app.setApplicationDisplayName("AniGUI")

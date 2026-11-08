@@ -67,18 +67,23 @@ class Backdrop(QWidget):
         self.fallback_url: str | None = None   # tall cover if there's no banner
         self.tint: QColor | None = None
         self.dim = 0.0                          # extra darkening, 0..1
+        self.ambient = None                     # cinema.Ambient, when it paints the art for us (2.0)
         images.loaded.connect(self._on_loaded)
 
     def set_image(self, url: str | None, fallback: str | None = None, tint: str | None = None) -> None:
         self.image_url, self.fallback_url = url, fallback
         self.tint = QColor(tint) if tint else None
+        if self.ambient is not None:
+            self.ambient.source_changed(self)
         self.update()
 
     def _on_loaded(self, url: str) -> None:
-        if url in (self.image_url, self.fallback_url):
+        if url in (self.image_url, self.fallback_url) and self.ambient is None:
             self.update()
 
     def paintEvent(self, _event) -> None:
+        if self.ambient is not None:
+            return      # the window's backdrop paints the art, edge to edge under the sidebar
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
         rect = QRectF(self.rect())

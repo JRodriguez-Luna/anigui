@@ -104,3 +104,40 @@ def test_sticky_bar_takes_you_back_to_the_video(win):
     assert d.sticky.where.text().startswith("▶ Playing episode 5")
     d.sticky.play.click()
     assert pump(lambda: bar.value() == 0)
+
+
+# -- the Cinema look ---------------------------------------------------------------------------
+
+def test_artwork_runs_under_the_sidebar(win):
+    amb = win.ambient
+    win.home.load_remote()
+    assert pump(lambda: win.home.hero.items)
+    assert amb.source is win.home.hero and amb.mode == "band"
+    assert win.home.hero.ambient is amb                 # the hero only holds the words now
+    band = amb.band_rect()
+    assert band.left() == 0 and band.width() == amb.width()   # edge to edge, under the sidebar
+    win.go(win.search)
+    assert amb.source is None and amb.mode == "none" and win.home.hero.ambient is None
+
+
+def test_show_page_backdrop_and_watching_glow(win):
+    amb = win.ambient
+    play_inside(win)
+    assert pump(lambda: amb.source is win.detail.header and amb.mode == "glow")
+    win.player_host.close_player()
+    assert pump(lambda: amb.mode == "band" and amb.source is win.detail.header)
+    url = "https://img.example/new-banner.jpg"
+    seen = []
+    amb.source_changed = lambda src: seen.append(src)      # the backdrop hears about new art
+    win.detail.header.set_image(url)
+    assert seen == [win.detail.header]
+
+
+def test_scrolling_moves_the_artwork(win):
+    amb = win.ambient
+    win.home.load_remote()
+    assert pump(lambda: win.home.hero.items)
+    top = amb.band_rect().top()
+    bar = win.home.verticalScrollBar()
+    bar.setValue(min(200, bar.maximum()))
+    assert pump(lambda: amb.band_rect().top() < top or bar.maximum() == 0)

@@ -82,18 +82,43 @@ class VideoView(QOpenGLWidget):
         self.mpv = libmpv.Mpv(options)          # opens the control socket right away
         self.url, self.tracks = url, list(tracks)
         self.renderer: libmpv.GlRenderer | None = None
+        self._gl_context = None
+        self._vid: str | None = None             # the video track, while between windows
         self.frameReady.connect(self.update, Qt.ConnectionType.QueuedConnection)
         self.wakeup.connect(self._drain, Qt.ConnectionType.QueuedConnection)
         self.mpv.on_wakeup(self.wakeup.emit)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
 
     def initializeGL(self) -> None:
+        # Moving the video to another window (the pop-out and back) gives it a new OpenGL
+        # context: the old renderer goes with the old context, and a new one is made here.
+        ctx = self.context()
+        if ctx is not None and ctx is not self._gl_context:
+            self._gl_context = ctx
+            ctx.aboutToBeDestroyed.connect(self._release_gl, Qt.ConnectionType.DirectConnection)
         if self.renderer is None and self.mpv.handle:
             self.renderer = libmpv.GlRenderer(self.mpv, libmpv.gl_proc_address())
             self.renderer.on_update(self.frameReady.emit)
             if self.url:
                 self.mpv.command("loadfile", self.url)   # only now: mpv needs somewhere to draw
                 self.url = ""
+            elif self._vid not in (None, "", "no"):
+                # mpv switched the picture off when the old renderer went away; switch it back on
+                try:
+                    self.mpv.set("vid", self._vid)
+                except libmpv.LibMpvError:
+                    self.mpv.set("vid", "auto")
+                self._vid = None
+
+    def _release_gl(self) -> None:
+        if self.renderer is None:
+            return
+        if self.mpv.handle:
+            self._vid = self.mpv.get("vid")
+        self.makeCurrent()
+        self.renderer.close()
+        self.doneCurrent()
+        self.renderer = None
 
     def paintGL(self) -> None:
         if self.renderer is not None:
