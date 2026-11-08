@@ -214,6 +214,21 @@ class Tween(QObject):
             self._timer.stop()
 
 
+_last_scroll = 0.0
+SCROLL_QUIET_S = 0.25
+
+
+def note_scroll() -> None:
+    """A page is scrolling (decorations hold still until it stops, so scrolling gets the Mac's
+    full attention: 2.0)."""
+    global _last_scroll
+    _last_scroll = time.monotonic()
+
+
+def scrolling() -> bool:
+    return time.monotonic() - _last_scroll < SCROLL_QUIET_S
+
+
 def shimmer_phase() -> float:
     """0..1, looping every 1.2 s: where the loading highlight is."""
     return (time.monotonic() % 1.2) / 1.2

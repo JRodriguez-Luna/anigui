@@ -8,7 +8,7 @@ import html
 from PySide6.QtCore import QPoint, QRect, QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import QAction, QDesktopServices, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
-    QApplication, QMessageBox, QButtonGroup, QHBoxLayout, QLabel, QMainWindow, QPushButton, QStackedWidget,
+    QApplication, QMessageBox, QButtonGroup, QHBoxLayout, QLabel, QMainWindow, QPushButton, QScrollArea, QStackedWidget,
     QVBoxLayout, QWidget,
 )
 
@@ -26,6 +26,7 @@ from .home_page import HomePage
 from .icons import nav_icon
 from . import theme
 from .cinema import Ambient
+from .fps import FrameMeter
 from .festive import ChristmasCard, CountdownChip, Fireworks, Flurry, SidebarLights, first_name, greeting_lines
 from .motion import reduce_motion
 from .holiday import Brand, holiday_icon
@@ -142,6 +143,7 @@ class MainWindow(QMainWindow):
         # The built-in player floats above the pages (on the show page, in the corner, or full screen)
         self.player_host = PlayerHost(ctx, central)
         self.player_host.slot = self._player_slot
+        self.player_host.slot_widget = lambda: self.detail.theater.slot
         self.player_host.closed.connect(self._sync_theater)
         self.player_host.expandRequested.connect(self._expand_player)
         self.player_host.backRequested.connect(self._player_back)
@@ -191,6 +193,9 @@ class MainWindow(QMainWindow):
 
         QShortcut(QKeySequence.StandardKey.Find, self, activated=lambda: (self.go(self.search), self.search.focus_search()))
         QShortcut(QKeySequence("Esc"), self, activated=self._escape)
+        # ⌘⌥F: a frame-rate readout, for checking smoothness on a real Mac
+        self.frame_meter = FrameMeter(self.centralWidget())
+        QShortcut(QKeySequence("Ctrl+Alt+F"), self, activated=self.frame_meter.toggle)
 
         self.alerts.changed.connect(self.home.refresh_local)
         self.alerts.found.connect(self._on_new_episodes)
@@ -393,6 +398,8 @@ class MainWindow(QMainWindow):
     def _update_ambient(self) -> None:
         """What the window's backdrop shows: this page's artwork, or the show's glow while watching."""
         page = self.stack.currentWidget()
+        body = page.widget() if isinstance(page, QScrollArea) else None
+        self.ambient.set_page(body)
         if page is self.home:
             self.ambient.follow(self.home.hero, "band")
         elif page is self.detail:
@@ -408,7 +415,10 @@ class MainWindow(QMainWindow):
         slot = d.theater.slot
         rect = QRect(slot.mapTo(central, QPoint(0, 0)), slot.size())
         vp = d.viewport()
-        return rect, QRect(vp.mapTo(central, QPoint(0, 0)), vp.size())
+        visible = QRect(vp.mapTo(central, QPoint(0, 0)), vp.size())
+        if d._bar_room:                                   # (the bar's strip counts as on screen)
+            visible.setTop(visible.top() - d.sticky.height())
+        return rect, visible
 
     def _player_back(self) -> None:
         """The player's Back: leave the show page (the episode keeps playing in the corner)."""

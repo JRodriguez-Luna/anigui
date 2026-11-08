@@ -15,7 +15,8 @@ from PySide6.QtWidgets import (
 
 from . import festive, theme
 from .holiday import SnowLayer
-from .motion import reduce_motion
+from .paintcache import CARDS
+from .motion import reduce_motion, scrolling
 from .widgets import Combo, PosterWidget, WrapLabel
 
 RAIL_W = 300
@@ -123,6 +124,8 @@ class Lights(QWidget):
         self._timer.stop()
 
     def _step(self) -> None:
+        if scrolling():
+            return
         self.t += 0.09
         self.update()
 
@@ -430,9 +433,20 @@ class StripDelegate(QStyledItemDelegate):
         if not item:
             return
         r = QRectF(option.rect)
+        hover = bool(option.state & QStyle.StateFlag.State_MouseOver)
+        try:
+            key = ("strip", tuple(sorted(item.items())))
+            hash(key)
+        except TypeError:
+            key = None
+        if hover or key is None:
+            self._draw(p, r, item, hover)
+            return
+        CARDS.draw(p, r, key, lambda q, rr: self._draw(q, rr, item, False))
+
+    def _draw(self, p: QPainter, r: QRectF, item: dict, hover: bool) -> bool:
         thumb = QRectF(r.left() + 6, r.top() + 2, self.W, self.H)
         now = item.get("playing")
-        hover = bool(option.state & QStyle.StateFlag.State_MouseOver)
         p.save()
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         clip = QPainterPath()
@@ -442,6 +456,7 @@ class StripDelegate(QStyledItemDelegate):
         p.fillRect(thumb, QColor(theme.SURFACE_3))
         pm = self.images.pixmap(item.get("still"), int(thumb.width()), int(thumb.height())) if (
             self.images and item.get("still")) else None
+        final = pm is not None or not item.get("still")
         if pm is not None:
             p.drawPixmap(thumb.toRect(), pm)
         else:
@@ -471,6 +486,7 @@ class StripDelegate(QStyledItemDelegate):
         p.drawText(QRectF(thumb.left(), thumb.bottom() + 5, thumb.width(), 16), Qt.AlignmentFlag.AlignLeft,
                    p.fontMetrics().elidedText(text, Qt.TextElideMode.ElideRight, int(thumb.width())))
         p.restore()
+        return final
 
 
 class EpisodeStrip(QListView):

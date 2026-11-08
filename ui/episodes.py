@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 
 from . import festive, theme
 from .images import ImageLoader
+from .paintcache import CARDS
 
 EP_ROLE = Qt.ItemDataRole.UserRole + 2
 PER_PAGE = 100          # shows with more episodes than this get page tabs
@@ -184,6 +185,13 @@ class EpisodeDelegate(QStyledItemDelegate):
             self._paint_upcoming(p, r, item)
             return
         hover = bool(option.state & QStyle.StateFlag.State_MouseOver)
+        if hover or item.busy:
+            self._draw(p, r, item, hover)
+            return
+        key = ("episode", item, self.W, self.tile_color.name(), self.tile_art)
+        CARDS.draw(p, r, key, lambda q, rr: self._draw(q, rr, item, False), margin=2)
+
+    def _draw(self, p: QPainter, r: QRectF, item: EpisodeItem, hover: bool) -> bool:
         watched = item.state == "watched"
         lit = item.up_next or item.playing or bool(item.busy)
         p.save()
@@ -203,8 +211,9 @@ class EpisodeDelegate(QStyledItemDelegate):
             p.setOpacity(0.8)      # fillers step back a little so story episodes stand out
         pm = self.images.pixmap(item.still, self.W - 2, self.STILL_H - 1) if (self.images and item.still) else None
         fade = self.images.alpha(item.still) if pm is not None else 1.0
+        final = (pm is not None and fade >= 1) or not item.still
         if pm is None or fade < 1:
-            self._tile(p, still, item.number)
+            final = self._tile(p, still, item.number) and final
         if pm is not None:
             base = p.opacity()
             p.setOpacity(base * fade)
@@ -258,9 +267,11 @@ class EpisodeDelegate(QStyledItemDelegate):
         inset = pen.widthF() / 2
         p.drawRoundedRect(r.adjusted(inset, inset, -inset, -inset), self.RADIUS, self.RADIUS)
         p.restore()
+        return final
 
-    def _tile(self, p: QPainter, rect: QRectF, number: str) -> None:
-        """No still for this episode: the show's banner, darkened, with the episode number."""
+    def _tile(self, p: QPainter, rect: QRectF, number: str) -> bool:
+        """No still for this episode: the show's banner, darkened, with the episode number.
+        False while the banner is still on its way."""
         base = QColor(self.tile_color)
         art = self.images.pixmap(self.tile_art, self.W - 2, self.STILL_H - 1) if (self.images and self.tile_art) else None
         if art is not None:
@@ -272,6 +283,7 @@ class EpisodeDelegate(QStyledItemDelegate):
             p.setPen(base.lighter(150) if base.lightness() < 140 else base)
         p.setFont(self.big)
         p.drawText(rect, Qt.AlignmentFlag.AlignCenter, number)
+        return art is not None or not (self.images and self.tile_art)
 
     def _paint_upcoming(self, p: QPainter, r: QRectF, item: EpisodeItem) -> None:
         """A faded card with a dashed border: the next episode and when it airs."""

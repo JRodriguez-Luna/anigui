@@ -211,7 +211,7 @@ def test_bring_it_back(win):
     host = pop(win)
     win.detail.theater.slot.bringBack.emit()
     assert pump(lambda: host.mode == "theater" and not host.popout.isVisible())
-    assert host.parentWidget() is win.centralWidget()
+    assert host.parentWidget() is win.detail.theater.slot            # back in the page
     assert not win.detail.theater.slot.popped
     assert win.playback.session.alive
 
@@ -227,7 +227,7 @@ def test_closing_the_pop_out_stops_the_player(win):
     host = pop(win)
     host.popout.close()                                # ⌘W on the floating window
     assert pump(lambda: not host.active and not host.popout.isVisible(), 8)
-    assert host.parentWidget() is win.centralWidget()
+    assert host.parentWidget() is not host.popout
 
 
 def test_remembers_where_you_put_it(win):
@@ -276,3 +276,89 @@ def test_snow_repaints_only_where_flakes_move(win):
     snow._step()
     assert areas and areas[0] < 1200 * 800 * 0.05     # a few dozen flakes, not the whole page
     host.close()
+
+
+def test_video_is_part_of_the_page_while_watching(win):
+    play_inside(win)
+    host = win.player_host
+    assert pump(lambda: host.mode == "theater")
+    slot = win.detail.theater.slot
+    assert host.parentWidget() is slot and host.geometry() == slot.rect()   # scrolls with the page
+    sb = win.detail.verticalScrollBar()
+    sb.setValue(sb.maximum())
+    assert pump(lambda: host.mode == "mini" and host.parentWidget() is win.centralWidget())
+    sb.setValue(0)
+    assert pump(lambda: host.mode == "theater" and host.parentWidget() is slot)
+
+
+def test_popping_out_doesnt_scroll_the_page(win):
+    host = pop(win)
+    assert win.detail.verticalScrollBar().value() == 0
+    host._action("popin")
+    assert pump(lambda: host.mode == "theater")
+    assert win.detail.verticalScrollBar().value() == 0
+
+
+def test_sticky_bar_has_its_own_strip(win):
+    play_inside(win)
+    d = win.detail
+    win.resize(1100, 640)
+    pump(lambda: False, 0.3)
+    sb = d.verticalScrollBar()
+    sb.setValue(sb.maximum())
+    assert pump(lambda: d.sticky.isVisible() and d._bar_room)
+    assert d.viewportMargins().top() == d.sticky.height()                   # not over the page
+    assert d.sticky.geometry().bottom() < d.viewport().geometry().top()
+
+
+# -- smoother scrolling ------------------------------------------------------------------------
+
+def test_cards_are_drawn_once_then_copied(win):
+    from ui.paintcache import CARDS
+    win.home.load_remote()
+    row = win.home.trending_row
+    assert pump(lambda: row.model().cards())
+    pump(lambda: False, 1.5)                                   # covers arrive and finish fading in
+    vp = row.view.viewport()
+    vp.repaint()
+    before = (CARDS.hits, CARDS.misses)
+    vp.repaint()
+    assert CARDS.hits > before[0] and CARDS.misses == before[1]   # copied, not drawn again
+
+
+def test_pages_paint_their_own_backdrop(win):
+    body = win.home.widget()
+    assert win.ambient.page_body is body
+    assert body.testAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent)   # so scrolling can reuse it
+    win.go(win.stats)
+    assert win.ambient.page_body is win.stats.widget()
+
+
+def test_decorations_hold_still_while_scrolling(win):
+    from ui import motion
+    from ui.holiday import SnowLayer
+    from PySide6.QtWidgets import QWidget
+    host = QWidget()
+    host.resize(400, 300)
+    host.show()
+    snow = SnowLayer(host, flakes=10)
+    snow.start()
+    snow._step()
+    where = [list(f) for f in snow.flakes]
+    motion.note_scroll()
+    snow._step()
+    assert [list(f) for f in snow.flakes] == where             # paused
+    motion._last_scroll = 0.0
+    snow._step()
+    assert [list(f) for f in snow.flakes] != where
+    host.close()
+
+
+def test_frame_rate_readout(win):
+    m = win.frame_meter
+    assert m.isHidden()
+    m.toggle()
+    assert pump(lambda: m.fps > 0, 3)
+    assert "fps" in m.text() and "slowest frame" in m.text()
+    m.toggle()
+    assert m.isHidden() and not m._tick.isActive()

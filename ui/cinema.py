@@ -13,12 +13,12 @@ Scenes:
 from __future__ import annotations
 
 from PySide6.QtCore import QEvent, QObject, QPoint, QPointF, QRect, QRectF, Qt, QVariantAnimation
-from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPixmap, QRadialGradient
+from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPixmap, QRadialGradient, QRegion
 from PySide6.QtWidgets import QAbstractScrollArea, QWidget
 
 from . import theme
 from .images import ImageLoader
-from .motion import reduce_motion
+from .motion import note_scroll, reduce_motion
 
 BUCKET = 320         # ask for pictures in width steps so resizing doesn't refetch constantly
 FADE_MS = 450
@@ -34,6 +34,19 @@ def _alpha(c: QColor, a: int) -> QColor:
     return out
 
 
+class _PageBacking(QObject):
+    """Paints the scene behind a page's content, inside the page itself."""
+
+    def __init__(self, ambient: "Ambient") -> None:
+        super().__init__(ambient)
+        self.ambient = ambient
+
+    def eventFilter(self, obj: QObject, event) -> bool:
+        if event.type() == QEvent.Type.Paint and obj is self.ambient.page_body:
+            self.ambient.paint_into(obj, event)
+        return False
+
+
 class Ambient(QWidget):
     def __init__(self, images: ImageLoader, parent: QWidget, sidebar_width: int = 208) -> None:
         super().__init__(parent)
@@ -43,7 +56,11 @@ class Ambient(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
         self.source = None            # a hero.Backdrop
         self.mode = "none"
-        self._scroll = None           # the source's scroll bar, while following it
+        self.page_body: QWidget | None = None    # the open page's scrolling content
+        self._backing = _PageBacking(self)
+        self._backed: set[int] = set()
+        self._scroll = None           # the open page's scroll bar
+        self._last_extent: QRectF | None = None
         self._prev: QPixmap | None = None
         self._fade_rect = QRect()
         self._layer: tuple[tuple, QPixmap] | None = None   # the scene, drawn once and then copied
@@ -58,6 +75,29 @@ class Ambient(QWidget):
 
     # -- scenes ----------------------------------------------------------------------------
 
+    def set_page(self, body: QWidget | None) -> None:
+        """The open page's content widget. It paints the scene behind itself and is opaque, so
+        scrolling can move what's already drawn instead of redrawing the page (2.0)."""
+        if body is self.page_body:
+            return
+        if self._scroll is not None:
+            try:
+                self._scroll.valueChanged.disconnect(self._moved)
+            except (RuntimeError, TypeError):
+                pass
+            self._scroll = None
+        self.page_body = body
+        if body is not None:
+            if id(body) not in self._backed:
+                self._backed.add(id(body))
+                body.installEventFilter(self._backing)
+                body.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
+            area = self._scroll_area(body)
+            if area is not None:
+                self._scroll = area.verticalScrollBar()
+                self._scroll.valueChanged.connect(self._moved)
+        self._refresh()
+
     def follow(self, source, mode: str = "band") -> None:
         """Paint `source`'s art (a hero.Backdrop), or nothing with source=None."""
         mode = mode if source is not None else "none"
@@ -67,27 +107,30 @@ class Ambient(QWidget):
         if self.source is not None and self.source is not source:
             self.source.ambient = None
             self.source.update()
-        if self._scroll is not None:
-            try:
-                self._scroll.valueChanged.disconnect(self._moved)
-            except (RuntimeError, TypeError):
-                pass
-            self._scroll = None
         self.source, self.mode = source, mode
         if source is not None:
             source.ambient = self
             source.update()
-            area = self._scroll_area(source)
-            if area is not None:
-                self._scroll = area.verticalScrollBar()
-                self._scroll.valueChanged.connect(self._moved)
-        self.update()
+        self._refresh()
 
     def source_changed(self, source) -> None:
         """The hero moved on to another show (or the show page got its banner)."""
         if source is self.source:
             self._snapshot()
+            self._refresh()
+
+    def _refresh(self, rect: QRect | None = None) -> None:
+        """Repaint the scene (in this window's coordinates), here and in the page."""
+        if rect is None:
             self.update()
+        else:
+            self.update(rect)
+        body = self.page_body
+        if body is not None and body.isVisible():
+            if rect is None:
+                body.update()
+            else:
+                body.update(rect.translated(-body.mapTo(self.parentWidget(), QPoint(0, 0))))
 
     @staticmethod
     def _scroll_area(w: QWidget):
@@ -98,12 +141,33 @@ class Ambient(QWidget):
         return None
 
     def _moved(self, _v=None) -> None:
-        self.update()
+        note_scroll()
+        self._moved_paint()
+
+    def _moved_paint(self) -> None:
+        """The page scrolled. The page moves its own pixels (the scene scrolls with it); only
+        the strips it doesn't cover (under the sidebar, the scroll bar) are painted here."""
+        # Only rows where the picture was or is now need it; plain background stays put
+        now = self._scene_extent()
+        rows = [r for r in (self._last_extent, now) if r is not None]
+        self._last_extent = now
+        if not rows:
+            return
+        dirty = QRegion()
+        for r in rows:
+            dirty += QRegion(QRect(0, int(r.top()) - 1, self.width(), int(r.height()) + 2))
+        body = self.page_body
+        if body is not None and body.isVisible():
+            area = self._scroll_area(body)
+            vp = area.viewport() if area is not None else body
+            shown = QRect(vp.mapTo(self.parentWidget(), QPoint(0, 0)), vp.size())
+            dirty -= QRegion(shown)
+        self.update(dirty)
 
     def _on_loaded(self, url: str) -> None:
         s = self.source
         if s is not None and url in (s.image_url, s.fallback_url):
-            self.update()
+            self._refresh()
 
     # -- the old scene fades out over the new one ------------------------------------------
 
@@ -116,7 +180,7 @@ class Ambient(QWidget):
         self._fade_rect = band.toAlignedRect().intersected(self.rect())
         if self._fade_rect.isEmpty():
             return
-        self._prev = self.grab(self._fade_rect)
+        self._prev = self._render_scene(self._fade_rect)
         self._prev_opacity = 1.0
         self._fade.stop()
         self._fade.start()
@@ -127,11 +191,11 @@ class Ambient(QWidget):
 
     def _fading(self, v) -> None:
         self._prev_opacity = float(v)
-        self.update(self._fade_rect)
+        self._refresh(self._fade_rect)
 
     def _faded(self) -> None:
         self._prev = None
-        self.update(self._fade_rect)
+        self._refresh(self._fade_rect)
 
     # -- geometry ------------------------------------------------------------------------
 
@@ -149,23 +213,59 @@ class Ambient(QWidget):
         top = s.mapTo(self.parentWidget(), QPoint(0, 0)).y()
         return QRectF(0, top, self.width(), s.height())
 
+    def scene_rect(self) -> QRectF | None:
+        """Where the scene's picture goes, in this window's coordinates. It's pinned to the
+        page (the hero's rows, or the top of the page), so it scrolls with the page."""
+        if self.mode == "band":
+            return self.band_rect()
+        top = 0
+        body = self.page_body
+        if body is not None and body.isVisible():
+            top = body.mapTo(self.parentWidget(), QPoint(0, 0)).y()
+        return QRectF(0, top, self.width(), self.height())
+
+    def _scene_extent(self) -> QRectF | None:
+        """The rows where the scene isn't plain background (None: it's plain everywhere)."""
+        if self.mode == "none" and not theme.HOLIDAY:
+            return None
+        rect = self.scene_rect()
+        if rect is None or rect.bottom() < 0 or rect.top() > self.height():
+            return None
+        return rect
+
     # -- painting ------------------------------------------------------------------------
+
+    def _paint_scene(self, p: QPainter, clip: QRect, offset: QPoint) -> None:
+        """The scene, for the part `clip` (window coordinates), drawn with `offset` subtracted."""
+        p.fillRect(clip.translated(-offset), QColor(theme.BG))
+        rect = self.scene_rect()
+        if rect is not None and rect.bottom() >= 0 and rect.width() > 0 and rect.height() > 0:
+            layer = self._layer_for(int(rect.width()), int(rect.height()))
+            p.drawPixmap(QPoint(int(rect.left()), int(rect.top())) - offset, layer)
+        if self._prev is not None and self._prev_opacity > 0:
+            p.setOpacity(self._prev_opacity)
+            p.drawPixmap(self._fade_rect.topLeft() - offset, self._prev)
+            p.setOpacity(1.0)
+
+    def _render_scene(self, rect: QRect) -> QPixmap:
+        dpr = self.devicePixelRatioF()
+        pm = QPixmap(max(1, int(rect.width() * dpr)), max(1, int(rect.height() * dpr)))
+        pm.setDevicePixelRatio(dpr)
+        p = QPainter(pm)
+        self._paint_scene(p, rect, rect.topLeft())
+        p.end()
+        return pm
 
     def paintEvent(self, event) -> None:
         p = QPainter(self)
-        bg = QColor(theme.BG)
-        if self.mode == "band":
-            rect = self.band_rect()
-            p.fillRect(event.rect(), bg)
-            if rect is not None and rect.bottom() >= 0:
-                layer = self._layer_for(int(rect.width()), int(rect.height()))
-                p.drawPixmap(0, int(rect.top()), layer)
-        else:
-            p.drawPixmap(0, 0, self._layer_for(self.width(), self.height()))
-        if self._prev is not None and self._prev_opacity > 0:
-            p.setOpacity(self._prev_opacity)
-            p.drawPixmap(self._fade_rect.topLeft(), self._prev)
-            p.setOpacity(1.0)
+        self._paint_scene(p, event.rect(), QPoint(0, 0))
+
+    def paint_into(self, widget: QWidget, event) -> None:
+        """Called while `widget` (the page's content) paints: the scene behind it."""
+        offset = widget.mapTo(self.parentWidget(), QPoint(0, 0))
+        p = QPainter(widget)
+        self._paint_scene(p, event.rect().translated(offset), offset)
+        p.end()
 
     def _layer_for(self, w: int, h: int) -> QPixmap:
         """The scene at this size. Drawing the art (scaled, blurred, with its fades) is slow;

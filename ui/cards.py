@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 )
 
 from . import festive, theme
+from .paintcache import CARDS
 from .images import ImageLoader
 from .motion import Ticker, Tween, reduce_motion, shimmer_phase
 
@@ -120,6 +121,16 @@ class CardDelegate(QStyledItemDelegate):
         hover = bool(option.state & QStyle.StateFlag.State_MouseOver) and not card.is_skeleton
         view = self.parent()
         lift = view.lift(index.row()) if hasattr(view, "lift") and not card.is_skeleton else 0.0
+        if card.is_skeleton or hover or lift > 0:
+            self._draw(p, QRectF(r), card, hover, lift, view)      # moving or lit up: draw it live
+            return
+        key = ("card", card.key, card.title, card.subtitle, card.cover, card.color, card.progress,
+               card.badge, card.mature, card.blur)
+        CARDS.draw(p, QRectF(r.x(), r.y(), self.W, self.H + self.TEXT_H), key,
+                   lambda q, rr: self._draw(q, rr, card, False, 0.0, view), margin=8)
+
+    def _draw(self, p: QPainter, r: QRectF, card: Card, hover: bool, lift: float, view) -> bool:
+        """Draw the card at r's top-left; True when it's final (its cover has arrived)."""
         poster = QRectF(r.x(), r.y() - 4 * lift, self.W, self.H)
 
         p.save()
@@ -132,6 +143,7 @@ class CardDelegate(QStyledItemDelegate):
         load = self.images.blurred if card.blur else self.images.pixmap
         pm = None if card.is_skeleton else load(card.cover, self.W, self.H)
         fade = self.images.alpha(card.cover) if pm is not None else 1.0
+        final = (pm is not None and fade >= 1) or not card.cover
         if pm is None or fade < 1:
             self._placeholder(p, poster, card)
         if pm is not None:
@@ -182,6 +194,7 @@ class CardDelegate(QStyledItemDelegate):
                 sub = p.fontMetrics().elidedText(card.subtitle, Qt.TextElideMode.ElideRight, self.W)
                 p.drawText(QRectF(r.x(), text_top + 19, self.W, 17), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, sub)
         p.restore()
+        return final
 
     def _placeholder(self, p: QPainter, rect: QRectF, card: Card) -> None:
         base = QColor(card.color) if card.color else QColor(theme.SURFACE_2)

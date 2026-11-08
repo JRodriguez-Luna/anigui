@@ -13,7 +13,7 @@ from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLay
 from core import holiday
 
 from . import theme
-from .motion import fade_in, fade_out, reduce_motion
+from .motion import fade_in, fade_out, reduce_motion, scrolling
 
 
 def is_on(ctx, today: dt.date | None = None) -> bool:
@@ -80,6 +80,8 @@ class SnowLayer(QWidget):
     def _step(self) -> None:
         if not self.isVisible():
             self._timer.stop()
+            return
+        if scrolling():
             return
         if not self.flakes:
             self._seed()
@@ -249,6 +251,8 @@ class _Decor(QWidget):
         super().hideEvent(event)
 
     def _step(self) -> None:
+        if scrolling():
+            return
         self.t += 0.04
         self.update()
 

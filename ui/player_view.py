@@ -17,7 +17,7 @@ import time
 
 from PySide6.QtCore import QEvent, QPoint, QPointF, QRect, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QCursor, QFont, QGuiApplication, QPainter, QPainterPath, QPen, QSurfaceFormat
-from PySide6.QtWidgets import QFrame, QMenu, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QApplication, QFrame, QMenu, QVBoxLayout, QWidget
 
 from core import libmpv, macwin
 from core.power import KeepAwake
@@ -912,6 +912,7 @@ class PlayerHost(QWidget):
         self.video: QWidget | None = None
         self.mode = "hidden"
         self.slot = None                 # callable -> (slot rect, visible rect) in my parent's coords, or None
+        self.slot_widget = None          # callable -> the page's video slot (I sit inside it on the show page)
         self.mini_pos: QPointF | None = None
         self.controls = PlayerControls(self)
         self.controls.action.connect(self._action)
@@ -1298,7 +1299,7 @@ class PlayerHost(QWidget):
             return
         for g in self.grips:
             g.hide()
-        parent = self.parentWidget()
+        parent = self.home
         target = None
         slot = self.slot() if self.slot else None
         if self.mode == "full":
@@ -1309,7 +1310,6 @@ class PlayerHost(QWidget):
             if shown.height() >= rect.height() * 0.35:
                 self._set_mode_quiet("theater")
                 target = rect
-                clip = shown
         if target is None and self.mode != "full":
             self._set_mode_quiet("mini")
             area = parent.rect()
@@ -1320,20 +1320,41 @@ class PlayerHost(QWidget):
                 x = max(area.left() + 8, min(area.right() - w - 8, self.mini_pos.x()))
                 y = max(area.top() + 8, min(area.bottom() - h - 8, self.mini_pos.y()))
             target = QRect(int(x), int(y), w, h)
-        if self.mode == "theater":
-            # Clip to the page's visible area: the part scrolled away isn't drawn
-            self.setGeometry(clip)
-            inner = QRect(target.left() - clip.left(), target.top() - clip.top(), target.width(), target.height())
+        holder = self.slot_widget() if (self.mode == "theater" and self.slot_widget) else None
+        if holder is not None:
+            # On the show page the video is part of the page (inside its slot), so it scrolls
+            # with it and nothing floats over the page: scrolling can reuse what's drawn (2.0)
+            moved = self._move_to(holder)
+            target = holder.rect()
         else:
-            self.setGeometry(target)
-            inner = QRect(0, 0, target.width(), target.height())
+            moved = self._move_to(self.home)
+        inner = QRect(0, 0, target.width(), target.height())
+        self.setGeometry(target)
         self.video.setGeometry(inner)
         self.controls.setGeometry(inner)
         self.controls.mode = self.mode
         self._place_drawer(inner)
-        self.show()
-        self.raise_()
-        self.video.show()
+        if moved or self.isHidden():
+            self.show()
+            self.raise_()
+            self.video.show()
+
+    def _move_to(self, parent: QWidget) -> bool:
+        if self.parentWidget() is parent:
+            return False
+        self._reparent(parent)
+        return True
+
+    def _reparent(self, parent: QWidget) -> None:
+        """Move the player (page, window corner, pop-out). Let go of the keyboard first: Qt
+        would hand it to the next thing on the page and scroll the page to show it."""
+        fw = QApplication.focusWidget()
+        had = fw is not None and (fw is self or self.isAncestorOf(fw))
+        if had:
+            fw.clearFocus()
+        self.setParent(parent)
+        if had:
+            self.setFocus()
 
     def _set_mode_quiet(self, mode: str) -> None:
         if self.mode != mode:
@@ -1388,7 +1409,7 @@ class PlayerHost(QWidget):
                 g.resized.connect(self._save_popout)
             self.popout.installEventFilter(self)
         self.popout.setGeometry(self._popout_rect())
-        self.setParent(self.popout)
+        self._reparent(self.popout)
         self.drawer_open = False
         self._set_mode_quiet("pop")
         self.popout.show()
@@ -1402,7 +1423,7 @@ class PlayerHost(QWidget):
             return
         self._repop.stop()
         self._save_popout()
-        self.setParent(self.home)
+        self._reparent(self.home)
         for g in self.grips:
             g.hide()
         self.mode = "pending"

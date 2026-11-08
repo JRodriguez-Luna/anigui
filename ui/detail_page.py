@@ -265,6 +265,8 @@ class DetailPage(QScrollArea):
         self.setWidget(body)
 
         self.sticky = StickyBar(ctx.images, self)
+        self._bar_room = False
+        self._adjusting = False
         self.sticky.back.clicked.connect(self.backRequested)
         self.sticky.play.clicked.connect(self._sticky_play)
         self.verticalScrollBar().valueChanged.connect(lambda _v: self._update_sticky())
@@ -365,7 +367,7 @@ class DetailPage(QScrollArea):
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
-        self.theater.slot.set_room(self.viewport().height())
+        self.theater.slot.set_room(self.height())      # (not the viewport: the bar's strip changes it)
         self._update_sticky()
 
     def _sticky_play(self) -> None:
@@ -374,18 +376,40 @@ class DetailPage(QScrollArea):
         elif self.play_target:
             self.play(self.play_target)
 
+    def _set_bar_room(self, on: bool) -> None:
+        """The bar gets its own strip above the page instead of floating over it: nothing on
+        top of the page lets the Mac reuse what's already drawn when you scroll (2.0). The
+        scroll position shifts by the same amount, so nothing on the page moves."""
+        if on == self._bar_room:
+            return
+        self._bar_room = on
+        h = self.sticky.height()
+        sb = self.verticalScrollBar()
+        v = sb.value()
+        self._adjusting = True
+        try:
+            self.setViewportMargins(0, h if on else 0, 0, 0)
+            sb.setValue(v + h if on else max(0, v - h))
+        finally:
+            self._adjusting = False
+
     def _update_sticky(self) -> None:
         """Show the bar once the big header (and its Back button) is out of view."""
+        if self._adjusting:
+            return
         bar = self.sticky
-        vp = self.viewport().geometry()
-        bar.setGeometry(vp.x(), vp.y(), vp.width(), bar.height())
+        room = bar.height() if self._bar_room else 0
+        top = self.verticalScrollBar().value() - room          # what's at the top of the window
         if self.theater_on:
             # Watching: once the video has scrolled away (it's in the corner now), the bar
             # keeps Back in reach and takes you back to the video
             slot = self.theater.slot
-            scrolled_past = self.verticalScrollBar().value() > slot.geometry().bottom() * 0.65
+            scrolled_past = top > slot.geometry().bottom() * 0.65
         else:
-            scrolled_past = self.verticalScrollBar().value() > self.header.height() - bar.height()
+            scrolled_past = top > self.header.height() - bar.height()
+        self._set_bar_room(scrolled_past)
+        vp = self.viewport().geometry()
+        bar.setGeometry(vp.x(), vp.y() - (bar.height() if self._bar_room else 0), vp.width(), bar.height())
         if scrolled_past:
             bar.title.setText(self.title.text())
             bar.poster.set_cover(self.poster.url, self.poster.color, self.title.text())

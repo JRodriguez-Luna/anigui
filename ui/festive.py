@@ -18,7 +18,7 @@ from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QLabel, QWidget
 
 from . import theme
-from .motion import reduce_motion
+from .motion import reduce_motion, scrolling
 
 LIGHTS = ("#FF5A5A", "#FFD54A", "#4FD18B", "#5AB4FF", "#FF8AD8")
 CANE_RED, CANE_WHITE = "#E0403C", "#F4F4F4"
@@ -157,6 +157,8 @@ class SidebarLights(QWidget):
             self._timer.stop()
 
     def _step(self) -> None:
+        if scrolling():
+            return
         self.t += 0.08
         self.update()
 
