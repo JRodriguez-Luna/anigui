@@ -28,6 +28,7 @@ from .icons import nav_icon
 from . import theme
 from .cinema import Ambient
 from .fps import FrameMeter
+from .your_data import DataTools
 from .yours import tinted_icon
 from .lock import Gate, LockScreen
 from .privacy_page import PrivacyPage
@@ -226,6 +227,11 @@ class MainWindow(QMainWindow):
 
         QShortcut(QKeySequence.StandardKey.Find, self, activated=lambda: (self.go(self.search), self.search.focus_search()))
         QShortcut(QKeySequence("Esc"), self, activated=self._escape)
+        # Your data (2.0)
+        self.data = DataTools(ctx, self)
+        self.data.changed.connect(self._data_changed)
+        self.data.message.connect(lambda text, error: self.toast.show_message(text, error))
+        QTimer.singleShot(4000, self.data.auto_backup)
         # Touch ID locks (2.0)
         self.gate = Gate(parent=self)
         self.lock_screen = LockScreen(self.centralWidget())
@@ -412,6 +418,16 @@ class MainWindow(QMainWindow):
                 shown |= ids
         return hidden - shown
 
+    def _data_changed(self) -> None:
+        """A restore or an import changed your data: show it everywhere."""
+        self.home.refresh_local()
+        self._lists_changed()
+        self.detail.refresh_if_showing()
+        if self.detail.anime_id:
+            self.detail.yours.load(self.detail.anime_id, save=False)
+        if self.stack.currentWidget() is self.stats:
+            self.stats.refresh()
+
     # -- privacy (2.0) ------------------------------------------------------------------
 
     def set_private(self, on: bool) -> None:
@@ -531,6 +547,11 @@ class MainWindow(QMainWindow):
             dlg.whatsNewRequested.connect(lambda: self.show_whats_new())
             dlg.checkEpisodesRequested.connect(lambda: self.alerts.check_now(manual=True))
             dlg.privacyPageRequested.connect(lambda: (dlg.close(), self.go(self.privacy_page)))
+            dlg.backupRequested.connect(self.data.back_up_now)
+            dlg.restoreRequested.connect(lambda: self.data.restore())
+            dlg.backupsFolderRequested.connect(self.data.show_folder)
+            dlg.importAniListRequested.connect(self.data.import_anilist)
+            dlg.importMalRequested.connect(lambda: self.data.import_mal())
             self.alerts.status.connect(dlg.set_episodes_status)
             self._settings = dlg
         self._settings.set_versions(self._ani_cli_version)

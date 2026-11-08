@@ -54,9 +54,14 @@ class SettingsDialog(QDialog):
     checkEpisodesRequested = Signal()
     whatsNewRequested = Signal()
     privacyPageRequested = Signal()
+    backupRequested = Signal()
+    restoreRequested = Signal()
+    backupsFolderRequested = Signal()
+    importAniListRequested = Signal(str)
+    importMalRequested = Signal()
 
-    SECTIONS = ("Playback", "Skipping", "Content", "Privacy", "Make it yours", "Appearance", "New Episodes", "History",
-                "Connection", "Updates")
+    SECTIONS = ("Playback", "Skipping", "Content", "Privacy", "Make it yours", "Your data", "Appearance",
+                "New Episodes", "History", "Connection", "Updates")
 
     def __init__(self, ctx: AppContext, parent=None, section: str | None = None) -> None:
         super().__init__(parent)
@@ -71,7 +76,7 @@ class SettingsDialog(QDialog):
         self.nav.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.pages = QStackedWidget()
         for name, build in zip(self.SECTIONS, (self._playback, self._skipping, self._content, self._privacy,
-                                               self._yours, self._appearance,
+                                               self._yours, self._data, self._appearance,
                                                self._episodes,
                                                self._history, self._connection, self._updates)):
             self.nav.addItem(QListWidgetItem(name))
@@ -286,6 +291,35 @@ class SettingsDialog(QDialog):
             SettingRow("Home", "Tick the rows you want on Home and drag them into your order. Your lists can be "
                        "rows too.", None),
             rows,
+        ]
+
+    def _data(self) -> list[QWidget]:
+        user = QLineEdit(placeholderText="AniList username", objectName="TagBox")
+        user.setFixedWidth(170)
+        go = self._button("Import", lambda: user.text().strip() and self.importAniListRequested.emit(user.text().strip()))
+        user.returnPressed.connect(go.click)
+        anilist = QWidget()
+        row = QHBoxLayout(anilist)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(8)
+        row.addWidget(user)
+        row.addWidget(go)
+        self.controls["import_user"] = user
+        return [
+            SettingRow("Back up", "Saves your history, lists, ratings, notes and settings in one file, anywhere "
+                       "you like.", self._button("Back up now…", self.backupRequested.emit)),
+            SettingRow("Restore", "Puts everything back from a backup. What's there now is backed up first.",
+                       self._button("Restore…", self.restoreRequested.emit)),
+            SettingRow("Automatic backups", "One a day when AniGUI opens; the newest 7 are kept.",
+                       self._check("auto_backup")),
+            SettingRow("Backups folder", "Where automatic backups (and the one before a restore or import) go.",
+                       self._button("Show", self.backupsFolderRequested.emit)),
+            SettingRow("From AniList", "Your public list, by username. No sign-in. Statuses become lists, scores "
+                       "become ratings, and progress marks episodes watched.", anilist),
+            SettingRow("From MyAnimeList", "Use the file from MyAnimeList's Export (your profile → Export).",
+                       self._button("Choose file…", self.importMalRequested.emit)),
+            self._note("Importing reads your list once and never writes to AniList or MyAnimeList. Shows hianime "
+                       "doesn't have are skipped. A backup is made first, so you can undo it with Restore."),
         ]
 
     def _appearance(self) -> list[QWidget]:

@@ -263,8 +263,13 @@ class YourNotes(QFrame):
         col.addWidget(self.note)
         self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
 
-    def load(self, anime_id: str | None) -> None:
-        self._save_note()
+    def load(self, anime_id: str | None, save: bool = True) -> None:
+        """Show this show's rating, tags and note (saving the open note first, unless your
+        data was just replaced underneath it)."""
+        if save:
+            self._save_note()
+        else:
+            self._note_timer.stop()
         self.anime_id = anime_id
         n = self.store.notes(anime_id) if anime_id else None
         self._loading = True

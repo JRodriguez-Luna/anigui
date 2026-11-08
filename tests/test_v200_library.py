@@ -353,3 +353,105 @@ def test_app_icon_in_your_color(win):
     icon = tinted_icon(QIcon(pm), "#3D8DFF")
     c = icon.pixmap(64, 64).toImage().pixelColor(32, 32)
     assert c.blue() > c.red()                          # orange became blue-ish
+
+
+# -- your data -----------------------------------------------------------------------------------
+
+def test_backup_and_restore_round_trip(tmp_path):
+    from core import backup
+    s = store(tmp_path)
+    lid = s.create_list("Cozy", "🍵")
+    s.add_to_list(lid, "show-1")
+    s.set_rating("show-1", 9)
+    s.set_note("show-1", "so good")
+    out = backup.back_up(s, {"accent": "ocean", "weird": object()}, tmp_path / "b" / "mine")
+    assert out.name == "mine.anigui-backup" and backup.read_manifest(out)["schema"] == 3
+    s.delete_list(lid)
+    s.set_note("show-1", "")
+    import core.paths as paths_mod
+    orig = paths_mod.data_dir
+    paths_mod.data_dir = lambda: tmp_path / "data"
+    try:
+        settings, safety = backup.restore(s, out, {"accent": "matcha"})
+    finally:
+        paths_mod.data_dir = orig
+    assert settings == {"accent": "ocean"} and safety.exists()
+    assert s.get_list(lid).name == "Cozy" and s.notes("show-1").note == "so good"
+
+
+def test_not_a_backup(tmp_path):
+    import pytest
+    from core import backup
+    bad = tmp_path / "x.anigui-backup"
+    bad.write_text("nope")
+    with pytest.raises(backup.BackupError):
+        backup.read_manifest(bad)
+
+
+def test_automatic_backups_keep_seven(tmp_path):
+    import datetime as dt
+    import os
+    from core import backup
+    s = store(tmp_path)
+    folder = tmp_path / "auto"
+    t0 = dt.datetime(2026, 11, 1, 9)
+    made = 0
+    for d in range(10):
+        now = t0 + dt.timedelta(days=d)
+        p = backup.auto_backup(s, {}, folder, now=now)
+        if p:
+            os.utime(p, (now.timestamp(), now.timestamp()))
+            made += 1
+        assert backup.auto_backup(s, {}, folder, now=now + dt.timedelta(hours=1)) is None   # once a day
+    assert made == 10 and len(list(folder.glob("*.anigui-backup"))) == 7
+
+
+MAL_XML = b"""<?xml version="1.0"?><myanimelist>
+<anime><series_animedb_id>52991</series_animedb_id><series_title>Frieren</series_title>
+<my_watched_episodes>4</my_watched_episodes><my_score>9</my_score><my_status>Watching</my_status></anime>
+<anime><series_animedb_id>1</series_animedb_id><series_title>Cowboy Bebop</series_title>
+<my_watched_episodes>26</my_watched_episodes><my_score>0</my_score><my_status>Completed</my_status></anime>
+<anime><series_animedb_id>999999</series_animedb_id><series_title>Nowhere</series_title>
+<my_watched_episodes>0</my_watched_episodes><my_score>0</my_score><my_status>Plan to Watch</my_status></anime>
+</myanimelist>"""
+
+
+def test_mal_export_is_read(tmp_path):
+    import gzip
+    from core import importer
+    f = tmp_path / "animelist.xml.gz"
+    f.write_bytes(gzip.compress(MAL_XML))
+    rows = importer.parse_mal(f)
+    assert rows[0] == (52991, "Frieren", "CURRENT", 9.0, 4) and rows[1][2] == "COMPLETED" and rows[2][2] == "PLANNING"
+    assert importer.rating_from(9) == 9 and importer.rating_from(0) is None and importer.rating_from(7.6) == 8
+
+
+def test_import_puts_shows_in_lists(tmp_path):
+    from core import importer
+    from core.anilist import Media
+    from core.hianime import SearchResult
+    s = store(tmp_path)
+
+    def media(aid, title, eps):
+        return Media(anilist_id=aid, mal_id=None, title_romaji=title, title_english=title, title_native=None,
+                     synonyms=(), cover=None, cover_color=None, banner=None, description="", episodes=eps,
+                     status=None, format=None, genres=(), score=None, season=None, year=None)
+
+    class Catalog:
+        def find_streamable(self, m):
+            if m.anilist_id == 3:
+                return None
+            return SearchResult(index=0, anime_id=f"found-{m.anilist_id}", title=m.title_english, poster=None)
+    entries = [importer.Entry(media(1, "Frieren", 28), "CURRENT", 9, 4),
+               importer.Entry(media(2, "Bebop", 26), "COMPLETED", 0, 26),
+               importer.Entry(media(3, "Nowhere", 12), "PLANNING", 0, 0)]
+    seen = []
+    r = importer.apply(s, Catalog(), entries, progress=lambda i, n, t: seen.append((i, n)))
+    assert (r.added, r.rated, r.episodes, r.not_found) == (2, 1, 30, ["Nowhere"])
+    names = {sl.name: sl for sl in s.lists()}
+    assert names["Watching"].count == 1 and names["Completed"].count == 1 and "Plan to watch" not in names
+    assert s.notes("found-1").rating == 9
+    assert len([p for p in s.show_progress("found-1").values() if p.completed]) == 4
+    again = importer.apply(s, Catalog(), entries)                  # running it twice doubles nothing
+    assert again.episodes == 0 and again.rated == 0 and s.get_list(names["Watching"].list_id).count == 1
+    assert seen[-1] == (3, 3)
