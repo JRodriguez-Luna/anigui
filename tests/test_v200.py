@@ -371,3 +371,23 @@ def test_mpv_never_holds_the_main_thread():
     assert libmpv.RENDER_BLOCK_FOR_TARGET_TIME == 12
     src = inspect.getsource(libmpv.GlRenderer.render)
     assert "RENDER_BLOCK_FOR_TARGET_TIME" in src and "c_int(0)" in src
+
+
+def test_episode_list_closes(win):
+    play_inside(win)
+    host = win.player_host
+    t = win.detail.theater
+    assert pump(lambda: host.mode == "theater")
+    t.all_btn.click()
+    assert pump(lambda: host.drawer.isVisible()) and t.all_btn.text() == "✕  Hide episodes"
+    t.all_btn.click()                                              # the same button closes it
+    assert pump(lambda: not host.drawer.isVisible()) and t.all_btn.text() == "☰  All episodes"
+    t.all_btn.click()
+    host.drawer_close.click()                                      # its ✕
+    assert pump(lambda: not host.drawer.isVisible())
+    t.all_btn.click()
+    win._escape()                                                  # Esc closes it (and stays on the page)
+    assert pump(lambda: not host.drawer.isVisible()) and win.stack.currentWidget() is win.detail
+    t.all_btn.click()
+    host._action("play")                                           # a click on the video beside it
+    assert pump(lambda: not host.drawer.isVisible())

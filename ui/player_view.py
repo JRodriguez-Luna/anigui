@@ -17,7 +17,7 @@ import time
 
 from PySide6.QtCore import QEvent, QPoint, QPointF, QRect, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QCursor, QFont, QGuiApplication, QPainter, QPainterPath, QPen, QSurfaceFormat
-from PySide6.QtWidgets import QApplication, QFrame, QMenu, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QApplication, QFrame, QMenu, QPushButton, QVBoxLayout, QWidget
 
 from core import libmpv, macwin
 from core.power import KeepAwake
@@ -909,6 +909,7 @@ class PlayerHost(QWidget):
     expandRequested = Signal()       # mini-player clicked: go back to the show
     backRequested = Signal()         # the player's Back
     modeChanged = Signal(str)
+    drawerChanged = Signal(bool)     # the episode list opened or closed
 
     def __init__(self, ctx, parent: QWidget) -> None:
         super().__init__(parent)
@@ -931,6 +932,11 @@ class PlayerHost(QWidget):
         self.drawer.layout().setContentsMargins(0, 0, 0, 0)
         self.drawer.hide()
         self.drawer_open = False
+        self.drawer_close = QPushButton("✕", self.drawer, objectName="DrawerClose",
+                                        cursor=Qt.CursorShape.PointingHandCursor)
+        self.drawer_close.setToolTip("Close the episode list (E or Esc)")
+        self.drawer_close.setFixedSize(30, 30)
+        self.drawer_close.clicked.connect(lambda: self.toggle_drawer(False))
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.awake = KeepAwake()              # the Mac stays awake while an episode plays
         self._volume = 100.0
@@ -1118,6 +1124,9 @@ class PlayerHost(QWidget):
     def _action(self, name: str) -> None:
         c = self.controls
         if name == "play":
+            if self.drawer_open and self.drawer.isVisible():
+                self.toggle_drawer(False)          # a click beside the open list closes it
+                return
             self._cmd("cycle", "pause")
         elif name == "back10":
             self._cmd("seek", "-10", "relative")
@@ -1189,7 +1198,9 @@ class PlayerHost(QWidget):
         elif key == Qt.Key.Key_S and c.skip_label:
             self._skip()
         elif key == Qt.Key.Key_Escape:
-            if self.mode == "full":
+            if self.drawer_open and self.drawer.isVisible():
+                self.toggle_drawer(False)
+            elif self.mode == "full":
                 self.set_mode("theater", forced=True)
             elif c.countdown:
                 self._up_next(False)
@@ -1376,8 +1387,13 @@ class PlayerHost(QWidget):
         widget.show()
 
     def toggle_drawer(self, on: bool | None = None) -> None:
+        was = self.drawer_open
         self.drawer_open = (not self.drawer_open) if on is None else bool(on)
         self.place()
+        if self.drawer_open != was:
+            self.drawerChanged.emit(self.drawer_open)
+            if not self.drawer_open:
+                self.setFocus()
 
     def _place_drawer(self, inner: QRect) -> None:
         show = self.drawer_open and self.mode in ("theater", "full") and self.drawer.layout().count() > 0
@@ -1385,6 +1401,8 @@ class PlayerHost(QWidget):
             w = min(320, max(240, int(inner.width() * 0.34)))
             self.drawer.setGeometry(inner.right() - w + 1, inner.top(), w, inner.height())
             self.drawer.raise_()
+            self.drawer_close.move(w - self.drawer_close.width() - 34, 12)    # (clear of the holiday bow)
+            self.drawer_close.raise_()
         self.drawer.setVisible(show)
 
     def _drag_mini(self, delta: QPointF) -> None:

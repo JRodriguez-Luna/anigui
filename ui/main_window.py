@@ -186,7 +186,9 @@ class MainWindow(QMainWindow):
         self.player_host.closed.connect(lambda: self.detail.theater.slot.set_popped(False))
         self.detail.theater.slot.bringBack.connect(lambda: self.player_host.pop_in())
         self.player_host.set_drawer_content(self.detail.theater.rail)
-        self.detail.theater.all_btn.clicked.connect(lambda: self.player_host.toggle_drawer(True))
+        self.detail.theater.all_btn.clicked.connect(lambda: self.player_host.toggle_drawer())
+        self.player_host.drawerChanged.connect(
+            lambda on: self.detail.theater.all_btn.setText("✕  Hide episodes" if on else "☰  All episodes"))
         ctx.player.embed = self.player_host.start
         if isinstance(ctx.player, Player):
             ctx.player.embed_available = player_available     # (tests bring their own player)
@@ -648,7 +650,9 @@ class MainWindow(QMainWindow):
 
     def _escape(self) -> None:
         host = self.player_host
-        if host.active and host.mode == "full":
+        if host.active and host.drawer_open and host.drawer.isVisible():
+            host.toggle_drawer(False)
+        elif host.active and host.mode == "full":
             host.set_mode("theater", forced=True)
         elif host.active and host.controls.countdown:
             host._up_next(False)

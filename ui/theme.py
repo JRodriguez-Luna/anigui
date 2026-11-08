@@ -106,6 +106,9 @@ QPushButton#WrapArrow {{ background: rgba(255,255,255,0.16); border: none; borde
     min-height: 44px; font-size: 26px; font-weight: 700; color: #FFFFFF; }}
 QPushButton#WrapArrow:hover {{ background: rgba(255,255,255,0.28); }}
 QPushButton#WrapArrow:disabled {{ background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.3); }}
+QPushButton#DrawerClose {{ background: rgba(255,255,255,0.08); border: none; border-radius: 15px; color: {MUTED};
+    font-size: 13px; font-weight: 700; padding: 0; }}
+QPushButton#DrawerClose:hover {{ background: rgba(255,255,255,0.18); color: {TEXT}; }}
 #Greeting {{ color: rgba(255, 255, 255, 0.86); font-size: 15px; font-weight: 700; background: rgba(0, 0, 0, 0.28);
     border-radius: 12px; padding: 5px 12px; }}
 #SidebarFooter {{ color: {FAINT}; font-size: 11px; padding: 6px; }}
