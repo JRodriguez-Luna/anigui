@@ -244,7 +244,6 @@ class DetailPage(QScrollArea):
 
         # The built-in player plays here (the video floats over theater.slot)
         self.theater = Theater(ctx.images, QUALITIES)
-        self.theater.back.connect(self.backRequested)
         self.theater.episodeClicked.connect(self.play)
         self.theater.listToggled.connect(self._toggle_library)
         self.theater.rail.markRequested.connect(self._mark)
@@ -267,7 +266,7 @@ class DetailPage(QScrollArea):
 
         self.sticky = StickyBar(ctx.images, self)
         self.sticky.back.clicked.connect(self.backRequested)
-        self.sticky.play.clicked.connect(lambda: self.play_target and self.play(self.play_target))
+        self.sticky.play.clicked.connect(self._sticky_play)
         self.verticalScrollBar().valueChanged.connect(lambda _v: self._update_sticky())
 
         playback.busy.connect(self._on_busy)
@@ -366,22 +365,42 @@ class DetailPage(QScrollArea):
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
+        self.theater.slot.set_room(self.viewport().height())
         self._update_sticky()
+
+    def _sticky_play(self) -> None:
+        if self.theater_on:
+            self.verticalScrollBar().setValue(0)        # back to the video (it grows back)
+        elif self.play_target:
+            self.play(self.play_target)
 
     def _update_sticky(self) -> None:
         """Show the bar once the big header (and its Back button) is out of view."""
         bar = self.sticky
         vp = self.viewport().geometry()
         bar.setGeometry(vp.x(), vp.y(), vp.width(), bar.height())
-        scrolled_past = (not self.theater_on                # (the player has its own controls)
-                         and self.verticalScrollBar().value() > self.header.height() - bar.height())
+        if self.theater_on:
+            # Watching: once the video has scrolled away (it's in the corner now), the bar
+            # keeps Back in reach and takes you back to the video
+            slot = self.theater.slot
+            scrolled_past = self.verticalScrollBar().value() > slot.geometry().bottom() * 0.65
+        else:
+            scrolled_past = self.verticalScrollBar().value() > self.header.height() - bar.height()
         if scrolled_past:
             bar.title.setText(self.title.text())
             bar.poster.set_cover(self.poster.url, self.poster.color, self.title.text())
             bar.poster.blur = self.poster.blur
-            bar.play.setText(self._short_play_text())
-            bar.play.setEnabled(self.play_btn.isEnabled())
-            bar.where.setText(self._where_text())
+            if self.theater_on:
+                playing = self.playback.now_playing
+                ep = playing[1] if playing and playing[0] == self.anime_id else ""
+                name = self.theater.ep_title.text()
+                bar.where.setText(f"▶ Playing episode {ep}" + (f" · {name}" if name and name != f"Episode {ep}" else ""))
+                bar.play.setText("⤒  Back to the video")
+                bar.play.setEnabled(True)
+            else:
+                bar.play.setText(self._short_play_text())
+                bar.play.setEnabled(self.play_btn.isEnabled())
+                bar.where.setText(self._where_text())
             bar.raise_()
             if bar.isHidden():
                 fade_in(bar, 160)
@@ -840,7 +859,7 @@ class DetailPage(QScrollArea):
         t.rail.filler_prefs = {"hide_fillers": bool(self.ctx.pref("hide_fillers")),
                                "skip_fillers": bool(self.ctx.pref("skip_fillers"))}
         season = self.series.find(self.media.anilist_id) if (self.series and self.media) else None
-        t.rail.set_items(items, season.label if season else "Episodes", has_fillers=bool(fillers and fillers.kinds))
+        t.set_episodes(items, season.label if season else "Episodes", has_fillers=bool(fillers and fillers.kinds))
 
         # the episode
         ep = next((e for e in self.episodes if e.number == current), None)

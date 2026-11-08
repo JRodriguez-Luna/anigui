@@ -17,9 +17,10 @@ import time
 
 from PySide6.QtCore import QPoint, QPointF, QRect, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QCursor, QFont, QPainter, QPainterPath, QPen, QSurfaceFormat
-from PySide6.QtWidgets import QMenu, QWidget
+from PySide6.QtWidgets import QFrame, QMenu, QVBoxLayout, QWidget
 
 from core import libmpv
+from core.power import KeepAwake
 
 from . import festive, theme
 from .motion import reduce_motion
@@ -205,6 +206,11 @@ def _icon(p: QPainter, kind: str, c: QPointF, s: float, color: QColor) -> None:
             arm = -0.4 * h if out else 0.4 * h
             p.drawLine(corner, corner + QPointF(sx * arm, 0))
             p.drawLine(corner, corner + QPointF(0, sy * arm))
+    elif kind == "list":
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.setPen(pen)
+        for y in (-0.55, 0.0, 0.55):
+            p.drawLine(QPointF(-h * 0.75, y * h), QPointF(h * 0.75, y * h))
     elif kind == "close":
         p.setBrush(Qt.BrushStyle.NoBrush)
         p.setPen(pen)
@@ -355,6 +361,8 @@ class PlayerControls(QWidget):
             for x, y, rad, _v, _d in self.flakes:
                 p.drawEllipse(QPointF(x, y), rad, rad)
         a = self.alpha
+        if a <= 0.01 and self.mode == "theater":
+            self._back_chip(p, r, 10 if theme.HOLIDAY else 0, 0.75)
         if a > 0.01:
             p.save()
             p.setOpacity(a)
@@ -420,10 +428,10 @@ class PlayerControls(QWidget):
             self._button(p, "close", QPointF(r.right() - 18, r.top() + 20 + cap / 2), 14, white)
             self._button(p, "play", r.center(), 34, white, "pause" if not self.paused else "play", circle=True)
         else:
-            self._button(p, "down", QPointF(r.left() + pad + 8, r.top() + 24 + cap), 18, white)
+            back_w = self._back_chip(p, r, cap, 1.0)
             p.setFont(theme.font(13, QFont.Weight.DemiBold))
             p.setPen(white)
-            title_rect = QRectF(r.left() + pad + 26, r.top() + 12 + cap, r.width() - 2 * pad - 110, 24)
+            title_rect = QRectF(r.left() + pad + back_w + 10, r.top() + 12 + cap, r.width() - 2 * pad - back_w - 110, 24)
             p.drawText(title_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
                        p.fontMetrics().elidedText(self.title, Qt.TextElideMode.ElideRight, int(title_rect.width())))
             if self.chip:
@@ -477,9 +485,30 @@ class PlayerControls(QWidget):
         p.drawText(QRectF(x - 6, y - 10, 160, 20), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
                    f"{fmt_time(self.position)} / {fmt_time(self.duration)}")
         x = r.right() - pad - 10
-        for name, icon in (("full", "unfull" if self.mode == "full" else "full"), ("mini", "pip"), ("menu", "gear")):
+        for name, icon in (("full", "unfull" if self.mode == "full" else "full"), ("mini", "pip"), ("menu", "gear"),
+                           ("list", "list")):
             self._button(p, name, QPointF(x, y), 20, white, icon)
             x -= 40
+
+    def _back_chip(self, p: QPainter, r: QRectF, cap: float, opacity: float) -> float:
+        """'‹ Back' in the top-left corner: always there (even when the rest fades out)."""
+        p.save()
+        p.setOpacity(opacity)
+        p.setFont(theme.font(12, QFont.Weight.Bold))
+        w = p.fontMetrics().horizontalAdvance("Back") + 34
+        box = QRectF(r.left() + 14, r.top() + 12 + cap, w, 26)
+        self._hits["btn:back"] = box.adjusted(-4, -4, 4, 4)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor(0, 0, 0, 150) if self.hover != "btn:back" else QColor(30, 30, 40, 220))
+        p.drawRoundedRect(box, 8, 8)
+        p.setPen(QPen(QColor("#FFFFFF"), 1.8, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        cx, cy = box.left() + 13, box.center().y()
+        p.drawLine(QPointF(cx + 3, cy - 5), QPointF(cx - 2, cy))
+        p.drawLine(QPointF(cx - 2, cy), QPointF(cx + 3, cy + 5))
+        p.setPen(QColor("#FFFFFF"))
+        p.drawText(box.adjusted(20, 0, 0, 0), Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, "Back")
+        p.restore()
+        return w
 
     def _button(self, p: QPainter, name: str, c: QPointF, size: float, color: QColor, icon: str | None = None,
                 circle: bool = False) -> None:
@@ -603,7 +632,7 @@ class PlayerControls(QWidget):
     # -- mouse ------------------------------------------------------------------------------
 
     def _hit(self, pos: QPointF) -> str:
-        for name in ("upnext:play", "upnext:cancel", "skip"):
+        for name in ("upnext:play", "upnext:cancel", "skip", "btn:back"):
             if name in self._hits and self._hits[name].contains(pos):
                 return name
         if self.alpha > 0.3:
@@ -695,6 +724,7 @@ class PlayerHost(QWidget):
 
     closed = Signal()
     expandRequested = Signal()       # mini-player clicked: go back to the show
+    backRequested = Signal()         # the player's Back
     modeChanged = Signal(str)
 
     def __init__(self, ctx, parent: QWidget) -> None:
@@ -711,7 +741,14 @@ class PlayerHost(QWidget):
         self.controls.skip.connect(self._skip)
         self.controls.upNext.connect(self._up_next)
         self.controls.dragBy.connect(self._drag_mini)
+        # The episode list, sliding in over the right of the video (☰ or E)
+        self.drawer = QFrame(self, objectName="PlayerDrawer")
+        self.drawer.setLayout(QVBoxLayout())
+        self.drawer.layout().setContentsMargins(0, 0, 0, 0)
+        self.drawer.hide()
+        self.drawer_open = False
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.awake = KeepAwake()              # the Mac stays awake while an episode plays
         self._volume = 100.0
         self._tracks: list[dict] = []
         self._speed = 1.0
@@ -792,6 +829,7 @@ class PlayerHost(QWidget):
 
     def stop(self) -> None:
         """The session ended (or you closed the player)."""
+        self.awake.release()
         if self.mode == "full":
             self._leave_full()
         self.stop_engine()
@@ -826,6 +864,9 @@ class PlayerHost(QWidget):
             c.set_paused(value is True)
             if c.paused:
                 c.poke()
+                self.awake.release()
+            else:
+                self.awake.hold()
         elif name == "mute":
             c.muted = value is True
         elif name == "volume" and isinstance(value, (int, float)):
@@ -883,6 +924,12 @@ class PlayerHost(QWidget):
             self._menu()
         elif name in ("mini", "down"):
             self.set_mode("mini", forced=True)
+        elif name == "back":
+            if self.mode == "full":
+                self.set_mode("theater", forced=True)
+            self.backRequested.emit()
+        elif name == "list":
+            self.toggle_drawer()
         elif name == "expand":
             self.expandRequested.emit()
         elif name == "close":
@@ -919,6 +966,8 @@ class PlayerHost(QWidget):
             self._action("full")
         elif key == Qt.Key.Key_N:
             self._action("next")
+        elif key == Qt.Key.Key_E:
+            self.toggle_drawer()
         elif key == Qt.Key.Key_S and c.skip_label:
             self._skip()
         elif key == Qt.Key.Key_Escape:
@@ -1050,6 +1099,7 @@ class PlayerHost(QWidget):
         self.video.setGeometry(inner)
         self.controls.setGeometry(inner)
         self.controls.mode = self.mode
+        self._place_drawer(inner)
         self.show()
         self.raise_()
         self.video.show()
@@ -1059,6 +1109,26 @@ class PlayerHost(QWidget):
             self.mode = mode
             self.controls.mode = mode
             self.modeChanged.emit(mode)
+
+    # -- the episode drawer --------------------------------------------------------------
+
+    def set_drawer_content(self, widget: QWidget) -> None:
+        """The show page's episode list lives here while the video plays."""
+        if widget.parentWidget() is not self.drawer:
+            self.drawer.layout().addWidget(widget)
+        widget.show()
+
+    def toggle_drawer(self, on: bool | None = None) -> None:
+        self.drawer_open = (not self.drawer_open) if on is None else bool(on)
+        self.place()
+
+    def _place_drawer(self, inner: QRect) -> None:
+        show = self.drawer_open and self.mode in ("theater", "full") and self.drawer.layout().count() > 0
+        if show:
+            w = min(320, max(240, int(inner.width() * 0.34)))
+            self.drawer.setGeometry(inner.right() - w + 1, inner.top(), w, inner.height())
+            self.drawer.raise_()
+        self.drawer.setVisible(show)
 
     def _drag_mini(self, delta: QPointF) -> None:
         if self.mode != "mini":

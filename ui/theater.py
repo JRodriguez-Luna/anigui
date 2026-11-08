@@ -33,19 +33,27 @@ def nice_date(iso: str | None) -> str:
 
 
 class VideoSlot(QWidget):
-    """16:9 space on the page where the video goes."""
+    """Where the video goes: the page's full width, 16:9, but never taller than the window
+    leaves room for (so the title and choices under it are always on screen). When the
+    height wins, mpv letterboxes the picture in the middle."""
 
     moved = Signal()
+    RESERVE = 170          # the title row and the top of the episode strip stay in view
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.setMinimumHeight(200)
+        self.setMinimumHeight(220)
+        self.max_h = 10_000
+
+    def set_room(self, viewport_height: int) -> None:
+        self.max_h = max(220, int(viewport_height) - self.RESERVE)
+        self.updateGeometry()
 
     def hasHeightForWidth(self) -> bool:
         return True
 
     def heightForWidth(self, w: int) -> int:
-        return int(w * 9 / 16)
+        return min(int(w * 9 / 16), self.max_h)
 
     def sizeHint(self) -> QSize:
         return QSize(960, 540)
@@ -59,11 +67,7 @@ class VideoSlot(QWidget):
         self.moved.emit()
 
     def paintEvent(self, _e) -> None:
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(QColor("#000000"))
-        p.drawRoundedRect(QRectF(self.rect()), 10, 10)
+        QPainter(self).fillRect(self.rect(), QColor("#000000"))
 
 
 class Lights(QWidget):
@@ -378,15 +382,113 @@ class EpisodeRail(QFrame):
         menu.exec(self.view.viewport().mapToGlobal(pos))
 
 
+class StripDelegate(QStyledItemDelegate):
+    W, H = 176, 99
+
+    def __init__(self, images, parent=None) -> None:
+        super().__init__(parent)
+        self.images = images
+
+    def sizeHint(self, _option, _index) -> QSize:
+        return QSize(self.W + 12, self.H + 26)
+
+    def paint(self, p: QPainter, option, index) -> None:
+        item = index.data(ROLE)
+        if not item:
+            return
+        r = QRectF(option.rect)
+        thumb = QRectF(r.left() + 6, r.top() + 2, self.W, self.H)
+        now = item.get("playing")
+        hover = bool(option.state & QStyle.StateFlag.State_MouseOver)
+        p.save()
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        clip = QPainterPath()
+        clip.addRoundedRect(thumb, 8, 8)
+        p.save()
+        p.setClipPath(clip)
+        p.fillRect(thumb, QColor(theme.SURFACE_3))
+        pm = self.images.pixmap(item.get("still"), int(thumb.width()), int(thumb.height())) if (
+            self.images and item.get("still")) else None
+        if pm is not None:
+            p.drawPixmap(thumb.toRect(), pm)
+        else:
+            p.setPen(QColor(theme.MUTED))
+            p.setFont(theme.font(18, QFont.Weight.Bold))
+            p.drawText(thumb, Qt.AlignmentFlag.AlignCenter, str(item["number"]))
+        if theme.HOLIDAY:
+            p.fillRect(QRectF(thumb.left(), thumb.top(), thumb.width(), 4), QColor(festive.SNOW))
+        if item.get("watched") and not now:
+            p.fillRect(QRectF(thumb.left(), thumb.bottom() - 4, thumb.width(), 4), QColor(theme.GOOD))
+        if hover and not now:
+            p.fillRect(thumb, QColor(255, 255, 255, 24))
+        p.restore()
+        if now:
+            p.setPen(QPen(QColor(theme.ACCENT), 2.5))
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            p.drawRoundedRect(thumb.adjusted(1, 1, -1, -1), 8, 8)
+        label = (f"▶ Now · Ep {item['number']}" if now else f"Ep {item['number']}")
+        if item.get("kind"):
+            label += f" · {item['kind'].title()}"
+        if item.get("christmas") and theme.HOLIDAY:
+            label += " 🎄"
+        title = item.get("title") or ""
+        p.setFont(theme.font(11, QFont.Weight.Bold))
+        p.setPen(QColor(theme.ACCENT if now else (theme.TEXT if hover else theme.MUTED)))
+        text = f"{label}  {title}" if title else label
+        p.drawText(QRectF(thumb.left(), thumb.bottom() + 5, thumb.width(), 16), Qt.AlignmentFlag.AlignLeft,
+                   p.fontMetrics().elidedText(text, Qt.TextElideMode.ElideRight, int(thumb.width())))
+        p.restore()
+
+
+class EpisodeStrip(QListView):
+    """The season's episodes as a sideways strip of thumbnails under the video."""
+
+    episodeClicked = Signal(str)
+
+    def __init__(self, images, parent=None) -> None:
+        super().__init__(parent)
+        self.setObjectName("EpisodeStrip")
+        self.setFlow(QListView.Flow.LeftToRight)
+        self.setWrapping(False)
+        self.setMouseTracking(True)
+        self.setUniformItemSizes(True)
+        self.setHorizontalScrollMode(QListView.ScrollMode.ScrollPerPixel)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setFixedHeight(StripDelegate.H + 26 + 14)
+        self.model_ = RailModel(self)
+        self.setModel(self.model_)
+        self.setItemDelegate(StripDelegate(images, self))
+        self.clicked.connect(lambda idx: self.episodeClicked.emit(str(idx.data(ROLE)["number"])))
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        if images is not None:
+            images.loaded.connect(lambda *_: self.viewport().update())
+
+    def set_items(self, items: list[dict]) -> None:
+        self.model_.set_items(items)
+        for row, item in enumerate(items):
+            if item.get("playing"):
+                self.scrollTo(self.model_.index(row), QListView.ScrollHint.PositionAtCenter)
+                break
+
+    def wheelEvent(self, e) -> None:
+        # a mouse wheel scrolls the strip sideways; a trackpad's sideways swipe already does
+        if abs(e.angleDelta().y()) > abs(e.angleDelta().x()) and not e.pixelDelta().x():
+            bar = self.horizontalScrollBar()
+            bar.setValue(bar.value() - e.angleDelta().y())
+            e.accept()
+            return
+        super().wheelEvent(e)
+
+
 # -- the block --------------------------------------------------------------------------------------
 
 class Theater(QWidget):
-    """Top of the show page while the built-in player plays it: the video with the episode
-    list beside it; under the video, the episode (title, date, Sub/Dub, quality) and the
-    show (poster, My List, the episode's summary). The page's Seasons row, Related and
-    You might also like follow; its episode grid steps aside (the list here has it all)."""
+    """Top of the show page while the built-in player plays it (Full bleed): the video edge to
+    edge, sized to the window; under it the episode (title, date, Sub/Dub, quality), a strip of
+    the season's episodes, and the show (poster, My Library, the episode's summary). The full
+    list with search and filters slides in over the video (☰ / E). The page's Seasons row,
+    Related and You might also like follow; its episode grid steps aside."""
 
-    back = Signal()
     episodeClicked = Signal(str)
     listToggled = Signal()
     dubChanged = Signal(bool)
@@ -395,13 +497,17 @@ class Theater(QWidget):
 
     def __init__(self, images, qualities=(), parent=None) -> None:
         super().__init__(parent, objectName="Theater")
-        self.back_btn = QPushButton("‹  Back", objectName="Back", cursor=Qt.CursorShape.PointingHandCursor)
-        self.back_btn.clicked.connect(self.back)
         self.lights = Lights()
         self.slot = VideoSlot()
         self.garland = Garland()
-        self.rail = EpisodeRail(images)
+        self.rail = EpisodeRail(images)            # (shown in the player's drawer: ☰ or E)
         self.rail.episodeClicked.connect(self.episodeClicked)
+        self.strip_title = QLabel("Episodes", objectName="SectionTitle")
+        self.strip_count = QLabel("", objectName="Muted")
+        self.all_btn = QPushButton("☰  All episodes", objectName="Glass", cursor=Qt.CursorShape.PointingHandCursor)
+        self.all_btn.setToolTip("The full list, with search and filters (E)")
+        self.strip = EpisodeStrip(images)
+        self.strip.episodeClicked.connect(self.episodeClicked)
 
         # the episode
         self.ep_meta = QLabel("", objectName="Muted")
@@ -440,15 +546,6 @@ class Theater(QWidget):
         self._summary_full = ""
         self._expanded = False
 
-        left = QVBoxLayout()
-        left.setSpacing(0)
-        left.addWidget(self.lights)
-        left.addWidget(self.slot)
-        left.addWidget(self.garland)
-        row = QHBoxLayout()
-        row.setSpacing(18)
-        row.addLayout(left, 1)
-        row.addWidget(self.rail, 0, Qt.AlignmentFlag.AlignTop)
 
         titles = QVBoxLayout()
         titles.setSpacing(2)
@@ -479,24 +576,31 @@ class Theater(QWidget):
         card.addWidget(self.poster, 0, Qt.AlignmentFlag.AlignTop)
         card.addLayout(card_text, 1)
 
+        strip_head = QHBoxLayout()
+        strip_head.setSpacing(10)
+        strip_head.addWidget(self.strip_title)
+        strip_head.addWidget(self.strip_count, 0, Qt.AlignmentFlag.AlignBottom)
+        strip_head.addStretch(1)
+        strip_head.addWidget(self.all_btn)
+
         under = QVBoxLayout()
+        under.setContentsMargins(44, 14, 44, 10)
         under.setSpacing(12)
         under.addLayout(info)
+        under.addSpacing(4)
+        under.addLayout(strip_head)
+        under.addWidget(self.strip)
         under.addWidget(self.card)
-        below = QHBoxLayout()
-        below.setSpacing(18)
-        below.addLayout(under, 1)
-        below.addSpacing(RAIL_W)
 
         col = QVBoxLayout(self)
-        col.setContentsMargins(44, 22, 44, 10)
-        col.setSpacing(12)
-        col.addWidget(self.back_btn, 0, Qt.AlignmentFlag.AlignLeft)
-        col.addLayout(row)
-        col.addLayout(below)
+        col.setContentsMargins(0, 0, 0, 0)
+        col.setSpacing(0)
+        col.addWidget(self.lights)
+        col.addWidget(self.slot)
+        col.addWidget(self.garland)
+        col.addLayout(under)
         self.snow = SnowLayer(self, flakes=36, alpha=150)
         self.snow.lower()
-        self.slot.moved.connect(self._fit_rail)
         self.set_decor(False, False)
 
     # -- the episode and the show ---------------------------------------------------------
@@ -531,10 +635,11 @@ class Theater(QWidget):
         menu.addAction("Open in mpv", lambda: self.openOutside.emit("mpv"))
         menu.exec(self.more.mapToGlobal(self.more.rect().bottomLeft()))
 
-    def _fit_rail(self) -> None:
-        h = self.slot.height() + (self.lights.height() if self.lights.isVisible() else 0) + (
-            self.garland.height() if self.garland.isVisible() else 0)
-        self.rail.setFixedHeight(max(220, h))
+    def set_episodes(self, items: list[dict], heading: str, has_fillers: bool = False) -> None:
+        self.rail.set_items(items, heading, has_fillers=has_fillers)
+        self.strip.set_items(items)
+        self.strip_title.setText(heading)
+        self.strip_count.setText(self.rail.count.text())
 
     def set_decor(self, lights: bool, snow: bool) -> None:
         self.lights.setVisible(lights)
@@ -544,7 +649,6 @@ class Theater(QWidget):
         elif not snow:
             self.snow.stop()
         self._snow_wanted = snow
-        self._fit_rail()
 
     def showEvent(self, e) -> None:
         super().showEvent(e)

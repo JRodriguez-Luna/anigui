@@ -141,6 +141,9 @@ class MainWindow(QMainWindow):
         self.player_host.slot = self._player_slot
         self.player_host.closed.connect(self._sync_theater)
         self.player_host.expandRequested.connect(self._expand_player)
+        self.player_host.backRequested.connect(self._player_back)
+        self.player_host.set_drawer_content(self.detail.theater.rail)
+        self.detail.theater.all_btn.clicked.connect(lambda: self.player_host.toggle_drawer(True))
         ctx.player.embed = self.player_host.start
         if isinstance(ctx.player, Player):
             ctx.player.embed_available = player_available     # (tests bring their own player)
@@ -388,6 +391,11 @@ class MainWindow(QMainWindow):
         rect = QRect(slot.mapTo(central, QPoint(0, 0)), slot.size())
         vp = d.viewport()
         return rect, QRect(vp.mapTo(central, QPoint(0, 0)), vp.size())
+
+    def _player_back(self) -> None:
+        """The player's Back: leave the show page (the episode keeps playing in the corner)."""
+        if self.stack.currentWidget() is self.detail:
+            self.back()
 
     def _expand_player(self) -> None:
         """The mini-player was clicked: back to the show it's playing."""
