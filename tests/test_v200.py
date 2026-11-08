@@ -261,3 +261,18 @@ def test_backdrop_is_drawn_once_and_reused(win):
     win.go(win.search)
     first = amb._layer_for(amb.width(), amb.height())
     assert amb._layer_for(amb.width(), amb.height()) is first
+
+
+def test_snow_repaints_only_where_flakes_move(win):
+    from ui.holiday import SnowLayer
+    from PySide6.QtWidgets import QWidget
+    host = QWidget()
+    host.resize(1200, 800)
+    host.show()
+    snow = SnowLayer(host, flakes=36)
+    snow.start()
+    areas = []
+    snow.update = lambda region=None, *a: areas.append(sum(r.width() * r.height() for r in region))
+    snow._step()
+    assert areas and areas[0] < 1200 * 800 * 0.05     # a few dozen flakes, not the whole page
+    host.close()

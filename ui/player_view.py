@@ -1048,11 +1048,20 @@ class PlayerHost(QWidget):
     def _on_property(self, name: str, value) -> None:
         c = self.controls
         if name == "time-pos" and isinstance(value, (int, float)):
+            # This arrives many times a second. Repainting everything over the video each time
+            # made the watch page lag (2.0): only the time and bar change, once a second.
+            before = (None if c.position is None else int(c.position), c.skip_label, len(c.segments))
             c.position = float(value)
             s = self.session
             seg = s.segment_at(c.position) if s else None
             c.skip_label = seg.kind if seg and seg.kind not in s.now.skipped else None
             c.segments = list(s.now.skips or []) if s else []
+            if (c.skip_label, len(c.segments)) != before[1:] or c.countdown is not None:
+                c.update()
+            elif c.alpha > 0.01 and int(c.position) != before[0]:
+                band = 100 if c.mode not in ("mini", "pop") else 40
+                c.update(0, max(0, c.height() - band), c.width(), band)
+            return
         elif name == "duration" and isinstance(value, (int, float)):
             c.duration = float(value)
         elif name == "pause":

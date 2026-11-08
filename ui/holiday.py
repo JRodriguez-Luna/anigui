@@ -6,8 +6,8 @@ import datetime as dt
 import math
 import random
 
-from PySide6.QtCore import QEvent, QObject, QPointF, QRectF, QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap
+from PySide6.QtCore import QEvent, QObject, QPointF, QRect, QRectF, QSize, Qt, QTimer, Signal
+from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap, QRegion
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
 from core import holiday
@@ -84,6 +84,11 @@ class SnowLayer(QWidget):
         if not self.flakes:
             self._seed()
         w, h = self.width(), self.height()
+        # Repaint only where flakes were and are now: a whole-page repaint 30 times a second
+        # (with the artwork and every card behind it) made the watch page stutter (2.0)
+        dirty = QRegion()
+        for f in self.flakes:
+            dirty += self._spot(f)
         if self.settle and len(self.piles) != w // self.PILE_COL + 1:
             self.piles = [0.0] * (w // self.PILE_COL + 1)
         for f in self.flakes:
@@ -105,7 +110,16 @@ class SnowLayer(QWidget):
             else:                                  # soften into drifts
                 ps = self.piles
                 self.piles = [ps[0]] + [(ps[i - 1] + 2 * ps[i] + ps[i + 1]) / 4 for i in range(1, len(ps) - 1)] + [ps[-1]]
-        self.update()
+        for f in self.flakes:
+            dirty += self._spot(f)
+        if self.settle and self.piles:
+            dirty += QRect(0, h - self.PILE_MAX - 3, w, self.PILE_MAX + 3)
+        self.update(dirty)
+
+    @staticmethod
+    def _spot(f) -> QRect:
+        x, y, r = f[0], f[1], f[2]
+        return QRect(int(x - r) - 2, int(y - r) - 2, int(2 * r) + 5, int(2 * r) + 5)
 
     def melt(self) -> None:
         """Scrolling away melts the drifts (they build up again)."""
