@@ -718,6 +718,13 @@ class PlayerControls(QWidget):
         press = getattr(self, "_press", None)
         if press is not None and e.buttons() & Qt.MouseButton.LeftButton:
             delta = e.globalPosition() - press
+            if not self._moved and self.mode == "pop" and abs(delta.x()) + abs(delta.y()) > 3:
+                # Let macOS move the floating window: as smooth as dragging any window
+                handle = self.window().windowHandle()
+                if handle is not None and handle.startSystemMove():
+                    self._moved = True
+                    self._press = None
+                    return
             if self._moved or abs(delta.x()) + abs(delta.y()) > 5:
                 self._moved = True
                 self._press = e.globalPosition()
@@ -823,6 +830,14 @@ class PopOutWindow(QWidget):
         self.setStyleSheet("background: #000000;")
         self.setMinimumSize(POP_MIN_W, round(POP_MIN_W * 9 / 16))
         self.floating = False
+        self._settle = QTimer(self, singleShot=True, interval=250)
+        self._settle.timeout.connect(self.settled)
+
+    settled = Signal()     # stopped moving: keep it on screen, remember the spot
+
+    def moveEvent(self, e) -> None:
+        super().moveEvent(e)
+        self._settle.start()
 
     def showEvent(self, e) -> None:
         super().showEvent(e)
@@ -846,6 +861,14 @@ class _Grip(QWidget):
         diag = corner in ((1, 1), (-1, -1))
         self.setCursor(Qt.CursorShape.SizeFDiagCursor if diag else Qt.CursorShape.SizeBDiagCursor)
         self._start: tuple[QPointF, QRect] | None = None
+        self.pending: QRect | None = None
+        self._tick = QTimer(self, singleShot=True, interval=16)   # one resize per frame, at most
+        self._tick.timeout.connect(self._apply)
+
+    def _apply(self) -> None:
+        if self.pending is not None:
+            self.window().setGeometry(self.pending)
+            self.pending = None
 
     def mousePressEvent(self, e) -> None:
         if e.button() == Qt.MouseButton.LeftButton:
@@ -862,11 +885,15 @@ class _Grip(QWidget):
         h = round(w * 9 / 16)
         x = geo.right() - w + 1 if sx < 0 else geo.left()      # the opposite corner stays put
         y = geo.bottom() - h + 1 if sy < 0 else geo.top()
-        self.window().setGeometry(clamp_to_screen(QRect(x, y, w, h)))
+        self.pending = clamp_to_screen(QRect(x, y, w, h))
+        if not self._tick.isActive():
+            self._tick.start()
 
     def mouseReleaseEvent(self, _e) -> None:
         if self._start is not None:
             self._start = None
+            self._tick.stop()
+            self._apply()
             self.resized.emit()
 
 
@@ -1346,6 +1373,7 @@ class PlayerHost(QWidget):
         if self.popout is None:
             self.popout = PopOutWindow()
             self.popout.closing.connect(self.close_player)
+            self.popout.settled.connect(self._settled)
             self.grips = [_Grip(c, self) for c in ((-1, -1), (1, -1), (1, 1), (-1, 1))]
             for g in self.grips:
                 g.resized.connect(self._save_popout)
@@ -1392,6 +1420,15 @@ class PlayerHost(QWidget):
         w = POP_DEFAULT_W
         h = round(w * 9 / 16)
         return clamp_to_screen(QRect(area.right() - w - 24, area.bottom() - h - 24, w, h))
+
+    def _settled(self) -> None:
+        if self.mode != "pop" or self.popout is None:
+            return
+        geo = self.popout.geometry()
+        fixed = clamp_to_screen(geo)
+        if fixed != geo:
+            self.popout.setGeometry(fixed)      # dropped partly off screen: slide back on
+        self._save_popout()
 
     def _save_popout(self) -> None:
         if self.popout is not None and self.popout.isVisible():

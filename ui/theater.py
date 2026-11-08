@@ -45,6 +45,8 @@ class VideoSlot(QWidget):
         super().__init__(parent)
         self.setMinimumHeight(220)
         self.max_h = 10_000
+        # Solid black: nothing behind it needs repainting while the video plays over it
+        self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
 
     def set_room(self, viewport_height: int) -> None:
         self.max_h = max(220, int(viewport_height) - self.RESERVE)

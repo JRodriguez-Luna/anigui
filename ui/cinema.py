@@ -12,7 +12,7 @@ Scenes:
 
 from __future__ import annotations
 
-from PySide6.QtCore import QEvent, QObject, QPoint, QPointF, QRectF, Qt, QVariantAnimation
+from PySide6.QtCore import QEvent, QObject, QPoint, QPointF, QRect, QRectF, Qt, QVariantAnimation
 from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPixmap, QRadialGradient
 from PySide6.QtWidgets import QAbstractScrollArea, QWidget
 
@@ -45,6 +45,8 @@ class Ambient(QWidget):
         self.mode = "none"
         self._scroll = None           # the source's scroll bar, while following it
         self._prev: QPixmap | None = None
+        self._fade_rect = QRect()
+        self._layer: tuple[tuple, QPixmap] | None = None   # the scene, drawn once and then copied
         self._prev_opacity = 0.0
         self._fade = QVariantAnimation(self, startValue=1.0, endValue=0.0, duration=FADE_MS)
         self._fade.valueChanged.connect(self._fading)
@@ -61,7 +63,7 @@ class Ambient(QWidget):
         mode = mode if source is not None else "none"
         if source is self.source and mode == self.mode:
             return
-        self._snapshot()
+        self._end_fade()
         if self.source is not None and self.source is not source:
             self.source.ambient = None
             self.source.update()
@@ -106,20 +108,30 @@ class Ambient(QWidget):
     # -- the old scene fades out over the new one ------------------------------------------
 
     def _snapshot(self) -> None:
-        if not self.isVisible() or self.width() <= 0 or reduce_motion():
+        """The hero's art is changing: fade the old picture out, in the hero's rows only
+        (repainting the whole window every frame made starting a video stutter)."""
+        band = self.band_rect() if self.mode == "band" else None
+        if band is None or not self.isVisible() or reduce_motion():
             return
-        self._prev = self.grab()
+        self._fade_rect = band.toAlignedRect().intersected(self.rect())
+        if self._fade_rect.isEmpty():
+            return
+        self._prev = self.grab(self._fade_rect)
         self._prev_opacity = 1.0
         self._fade.stop()
         self._fade.start()
 
+    def _end_fade(self) -> None:
+        self._fade.stop()
+        self._prev = None
+
     def _fading(self, v) -> None:
         self._prev_opacity = float(v)
-        self.update()
+        self.update(self._fade_rect)
 
     def _faded(self) -> None:
         self._prev = None
-        self.update()
+        self.update(self._fade_rect)
 
     # -- geometry ------------------------------------------------------------------------
 
@@ -139,22 +151,49 @@ class Ambient(QWidget):
 
     # -- painting ------------------------------------------------------------------------
 
-    def paintEvent(self, _event) -> None:
+    def paintEvent(self, event) -> None:
         p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
         bg = QColor(theme.BG)
-        p.fillRect(self.rect(), bg)
         if self.mode == "band":
-            self._paint_band(p, bg)
-        elif self.mode == "glow":
-            self._paint_glow(p, bg)
-        if self.mode != "band" and theme.HOLIDAY:
-            self._paint_holiday(p)
+            rect = self.band_rect()
+            p.fillRect(event.rect(), bg)
+            if rect is not None and rect.bottom() >= 0:
+                layer = self._layer_for(int(rect.width()), int(rect.height()))
+                p.drawPixmap(0, int(rect.top()), layer)
+        else:
+            p.drawPixmap(0, 0, self._layer_for(self.width(), self.height()))
         if self._prev is not None and self._prev_opacity > 0:
             p.setOpacity(self._prev_opacity)
-            p.drawPixmap(0, 0, self._prev)
+            p.drawPixmap(self._fade_rect.topLeft(), self._prev)
             p.setOpacity(1.0)
+
+    def _layer_for(self, w: int, h: int) -> QPixmap:
+        """The scene at this size. Drawing the art (scaled, blurred, with its fades) is slow;
+        copying the finished picture is fast, and the window repaints often while a video plays."""
+        s = self.source
+        urls = (s.image_url, s.fallback_url, s.tint.name() if s.tint else None, s.dim) if s is not None else None
+        key = (self.mode, id(s), urls, w, h, theme.HOLIDAY, theme.BG)
+        if self._layer is not None and self._layer[0] == key:
+            return self._layer[1]
+        dpr = self.devicePixelRatioF()
+        pm = QPixmap(max(1, int(w * dpr)), max(1, int(h * dpr)))
+        pm.setDevicePixelRatio(dpr)
+        bg = QColor(theme.BG)
+        pm.fill(bg)
+        p = QPainter(pm)
+        p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        settled = True
+        if self.mode == "band":
+            settled = self._paint_band(p, bg, QRectF(0, 0, w, h))
+        elif self.mode == "glow":
+            settled = self._paint_glow(p, bg, w, h)
+        if self.mode != "band" and theme.HOLIDAY:
+            self._paint_holiday(p, w, h)
+        p.end()
+        if settled:          # (not while the picture is still loading or fading in)
+            self._layer = (key, pm)
+        return pm
 
     def _art(self, w: int, h: int, blurred: bool = False):
         s = self.source
@@ -165,10 +204,7 @@ class Ambient(QWidget):
                 return pm, url
         return None, None
 
-    def _paint_band(self, p: QPainter, bg: QColor) -> None:
-        rect = self.band_rect()
-        if rect is None or rect.bottom() < 0:
-            return
+    def _paint_band(self, p: QPainter, bg: QColor, rect: QRectF) -> bool:
         s = self.source
         w, h = int(rect.width()), int(rect.height())
         pm, url = self._art(_bucket(w), h)
@@ -200,10 +236,9 @@ class Ambient(QWidget):
         bottom.setColorAt(0.35, _alpha(bg, 140))
         bottom.setColorAt(1.0, _alpha(bg, 0))
         p.fillRect(rect, bottom)
-        p.fillRect(QRectF(0, rect.bottom(), self.width(), self.height()), bg)
+        return (pm is not None and fade >= 1) or not (s.image_url or s.fallback_url)
 
-    def _paint_glow(self, p: QPainter, bg: QColor) -> None:
-        w, h = self.width(), self.height()
+    def _paint_glow(self, p: QPainter, bg: QColor, w: int, h: int) -> bool:
         pm, _url = self._art(_bucket(w), _bucket(h), blurred=True)
         rect = QRectF(0, 0, w, h)
         if pm is not None:
@@ -224,11 +259,11 @@ class Ambient(QWidget):
         fade.setColorAt(0.45, _alpha(bg, 150))
         fade.setColorAt(1.0, _alpha(bg, 60))
         p.fillRect(rect, fade)
+        return pm is not None or not (self.source.image_url or self.source.fallback_url)
 
-    def _paint_holiday(self, p: QPainter) -> None:
-        w, h = self.width(), self.height()
+    def _paint_holiday(self, p: QPainter, w: int, h: int) -> None:
         for x, y, color in ((w * 0.85, -h * 0.05, "#E0403C"), (w * 0.05, h * 1.05, "#3FAE6A")):
             g = QRadialGradient(QPointF(x, y), max(w, h) * 0.55)
             g.setColorAt(0, _alpha(QColor(color), 26))
             g.setColorAt(1, _alpha(QColor(color), 0))
-            p.fillRect(self.rect(), g)
+            p.fillRect(QRectF(0, 0, w, h), g)

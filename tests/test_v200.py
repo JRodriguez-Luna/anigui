@@ -199,9 +199,10 @@ def test_resize_from_a_corner_stays_16_9(win):
         def globalPosition(self):
             return self.p
     grip.mouseMoveEvent(Move(700, 370))
+    assert pump(lambda: w.width() == 600)
     assert w.width() == 600 and w.height() == 338 and w.pos() == QPoint(100, 100)
     grip.mouseMoveEvent(Move(0, 0))
-    assert w.width() == 288                                           # not smaller than this
+    assert pump(lambda: w.width() == 288)                                           # not smaller than this
     grip.mouseReleaseEvent(None)
     assert win.ctx.pref("popout_rect")[2] == 288
 
@@ -244,3 +245,19 @@ def test_switching_to_dub_stays_popped_out(win):
     t = win.detail.theater
     t.audio.setCurrentIndex(t.audio.findData(True))
     assert pump(lambda: host.active and host.mode == "pop" and host.popout.isVisible(), 8)
+
+
+def test_dropped_off_screen_slides_back(win):
+    host = pop(win)
+    w = host.popout
+    w.move(-5000, -5000)
+    assert pump(lambda: QGuiApplication.primaryScreen().availableGeometry().contains(w.geometry()), 3)
+    g = w.geometry()
+    assert win.ctx.pref("popout_rect") == [g.x(), g.y(), g.width()]
+
+
+def test_backdrop_is_drawn_once_and_reused(win):
+    amb = win.ambient
+    win.go(win.search)
+    first = amb._layer_for(amb.width(), amb.height())
+    assert amb._layer_for(amb.width(), amb.height()) is first
