@@ -28,6 +28,7 @@ from .icons import nav_icon
 from . import theme
 from .cinema import Ambient
 from .fps import FrameMeter
+from .yours import tinted_icon
 from .lock import Gate, LockScreen
 from .privacy_page import PrivacyPage
 from .library import LibraryNav, ask_new_list
@@ -244,6 +245,8 @@ class MainWindow(QMainWindow):
         self.mature_ask = None   # tests answer the "Show anyway?" window with this
         self._base_icon = None
         self._footer_ani_cli: str | None = None
+        if ctx.pref("accent") != "ember" or ctx.pref("app_icon") != "classic":
+            self.apply_yours()          # (Make it yours)
         self._holiday_timer = QTimer(self, interval=60 * 60 * 1000)   # the date can change while open
         self._holiday_timer.timeout.connect(lambda: self.apply_holiday())
         self.home.holidayAnswered.connect(self._holiday_answer)
@@ -555,8 +558,35 @@ class MainWindow(QMainWindow):
         # No record but Setup was done: updated from 1.1.x, which didn't record versions
         return self.show_whats_new(last or "1.1.0")
 
+    def apply_yours(self) -> None:
+        """Your accent and app icon (Make it yours, 2.0)."""
+        app = QApplication.instance()
+        theme.set_accent(theme.accent_hex(str(self.ctx.pref("accent"))))
+        theme.apply_theme(app)
+        self._set_app_icon()
+        self.brand.refresh()
+        for w in app.allWidgets():
+            QWidget.update(w)
+
+    def _set_app_icon(self) -> None:
+        app = QApplication.instance()
+        if self._base_icon is None:
+            self._base_icon = app.windowIcon()
+        icon = self._base_icon
+        if self.ctx.pref("app_icon") == "accent" and not icon.isNull():
+            icon = tinted_icon(icon, theme.accent_hex(str(self.ctx.pref("accent"))))
+        if theme.HOLIDAY:
+            icon = holiday_icon(icon)
+        app.setWindowIcon(icon)
+
     def _pref_changed(self, key: str, _value) -> None:
-        if key == "alerts":
+        if key in ("accent", "app_icon"):
+            self.apply_yours()
+        elif key == "your_name":
+            self.home.update_greeting()
+        elif key == "home_rows":
+            self.home.apply_rows()
+        elif key == "alerts":
             self.home.refresh_local()
         elif key == "import_history":
             self._import_terminal_history()
@@ -659,9 +689,7 @@ class MainWindow(QMainWindow):
                 crossfade(self.centralWidget(), ms=520)
             theme.set_holiday(on)
             theme.apply_theme(app)
-            if self._base_icon is None:
-                self._base_icon = app.windowIcon()
-            app.setWindowIcon(holiday_icon(self._base_icon) if on else self._base_icon)
+            self._set_app_icon()
             for w in app.allWidgets():
                 QWidget.update(w)        # (some dialogs keep data in an attribute called `update`)
         self.brand.refresh()

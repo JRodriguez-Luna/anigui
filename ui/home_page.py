@@ -5,7 +5,7 @@ from __future__ import annotations
 import random
 
 from PySide6.QtCore import QPoint, Qt, QTimer, Signal
-from PySide6.QtWidgets import QMenu, QMessageBox, QScrollArea, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QLabel, QMenu, QMessageBox, QScrollArea, QVBoxLayout, QWidget
 
 from core import holiday, recommend
 from core.anilist import current_season
@@ -97,12 +97,27 @@ class HomePage(QScrollArea):
 
         rows = QVBoxLayout()
         rows.setContentsMargins(44, 0, 44, 40)
-        rows.setSpacing(34)
+        rows.setSpacing(0)
         rows.addWidget(self.holiday_banner)
         for row in self.rows:
             row.cardActivated.connect(lambda card: self.openItem.emit(card.payload))
-            rows.addWidget(row)
+        # Make it yours (2.0): each row sits in a holder, so you can hide rows and change their
+        # order without touching when a row shows itself (empty rows still hide)
+        self.holders: dict[str, QWidget] = {}
+        self.list_rows: dict[int, CardRow] = {}
+        for key, members in (("new", [self.new_row]), ("continue", [self.continue_row]), ("xmas", [self.xmas_row]),
+                             ("trending", [self.trending_row]), ("season", [self.season_row]),
+                             ("because", self.because_rows), ("saved", [self.library_row])):
+            self.holders[key] = self._holder(members)
+        self.rows_box = rows
+        for holder in self.holders.values():
+            rows.addWidget(holder)
         rows.addStretch(1)
+
+        self.greeting = QLabel("", self.hero, objectName="Greeting")    # "Good evening, Chuy"
+        self.greeting.setTextFormat(Qt.TextFormat.PlainText)
+        self.greeting.move(44, 26)
+        self.greeting.hide()
 
         col = QVBoxLayout(body)
         col.setContentsMargins(0, 0, 0, 0)
@@ -144,6 +159,74 @@ class HomePage(QScrollArea):
         self._check_maturity([n.show for n in fresh] + [i.show for i in items] + list(library))
         self._lookup_missing_covers(items)
         self._load_because(items, library)
+        self.apply_rows()
+        self.update_greeting()
+
+    # -- make it yours (2.0) ----------------------------------------------------------------
+
+    def _holder(self, members) -> QWidget:
+        holder = QWidget()
+        col = QVBoxLayout(holder)
+        col.setContentsMargins(0, 0, 0, 34)
+        col.setSpacing(34)
+        for row in members:
+            col.addWidget(row)
+        return holder
+
+    def apply_rows(self) -> None:
+        """Home's rows in your order, the ones you switched off hidden, and your lists you
+        picked as rows of their own."""
+        from .yours import parse_rows
+
+        store = self.ctx.store
+        lists = {sl.list_id: sl for sl in store.lists()}
+        order = parse_rows(self.ctx.pref("home_rows"))
+        wanted_lists = {int(k[5:]) for k, on in order if k.startswith("list:") and on and k[5:].isdigit()}
+        for lid in list(self.list_rows):
+            if lid not in wanted_lists or lid not in lists or lists[lid].locked:
+                self.holders.pop(f"list:{lid}").deleteLater()
+                del self.list_rows[lid]
+        for lid in wanted_lists:
+            sl = lists.get(lid)
+            if sl is None or sl.locked:            # (locked lists never show on Home)
+                continue
+            row = self.list_rows.get(lid)
+            if row is None:
+                row = CardRow("", self.ctx.images)
+                row.cardActivated.connect(lambda card: self.openItem.emit(card.payload))
+                self.list_rows[lid] = row
+                self.holders[f"list:{lid}"] = self._holder([row])
+            row.title.setText(f"{sl.emoji}  {sl.name}" if sl.emoji else sl.name)
+            shows = store.list_shows(lid)
+            row.set_cards(decorate_all(self.ctx, [show_card(s) for s in shows]))
+            row.setVisible(bool(shows))
+        box = self.rows_box
+        for holder in self.holders.values():
+            box.removeWidget(holder)
+        at = 1                                     # (after the holiday banner)
+        placed = set()
+        for key, on in order:
+            holder = self.holders.get(key)
+            if holder is None:
+                continue
+            box.insertWidget(at, holder)
+            holder.setVisible(on)
+            placed.add(key)
+            at += 1
+        for key, holder in self.holders.items():  # anything not in your order: at the end
+            if key not in placed:
+                box.insertWidget(at, holder)
+                holder.setVisible(True)
+                at += 1
+
+    def update_greeting(self) -> None:
+        from .yours import greeting
+
+        text = greeting(str(self.ctx.pref("your_name") or ""), holiday=theme.HOLIDAY)
+        self.greeting.setText(text)
+        self.greeting.adjustSize()
+        self.greeting.setVisible(bool(text))
+        self.greeting.raise_()
 
     # -- because you watched ---------------------------------------------------------------
 

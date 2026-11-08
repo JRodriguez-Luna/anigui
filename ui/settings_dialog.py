@@ -6,7 +6,7 @@ from typing import Any, Callable
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QDialog, QFrame, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QPushButton,
+    QButtonGroup, QCheckBox, QComboBox, QDialog, QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem, QPushButton,
     QScrollArea, QStackedWidget, QVBoxLayout, QWidget,
 )
 
@@ -55,8 +55,8 @@ class SettingsDialog(QDialog):
     whatsNewRequested = Signal()
     privacyPageRequested = Signal()
 
-    SECTIONS = ("Playback", "Skipping", "Content", "Privacy", "Appearance", "New Episodes", "History", "Connection",
-                "Updates")
+    SECTIONS = ("Playback", "Skipping", "Content", "Privacy", "Make it yours", "Appearance", "New Episodes", "History",
+                "Connection", "Updates")
 
     def __init__(self, ctx: AppContext, parent=None, section: str | None = None) -> None:
         super().__init__(parent)
@@ -71,7 +71,7 @@ class SettingsDialog(QDialog):
         self.nav.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.pages = QStackedWidget()
         for name, build in zip(self.SECTIONS, (self._playback, self._skipping, self._content, self._privacy,
-                                               self._appearance,
+                                               self._yours, self._appearance,
                                                self._episodes,
                                                self._history, self._connection, self._updates)):
             self.nav.addItem(QListWidgetItem(name))
@@ -217,6 +217,76 @@ class SettingsDialog(QDialog):
                        + ("" if can else " This Mac can't ask for Touch ID or a password, so locks are off.")),
         ]
         return rows
+
+    def _yours(self) -> list[QWidget]:
+        from . import theme
+        from .yours import HOME_ROWS, join_rows, parse_rows
+
+        swatches = QWidget()
+        row = QHBoxLayout(swatches)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(8)
+        group = QButtonGroup(swatches)
+        current = str(self.ctx.pref("accent"))
+        for key, name, hexcolor in theme.ACCENTS:
+            b = QPushButton(objectName="Swatch", checkable=True, cursor=Qt.CursorShape.PointingHandCursor)
+            b.setFixedSize(28, 28)
+            b.setToolTip(name)
+            b.setStyleSheet(f"QPushButton#Swatch {{ background: {hexcolor}; border-radius: 14px; border: 2px solid transparent; }}"
+                            f"QPushButton#Swatch:checked {{ border: 2px solid #FFFFFF; }}")
+            b.setChecked(key == current)
+            b.clicked.connect(lambda _c=False, k=key: self.ctx.set_pref("accent", k))
+            group.addButton(b)
+            row.addWidget(b)
+        self.controls["accent"] = swatches
+
+        name = QLineEdit(str(self.ctx.pref("your_name") or ""), placeholderText="Your name", objectName="TagBox")
+        name.setFixedWidth(200)
+        name.editingFinished.connect(lambda: self.ctx.set_pref("your_name", name.text().strip()))
+        self.controls["your_name"] = name
+
+        rows = QListWidget(objectName="HomeRows")
+        rows.setDragDropMode(QListWidget.DragDropMode.InternalMove)
+        rows.setFixedHeight(230)
+        labels = dict(HOME_ROWS)
+        lists = {f"list:{sl.list_id}": sl for sl in self.ctx.store.lists() if sl.list_id != 0 and not sl.locked}
+        order = parse_rows(self.ctx.pref("home_rows"))
+        for key in lists:
+            if key not in (k for k, _ in order):
+                order.append((key, False))
+        for key, on in order:
+            if key in labels:
+                text = labels[key]
+            elif key in lists:
+                sl = lists[key]
+                text = f"{sl.emoji}  {sl.name}" if sl.emoji else sl.name
+            else:
+                continue
+            item = QListWidgetItem(text)
+            item.setData(Qt.ItemDataRole.UserRole, key)
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsDragEnabled)
+            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsDropEnabled)
+            item.setCheckState(Qt.CheckState.Checked if on else Qt.CheckState.Unchecked)
+            rows.addItem(item)
+
+        def save(*_a):
+            out = [(rows.item(i).data(Qt.ItemDataRole.UserRole),
+                    rows.item(i).checkState() == Qt.CheckState.Checked) for i in range(rows.count())]
+            self.ctx.set_pref("home_rows", join_rows(out))
+        rows.itemChanged.connect(save)
+        rows.model().rowsMoved.connect(save)
+        self.controls["home_rows"] = rows
+
+        return [
+            SettingRow("Accent color", "Buttons, highlights and the progress bar. (The holiday theme's red and "
+                       "green take over in December.)", swatches),
+            SettingRow("App icon", "The Dock icon, in AniGUI's orange or in your accent color.",
+                       self._choice("app_icon", [("Classic", "classic"), ("In your color", "accent")])),
+            SettingRow("Greeting", "Home says hello with your name. Leave it empty for no greeting.", name),
+            SettingRow("Home", "Tick the rows you want on Home and drag them into your order. Your lists can be "
+                       "rows too.", None),
+            rows,
+        ]
 
     def _appearance(self) -> list[QWidget]:
         import datetime as dt

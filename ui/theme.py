@@ -98,6 +98,12 @@ QFrame#DestCard {{ background: rgba(255, 255, 255, 0.05); border: 1px solid rgba
 QPushButton#PrivatePill {{ background: rgba(140, 100, 255, 0.22); color: #E2D8FF; border: 1px solid rgba(160, 130, 255, 0.5);
     border-radius: 12px; padding: 5px 10px; font-size: 12px; font-weight: 700; text-align: left; }}
 QPushButton#PrivatePill:hover {{ background: rgba(140, 100, 255, 0.34); }}
+QListWidget#HomeRows {{ background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px;
+    padding: 4px; font-size: 13px; }}
+QListWidget#HomeRows::item {{ padding: 6px 8px; border-radius: 6px; }}
+QListWidget#HomeRows::item:hover {{ background: rgba(255,255,255,0.06); }}
+#Greeting {{ color: rgba(255, 255, 255, 0.86); font-size: 15px; font-weight: 700; background: rgba(0, 0, 0, 0.28);
+    border-radius: 12px; padding: 5px 12px; }}
 #SidebarFooter {{ color: {FAINT}; font-size: 11px; padding: 6px; }}
 #SidebarHeading {{ color: {FAINT}; font-size: 11px; font-weight: 800; letter-spacing: 1.5px; }}
 #Sidebar QComboBox {{ font-size: 12px; padding: 6px 10px; }}
@@ -389,10 +395,43 @@ HOLIDAY = False
 KICKER = NORMAL_COLORS["KICKER"]
 
 
+# Make it yours (2.0): your accent color. The holiday theme's red and green still win in December.
+ACCENTS = (
+    ("ember", "Ember", "#FF6B3D"),
+    ("sakura", "Sakura", "#F0679A"),
+    ("ocean", "Ocean", "#3D8DFF"),
+    ("matcha", "Matcha", "#43B87A"),
+    ("violet", "Violet", "#9B6BFF"),
+    ("gold", "Gold", "#F2B23D"),
+)
+_USER_ACCENT = NORMAL_COLORS["ACCENT"]
+
+
+def accent_hex(key: str) -> str:
+    return next((hx for k, _n, hx in ACCENTS if k == key), NORMAL_COLORS["ACCENT"])
+
+
+def _colors_for(hexcolor: str) -> dict[str, str]:
+    c = QColor(hexcolor)
+    if c.name().lower() == NORMAL_COLORS["ACCENT"].lower():
+        return dict(NORMAL_COLORS)
+    return {"ACCENT": c.name(), "ACCENT_HOVER": c.lighter(116).name(), "ACCENT_PRESSED": c.darker(112).name(),
+            "KICKER": c.name()}
+
+
+def set_accent(hexcolor: str) -> None:
+    """Your accent (call apply_theme() after, and repaint)."""
+    global _USER_ACCENT, ACCENT, ACCENT_HOVER, ACCENT_PRESSED, KICKER
+    _USER_ACCENT = QColor(hexcolor).name() if QColor(hexcolor).isValid() else NORMAL_COLORS["ACCENT"]
+    if not HOLIDAY:
+        colors = _colors_for(_USER_ACCENT)
+        ACCENT, ACCENT_HOVER, ACCENT_PRESSED, KICKER = (colors[k] for k in ("ACCENT", "ACCENT_HOVER", "ACCENT_PRESSED", "KICKER"))
+
+
 def set_holiday(on: bool) -> None:
     """Switch the colors (call apply_theme() after, and repaint)."""
     global HOLIDAY, ACCENT, ACCENT_HOVER, ACCENT_PRESSED, KICKER
-    colors = HOLIDAY_COLORS if on else NORMAL_COLORS
+    colors = HOLIDAY_COLORS if on else _colors_for(_USER_ACCENT)
     HOLIDAY = on
     ACCENT, ACCENT_HOVER, ACCENT_PRESSED, KICKER = (colors[k] for k in ("ACCENT", "ACCENT_HOVER", "ACCENT_PRESSED", "KICKER"))
 

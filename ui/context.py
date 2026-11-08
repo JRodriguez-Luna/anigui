@@ -38,6 +38,10 @@ DEFAULTS: dict[str, Any] = {
     "notify": True,              # Mac notifications for new episodes
     "import_history": False,     # bring in shows watched with ani-cli in Terminal (asked in Setup)
     "check_updates": True,
+    "accent": "ember",           # Make it yours (2.0): ember | sakura | ocean | matcha | violet | gold
+    "app_icon": "classic",       # classic | accent (tinted to your accent)
+    "your_name": "",             # for Home's greeting (empty: no greeting)
+    "home_rows": "",             # Home's rows, in your order: "key:1,key:0,…" ("" = the usual)
     "holiday_theme": "auto",     # auto (day after Thanksgiving to Jan 1) | early (from Nov 1) | off
     "holiday_banner_seen": "",   # the year November's "holiday theme is ready" banner was answered
 }

@@ -295,3 +295,61 @@ def test_what_leaves_your_mac(win):
     assert privacy.destination_for("cdn.somevideo.net") == "Video hosts"
     names = {d.name for d in privacy.DESTINATIONS}
     assert {"AniList", "hianime", "GitHub", "AniSkip"} <= names
+
+
+# -- make it yours -------------------------------------------------------------------------------
+
+def test_accent_color(win):
+    from ui import theme
+    try:
+        win.ctx.set_pref("accent", "ocean")
+        assert theme.ACCENT.lower() == theme.accent_hex("ocean").lower()
+        assert theme.accent_hex("ocean").lower() in QApplication_sheet().lower()
+    finally:
+        win.ctx.set_pref("accent", "ember")
+    assert theme.ACCENT == "#FF6B3D"
+
+
+def QApplication_sheet():
+    from PySide6.QtWidgets import QApplication
+    return QApplication.instance().styleSheet()
+
+
+def test_greeting():
+    import datetime as dt
+    from ui.yours import greeting
+    assert greeting("", dt.datetime(2026, 11, 8, 20)) == ""
+    assert greeting("Chuy", dt.datetime(2026, 11, 8, 20)) == "Good evening, Chuy"
+    assert greeting("Chuy", dt.datetime(2026, 11, 8, 9)) == "Good morning, Chuy"
+    assert greeting("Chuy", dt.datetime(2026, 12, 25, 9), holiday=True) == "Merry Christmas, Chuy 🎄"
+    assert greeting(" Chuy ", dt.datetime(2026, 12, 3, 2), holiday=True) == "Up late, Chuy ❄"
+
+
+def test_home_rows_your_way(win):
+    from ui.yours import join_rows, parse_rows
+    assert [k for k, _ in parse_rows("")][:2] == ["new", "continue"]
+    order = parse_rows("trending:1,continue:0")
+    assert order[0] == ("trending", True) and ("continue", False) in order and len(order) == 7
+    s = win.ctx.store
+    lid = s.create_list("Cozy", "🍵")
+    s.add_to_list(lid, STARFALL)
+    win.ctx.set_pref("home_rows", join_rows([("trending", True), ("continue", False), (f"list:{lid}", True)]))
+    home = win.home
+    box = home.rows_box
+    assert box.indexOf(home.holders["trending"]) < box.indexOf(home.holders[f"list:{lid}"])
+    assert not home.holders["continue"].isVisibleTo(home)
+    assert home.list_rows[lid].title.text() == "🍵  Cozy" and home.list_rows[lid].model().rowCount() == 1
+    s.set_list_locked(lid, True)                       # a locked list never shows on Home
+    home.apply_rows()
+    assert lid not in home.list_rows
+    win.ctx.set_pref("home_rows", "")
+
+
+def test_app_icon_in_your_color(win):
+    from PySide6.QtGui import QIcon, QPixmap, QColor
+    from ui.yours import tinted_icon
+    pm = QPixmap(64, 64)
+    pm.fill(QColor("#FF6B3D"))
+    icon = tinted_icon(QIcon(pm), "#3D8DFF")
+    c = icon.pixmap(64, 64).toImage().pixelColor(32, 32)
+    assert c.blue() > c.red()                          # orange became blue-ish
