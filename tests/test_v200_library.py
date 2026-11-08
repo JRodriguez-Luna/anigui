@@ -327,9 +327,9 @@ def test_greeting():
 
 def test_home_rows_your_way(win):
     from ui.yours import join_rows, parse_rows
-    assert [k for k, _ in parse_rows("")][:2] == ["new", "continue"]
+    assert [k for k, _ in parse_rows("")][:3] == ["queue", "new", "continue"]
     order = parse_rows("trending:1,continue:0")
-    assert order[0] == ("trending", True) and ("continue", False) in order and len(order) == 7
+    assert order[0] == ("trending", True) and ("continue", False) in order and len(order) == 8
     s = win.ctx.store
     lid = s.create_list("Cozy", "🍵")
     s.add_to_list(lid, STARFALL)

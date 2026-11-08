@@ -101,6 +101,25 @@ CREATE TABLE IF NOT EXISTS not_interested (       -- kept out of Home and sugges
     title      TEXT NOT NULL,
     at         REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS moments (              -- Moments (2.0): a frame you saved with B / ⌘S
+    moment_id INTEGER PRIMARY KEY,
+    anime_id  TEXT NOT NULL REFERENCES shows(anime_id) ON DELETE CASCADE,
+    episode   TEXT NOT NULL,
+    position  REAL NOT NULL,
+    image     TEXT NOT NULL DEFAULT '',   -- the saved frame (a file in AniGUI's folder)
+    note      TEXT NOT NULL DEFAULT '',
+    at        REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS queue (                -- Your queue (2.0): what to watch next, in order
+    anime_id TEXT PRIMARY KEY REFERENCES shows(anime_id) ON DELETE CASCADE,
+    episode  TEXT NOT NULL,
+    position REAL NOT NULL,
+    added_at REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS show_settings (        -- per-show choices (2.0), JSON
+    anime_id TEXT PRIMARY KEY REFERENCES shows(anime_id) ON DELETE CASCADE,
+    settings TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS rewatch (              -- Rewatch mode (2.0): where you are this time round
     anime_id   TEXT PRIMARY KEY REFERENCES shows(anime_id) ON DELETE CASCADE,
     episode    TEXT NOT NULL,             -- the next episode to watch
@@ -183,6 +202,20 @@ class Moment:
     kind: str                 # watched | saved | listed | rated
     anime_id: str
     detail: str               # episodes ("3, 4, 5"), list name, or the rating
+    title: str = ""
+    poster: str | None = None
+
+
+@dataclass(frozen=True)
+class Moment_:
+    """A frame you saved (Moments)."""
+    moment_id: int
+    anime_id: str
+    episode: str
+    position: float
+    image: str
+    note: str
+    at: float
     title: str = ""
     poster: str | None = None
 
@@ -312,6 +345,9 @@ class Store:
             c.execute("UPDATE OR IGNORE show_notes SET anime_id = ? WHERE anime_id = ?", (new_id, old_id))
             c.execute("UPDATE events SET anime_id = ? WHERE anime_id = ?", (new_id, old_id))
             c.execute("UPDATE OR IGNORE rewatch SET anime_id = ? WHERE anime_id = ?", (new_id, old_id))
+            c.execute("UPDATE moments SET anime_id = ? WHERE anime_id = ?", (new_id, old_id))
+            c.execute("UPDATE OR IGNORE queue SET anime_id = ? WHERE anime_id = ?", (new_id, old_id))
+            c.execute("UPDATE OR IGNORE show_settings SET anime_id = ? WHERE anime_id = ?", (new_id, old_id))
             c.execute("DELETE FROM shows WHERE anime_id = ?", (old_id,))  # cascades old progress
 
     def find_by_anilist(self, anilist_id: int) -> Show | None:
@@ -566,6 +602,90 @@ class Store:
     def not_interested(self) -> list[tuple[int, str]]:
         return [(r[0], r[1]) for r in self._conn().execute(
             "SELECT anilist_id, title FROM not_interested ORDER BY at DESC")]
+
+    # -- Moments (2.0) ----------------------------------------------------------------------
+
+    def add_moment(self, anime_id: str, episode: str, position: float, image: str = "", note: str = "") -> int:
+        with self._tx() as c:
+            cur = c.execute("INSERT INTO moments (anime_id, episode, position, image, note, at) VALUES (?, ?, ?, ?, ?, ?)",
+                            (anime_id, episode, position, image, note, time.time()))
+            return int(cur.lastrowid)
+
+    def moments(self, anime_id: str | None = None) -> list["Moment_"]:
+        sql = """SELECT m.*, s.title, s.poster FROM moments m JOIN shows s ON s.anime_id = m.anime_id"""
+        args: tuple = ()
+        if anime_id:
+            sql += " WHERE m.anime_id = ?"
+            args = (anime_id,)
+        rows = self._conn().execute(sql + " ORDER BY m.at DESC", args).fetchall()
+        return [Moment_(r["moment_id"], r["anime_id"], r["episode"], r["position"], r["image"], r["note"], r["at"],
+                        r["title"], r["poster"]) for r in rows]
+
+    def set_moment_note(self, moment_id: int, note: str) -> None:
+        with self._tx() as c:
+            c.execute("UPDATE moments SET note = ? WHERE moment_id = ?", (note.strip(), moment_id))
+
+    def delete_moment(self, moment_id: int) -> str:
+        """Returns the picture's path so the caller can remove the file."""
+        with self._tx() as c:
+            row = c.execute("SELECT image FROM moments WHERE moment_id = ?", (moment_id,)).fetchone()
+            c.execute("DELETE FROM moments WHERE moment_id = ?", (moment_id,))
+        return row[0] if row else ""
+
+    # -- Your queue (2.0) -------------------------------------------------------------------
+
+    def enqueue(self, anime_id: str, episode: str) -> None:
+        with self._tx() as c:
+            pos = c.execute("SELECT COALESCE(MAX(position), 0) + 1 FROM queue").fetchone()[0]
+            c.execute("""INSERT INTO queue VALUES (?, ?, ?, ?)
+                         ON CONFLICT(anime_id) DO UPDATE SET episode = excluded.episode""",
+                      (anime_id, episode, pos, time.time()))
+
+    def dequeue(self, anime_id: str) -> None:
+        with self._tx() as c:
+            c.execute("DELETE FROM queue WHERE anime_id = ?", (anime_id,))
+
+    def queue(self) -> list[tuple[Show, str]]:
+        rows = self._conn().execute(
+            "SELECT s.*, q.episode AS q_episode FROM queue q JOIN shows s ON s.anime_id = q.anime_id ORDER BY q.position").fetchall()
+        return [(_show(r), r["q_episode"]) for r in rows]
+
+    def in_queue(self, anime_id: str) -> bool:
+        return self._conn().execute("SELECT 1 FROM queue WHERE anime_id = ?", (anime_id,)).fetchone() is not None
+
+    def move_in_queue(self, anime_id: str, index: int) -> None:
+        ids = [s.anime_id for s, _e in self.queue()]
+        if anime_id not in ids:
+            return
+        ids.remove(anime_id)
+        ids.insert(max(0, min(index, len(ids))), anime_id)
+        with self._tx() as c:
+            for pos, aid in enumerate(ids, 1):
+                c.execute("UPDATE queue SET position = ? WHERE anime_id = ?", (pos, aid))
+
+    # -- per-show settings (2.0) -------------------------------------------------------------
+
+    def show_settings(self, anime_id: str | None) -> dict:
+        if not anime_id:
+            return {}
+        r = self._conn().execute("SELECT settings FROM show_settings WHERE anime_id = ?", (anime_id,)).fetchone()
+        try:
+            return json.loads(r[0]) if r else {}
+        except json.JSONDecodeError:
+            return {}
+
+    def set_show_setting(self, anime_id: str, key: str, value) -> None:
+        """value None: use your usual setting."""
+        settings = self.show_settings(anime_id)
+        if value is None:
+            settings.pop(key, None)
+        else:
+            settings[key] = value
+        with self._tx() as c:
+            if settings:
+                c.execute("INSERT OR REPLACE INTO show_settings VALUES (?, ?)", (anime_id, json.dumps(settings)))
+            else:
+                c.execute("DELETE FROM show_settings WHERE anime_id = ?", (anime_id,))
 
     # -- Rewatch mode (2.0) ---------------------------------------------------------------
 

@@ -13,6 +13,7 @@ ICON_SIZES = (16, 32, 64, 128, 256, 512)
 
 # Home's rows: (key, label). Your lists can be rows too ("list:<id>").
 HOME_ROWS = (
+    ("queue", "Your queue"),
     ("new", "New Episodes"),
     ("continue", "Continue Watching"),
     ("xmas", "Christmas anime (holidays)"),

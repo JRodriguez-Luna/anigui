@@ -916,6 +916,7 @@ class PlayerHost(QWidget):
     backRequested = Signal()         # the player's Back
     modeChanged = Signal(str)
     drawerChanged = Signal(bool)     # the episode list opened or closed
+    momentSaved = Signal()           # Moments (2.0)
 
     def __init__(self, ctx, parent: QWidget) -> None:
         super().__init__(parent)
@@ -1211,6 +1212,8 @@ class PlayerHost(QWidget):
             self._action("full")
         elif key == Qt.Key.Key_P:
             self.pop_in(show_app=True) if self.mode == "pop" else self.pop_out()
+        elif key == Qt.Key.Key_B or (key == Qt.Key.Key_S and e.modifiers() & Qt.KeyboardModifier.ControlModifier):
+            self.save_moment()
         elif key == Qt.Key.Key_N:
             self._action("next")
         elif key == Qt.Key.Key_E:
@@ -1272,6 +1275,8 @@ class PlayerHost(QWidget):
             act.setCheckable(True)
             act.setChecked(abs(value - self._speed) < 0.01)
             act.triggered.connect(lambda _c=False, v=value: self._cmd("set_property", "speed", v))
+        menu.addSeparator()
+        menu.addAction("Save this moment  (B)").triggered.connect(self.save_moment)
         menu.addSeparator()
         auto = menu.addAction("Auto-play next episode")
         auto.setCheckable(True)
@@ -1454,6 +1459,7 @@ class PlayerHost(QWidget):
             self._leave_full()
         if self.popout is None:
             self.popout = PopOutWindow()
+            self.destroyed.connect(self.popout.deleteLater)     # (it has no parent to go with)
             self.popout.closing.connect(self.close_player)
             self.popout.settled.connect(self._settled)
             self.grips = [_Grip(c, self) for c in ((-1, -1), (1, -1), (1, 1), (-1, 1))]
@@ -1573,3 +1579,24 @@ class PlayerHost(QWidget):
         self._cmd("set_property", "volume", self._fade_from)
         self.controls.show_message("Sweet dreams ❄  Paused by the sleep timer" if theme.HOLIDAY
                                    else "Good night ☾  Paused by the sleep timer", 6000)
+
+    # -- Moments (2.0) ---------------------------------------------------------------------
+
+    def save_moment(self) -> int | None:
+        """Keep this frame and the time: Library → Moments takes you back to it."""
+        s = self.session
+        if s is None or self.controls.position is None:
+            return None
+        from core import paths
+
+        n = s.now
+        folder = paths.data_dir() / "Moments"
+        folder.mkdir(parents=True, exist_ok=True)
+        pos = float(self.controls.position)
+        safe = "".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in n.anime_id)[:60]
+        image = folder / f"{safe}-ep{n.episode}-{int(pos)}-{int(time.time())}.jpg"
+        self._cmd("screenshot-to-file", str(image), "video")
+        moment = self.ctx.store.add_moment(n.anime_id, n.episode, pos, str(image))
+        self.controls.show_message(("❄  " if theme.HOLIDAY else "✨  ") + "Moment saved: Library → Moments", 2200)
+        self.momentSaved.emit()
+        return moment

@@ -19,6 +19,7 @@ from .cards import CardRow, media_card
 from . import theme
 from .content_notes import ContentLine
 from .library import ListsButton, YourNotes
+from .showprefs import SUB_SIZES, show_pref
 from .festive import BowPop
 from .theater import Theater, nice_date
 from .motion import fade_in
@@ -130,6 +131,7 @@ class DetailPage(QScrollArea):
         self.list_btn.clicked.connect(self._toggle_library)
         self.lists_btn = ListsButton(ctx.store)           # your own lists (2.0)
         self.lists_btn.changed.connect(self.libraryChanged)
+        self.lists_btn.episode_for = lambda: self.play_target
         self.bow = BowPop(self)
         self.sub_btn = QPushButton("Sub", objectName="Toggle", checkable=True, cursor=Qt.CursorShape.PointingHandCursor)
         self.dub_btn = QPushButton("Dub", objectName="Toggle", checkable=True, cursor=Qt.CursorShape.PointingHandCursor)
@@ -137,13 +139,17 @@ class DetailPage(QScrollArea):
         self.mode.addButton(self.sub_btn)
         self.mode.addButton(self.dub_btn)
         (self.dub_btn if ctx.pref("dub", False) else self.sub_btn).setChecked(True)
-        self.dub_btn.toggled.connect(lambda on: ctx.set_pref("dub", on))
+        self.dub_btn.toggled.connect(self._choose_dub)
         self.quality = Combo(cursor=Qt.CursorShape.PointingHandCursor)
         for label, value in QUALITIES:
             self.quality.addItem(label, value)
         saved = str(ctx.pref("quality", "best"))
         self.quality.setCurrentIndex(max(0, self.quality.findData(saved)))
-        self.quality.currentIndexChanged.connect(lambda _i: ctx.set_pref("quality", self.quality.currentData()))
+        self.quality.currentIndexChanged.connect(lambda _i: self._choose_quality(self.quality.currentData()))
+        self.show_menu_btn = QPushButton("⚙", objectName="Glass", cursor=Qt.CursorShape.PointingHandCursor)
+        self.show_menu_btn.setToolTip("Settings for this show: skipping and subtitle size")
+        self.show_menu_btn.setFixedWidth(44)
+        self.show_menu_btn.clicked.connect(self._show_settings_menu)
         self.quality.setToolTip("Stream quality (falls back to best if unavailable)")
         ctx.events.changed.connect(self._pref_changed)
 
@@ -157,6 +163,7 @@ class DetailPage(QScrollArea):
         actions.addWidget(self.sub_btn)
         actions.addWidget(self.dub_btn)
         actions.addWidget(self.quality)
+        actions.addWidget(self.show_menu_btn)
         actions.addStretch(1)
 
         info = QVBoxLayout()
@@ -574,6 +581,7 @@ class DetailPage(QScrollArea):
         self.ctx.store.upsert_show(anime_id, title, poster)
         self.list_btn.setEnabled(True)
         self._refresh_library_button()
+        self._show_choices()
         self._set_status("Loading episodes…")
         self.bound.emit(anime_id)
         gen = self.gen
@@ -916,14 +924,8 @@ class DetailPage(QScrollArea):
             switch.update()
             self._refresh_episode_states()
             return
-        if key == "dub":
-            btn = self.dub_btn if self.ctx.pref("dub") else self.sub_btn
-            if not btn.isChecked():
-                btn.setChecked(True)
-        elif key == "quality":
-            i = max(0, self.quality.findData(str(self.ctx.pref("quality"))))
-            if i != self.quality.currentIndex():
-                self.quality.setCurrentIndex(i)
+        if key in ("dub", "quality"):
+            self._show_choices()            # (this show's own choice wins over your usual)
 
     # -- the built-in player's theater -----------------------------------------------------
 
@@ -981,7 +983,7 @@ class DetailPage(QScrollArea):
         if info.get("minutes"):
             bits.append(f"{info['minutes']} min")
         t.ep_meta.setText("  ·  ".join(bits))
-        t.set_choices(bool(self.ctx.pref("dub", False)), str(self.ctx.pref("quality", "best")))
+        t.set_choices(bool(show_pref(self.ctx, self.anime_id, "dub")), str(show_pref(self.ctx, self.anime_id, "quality") or "best"))
         door = None
         if theme.HOLIDAY and self.media and current:
             door = next((d for d in range(1, 25) if (pick := holiday.advent_pick(d))
@@ -1029,13 +1031,74 @@ class DetailPage(QScrollArea):
         self.ep_details = dict(found or {})
         self.refresh_theater()
 
+    # -- per-show settings (2.0) -----------------------------------------------------------
+
+    def _choose_dub(self, on: bool) -> None:
+        """Sub/Dub on a show page: remembered for this show, and your usual for new shows."""
+        self.ctx.set_pref("dub", on)
+        if self.anime_id:
+            self.ctx.store.set_show_setting(self.anime_id, "dub", bool(on))
+
+    def _choose_quality(self, quality) -> None:
+        self.ctx.set_pref("quality", quality)
+        if self.anime_id:
+            self.ctx.store.set_show_setting(self.anime_id, "quality", str(quality))
+
+    def _show_choices(self) -> None:
+        """This show's Sub/Dub and quality on the buttons (its own, or your usual)."""
+        dub = bool(show_pref(self.ctx, self.anime_id, "dub"))
+        for b in (self.sub_btn, self.dub_btn):
+            b.blockSignals(True)
+        (self.dub_btn if dub else self.sub_btn).setChecked(True)
+        for b in (self.sub_btn, self.dub_btn):
+            b.blockSignals(False)
+        self.quality.blockSignals(True)
+        self.quality.setCurrentIndex(max(0, self.quality.findData(str(show_pref(self.ctx, self.anime_id, "quality")))))
+        self.quality.blockSignals(False)
+
+    def _show_settings_menu(self) -> None:
+        if not self.anime_id:
+            return
+        store, aid = self.ctx.store, self.anime_id
+        own = store.show_settings(aid)
+        menu = QMenu(self)
+        head = menu.addAction(f"For {self.show_title or 'this show'}")
+        head.setEnabled(False)
+        for key, label in (("skip_intro", "Skip intros"), ("skip_ending", "Skip endings")):
+            sub = menu.addMenu(label)
+            usual = "on" if self.ctx.pref(key) else "off"
+            for text, value in ((f"Usual ({usual})", None), ("Always", True), ("Never", False)):
+                act = sub.addAction(text)
+                act.setCheckable(True)
+                act.setChecked(own.get(key, None) == value if value is not None else key not in own)
+                act.triggered.connect(lambda _c=False, k=key, v=value: store.set_show_setting(aid, k, v))
+        sub = menu.addMenu("Subtitle size")
+        usual = next((n for k, n, _v in SUB_SIZES if k == self.ctx.pref("sub_size")), "Normal")
+        for text, value in ((f"Usual ({usual.lower()})", None), *((n, k) for k, n, _v in SUB_SIZES)):
+            act = sub.addAction(text)
+            act.setCheckable(True)
+            act.setChecked(own.get("sub_size") == value if value is not None else "sub_size" not in own)
+            act.triggered.connect(lambda _c=False, v=value: store.set_show_setting(aid, "sub_size", v))
+        menu.addSeparator()
+        menu.addAction("Use my usual settings for everything").triggered.connect(lambda: self._reset_show_settings())
+        menu.exec(self.show_menu_btn.mapToGlobal(self.show_menu_btn.rect().bottomLeft()))
+
+    def _reset_show_settings(self) -> None:
+        for key in list(self.ctx.store.show_settings(self.anime_id)):
+            self.ctx.store.set_show_setting(self.anime_id, key, None)
+        self._show_choices()
+
     def _theater_dub(self, dub: bool) -> None:
         self.ctx.set_pref("dub", dub)
+        if self.anime_id:
+            self.ctx.store.set_show_setting(self.anime_id, "dub", bool(dub))
         (self.dub_btn if dub else self.sub_btn).setChecked(True)
         self._replay_current()
 
     def _theater_quality(self, quality: str) -> None:
         self.ctx.set_pref("quality", quality)
+        if self.anime_id:
+            self.ctx.store.set_show_setting(self.anime_id, "quality", quality)
         self.quality.setCurrentIndex(max(0, self.quality.findData(quality)))
         self._replay_current()
 

@@ -32,6 +32,10 @@ DEFAULTS: dict[str, Any] = {
     "dub_subtitles": False,      # show the (Japanese-timed) subtitles over dubbed audio
     "auto_backup": False,        # a backup a day, newest 7 kept (2.0)
     "spoiler_shield": False,     # blur episodes you haven't reached (2.0)
+    "sub_size": "normal",        # subtitle style (2.0): small | normal | large | huge
+    "sub_color": "white",        # white | yellow
+    "sub_box": False,            # a dark box behind subtitles
+    "weekly_goal": 0,            # Goals (2.0): episodes a week (0 = off)     # blur episodes you haven't reached (2.0)
     "lock_app": False,           # Touch ID to open AniGUI (2.0)
     "lock_mature": False,        # Touch ID before 18+ shows (2.0)
     "hide_mature": True,         # keep 18+ shows out of suggestions; blur and ask for your own

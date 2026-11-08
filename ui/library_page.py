@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import datetime as dt
 from dataclasses import replace
+from pathlib import Path
 
 from PySide6.QtCore import QModelIndex, QPoint, QRectF, QSize, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QStandardItem, QStandardItemModel
+from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPixmap, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (QButtonGroup, QHBoxLayout, QLabel, QListView, QMenu, QPushButton, QStackedLayout,
                                QStyle, QStyledItemDelegate, QVBoxLayout, QWidget)
 
@@ -152,12 +153,126 @@ class TimelineView(QListView):
             self.openShow.emit(value.anime_id)
 
 
+class MomentDelegate(QStyledItemDelegate):
+    W, H, TEXT = 256, 144, 46
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self._pix: dict[str, QPixmap | None] = {}
+
+    def sizeHint(self, option, index) -> QSize:
+        return QSize(self.W + 20, self.H + self.TEXT + 18)
+
+    def _picture(self, path: str):
+        if path not in self._pix:
+            pm = QPixmap(path) if path and Path(path).is_file() else None
+            self._pix[path] = pm.scaled(self.W * 2, self.H * 2, Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                                        Qt.TransformationMode.SmoothTransformation) if pm and not pm.isNull() else None
+        return self._pix[path]
+
+    def paint(self, p: QPainter, option, index) -> None:
+        m = index.data(ROLE)
+        r = QRectF(option.rect).adjusted(10, 6, -10, -6)
+        hover = bool(option.state & QStyle.StateFlag.State_MouseOver)
+        p.save()
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        pic = QRectF(r.left(), r.top() - (3 if hover else 0), self.W, self.H)
+        clip = QPainterPath()
+        clip.addRoundedRect(pic, 10, 10)
+        p.setClipPath(clip)
+        pm = self._picture(m.image)
+        if pm is not None:
+            src = QRectF(0, 0, pm.width(), pm.height())
+            p.drawPixmap(pic, pm, src)
+        else:
+            p.fillRect(pic, QColor(theme.SURFACE_2))
+            p.setPen(QColor(theme.MUTED))
+            p.setFont(theme.font(13, QFont.Weight.DemiBold))
+            p.drawText(pic, Qt.AlignmentFlag.AlignCenter, "✨")
+        p.setClipping(False)
+        mins, secs = divmod(int(m.position), 60)
+        chip = QRectF(pic.right() - 62, pic.bottom() - 30, 54, 22)
+        p.setBrush(QColor(0, 0, 0, 170))
+        p.setPen(Qt.PenStyle.NoPen)
+        p.drawRoundedRect(chip, 6, 6)
+        p.setPen(QColor("#FFFFFF"))
+        p.setFont(theme.font(11, QFont.Weight.Bold))
+        p.drawText(chip, Qt.AlignmentFlag.AlignCenter, f"{mins}:{secs:02d}")
+        p.setPen(QColor(theme.TEXT))
+        p.setFont(theme.font(13, QFont.Weight.DemiBold))
+        p.drawText(QRectF(pic.left(), pic.bottom() + 8, self.W, 18), Qt.AlignmentFlag.AlignLeft,
+                   p.fontMetrics().elidedText(f"{m.title} · Ep {m.episode}", Qt.TextElideMode.ElideRight, self.W))
+        p.setPen(QColor(theme.MUTED))
+        p.setFont(theme.font(12, QFont.Weight.Medium))
+        p.drawText(QRectF(pic.left(), pic.bottom() + 27, self.W, 18), Qt.AlignmentFlag.AlignLeft,
+                   p.fontMetrics().elidedText(m.note or dt.datetime.fromtimestamp(m.at).strftime("%b %-d"),
+                                              Qt.TextElideMode.ElideRight, self.W))
+        p.restore()
+
+
+class MomentsView(QListView):
+    openMoment = Signal(object)
+    changed = Signal()
+
+    def __init__(self, store, parent=None) -> None:
+        super().__init__(parent)
+        self.store = store
+        self.model_ = QStandardItemModel(self)
+        self.setModel(self.model_)
+        self.setItemDelegate(MomentDelegate(self))
+        self.setViewMode(QListView.ViewMode.IconMode)
+        self.setResizeMode(QListView.ResizeMode.Adjust)
+        self.setMovement(QListView.Movement.Static)
+        self.setUniformItemSizes(True)
+        self.setMouseTracking(True)
+        self.setFrameShape(QListView.Shape.NoFrame)
+        self.setSelectionMode(QListView.SelectionMode.NoSelection)
+        self.setEditTriggers(QListView.EditTrigger.NoEditTriggers)
+        self.setVerticalScrollMode(QListView.ScrollMode.ScrollPerPixel)
+        self.setObjectName("Timeline")
+        self.viewport().setCursor(Qt.CursorShape.PointingHandCursor)
+        self.clicked.connect(lambda i: self.openMoment.emit(i.data(ROLE)))
+
+    def set_moments(self, moments) -> None:
+        self.model_.clear()
+        for m in moments:
+            item = QStandardItem()
+            item.setData(m, ROLE)
+            self.model_.appendRow(item)
+
+    def contextMenuEvent(self, e) -> None:
+        index = self.indexAt(e.pos())
+        if not index.isValid():
+            return
+        m = index.data(ROLE)
+        menu = QMenu(self)
+        menu.addAction("Add a note…").triggered.connect(lambda: self._note(m))
+        menu.addAction("Delete this moment").triggered.connect(lambda: self._delete(m))
+        menu.exec(e.globalPos())
+
+    def _note(self, m) -> None:
+        from PySide6.QtWidgets import QInputDialog
+        text, ok = QInputDialog.getText(self, "Moment", "A note for this moment:", text=m.note)
+        if ok:
+            self.store.set_moment_note(m.moment_id, text)
+            self.changed.emit()
+
+    def _delete(self, m) -> None:
+        path = self.store.delete_moment(m.moment_id)
+        if path:
+            Path(path).unlink(missing_ok=True)
+        self.changed.emit()
+
+
 class LibraryPage(QWidget):
     openItem = Signal(object)        # Show
     listsChanged = Signal()          # a list was renamed, emptied or deleted
     listMenu = Signal(int, QPoint)   # the ⋯ on a list's page
 
-    TABS = (("all", "All shows"), ("timeline", "Timeline"), ("ratings", "Ratings"), ("tags", "Tags"))
+    TABS = (("all", "All shows"), ("timeline", "Timeline"), ("moments", "Moments"), ("ratings", "Ratings"),
+            ("tags", "Tags"))
+    openMoment = Signal(object)      # Moment_
 
     def __init__(self, ctx: AppContext, parent=None) -> None:
         super().__init__(parent)
@@ -209,10 +324,13 @@ class LibraryPage(QWidget):
         self.grid.cardMenuRequested.connect(self._card_menu)
         self.timeline = TimelineView(ctx.images)
         self.timeline.openShow.connect(self._open_id)
+        self.moments = MomentsView(ctx.store)
+        self.moments.openMoment.connect(self.openMoment)
+        self.moments.changed.connect(self.refresh)
         self.empty = empty_state("")
         body = QWidget()
         self.stack = QStackedLayout(body)
-        for w in (self.empty, self.grid, self.timeline):
+        for w in (self.empty, self.grid, self.timeline, self.moments):
             self.stack.addWidget(w)
 
         col = QVBoxLayout(self)
@@ -271,6 +389,16 @@ class LibraryPage(QWidget):
                 self.stack.setCurrentWidget(self.timeline)
             else:
                 self.empty.setText("Your timeline fills in as you watch, save, list and rate shows.")
+                self.stack.setCurrentWidget(self.empty)
+        elif self.tab == "moments":
+            moments = [m for m in store.moments() if m.anime_id not in hide]
+            self.count.setText(str(len(moments)) if moments else "")
+            self.moments.set_moments(moments)
+            if moments:
+                self.stack.setCurrentWidget(self.moments)
+            else:
+                self.empty.setText("Press B (or ⌘S) while an episode plays to keep that frame. "
+                                   "Your moments show up here; click one to watch from that second.")
                 self.stack.setCurrentWidget(self.empty)
         elif self.tab == "ratings":
             rated = [(s, r) for s, r in store.rated() if s.anime_id not in hide]

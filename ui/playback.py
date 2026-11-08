@@ -25,6 +25,7 @@ from core.mpv_ipc import MpvIpc
 from core.player import PLAYER_NAMES
 from core.stills import number_key
 
+from .showprefs import show_pref, sub_style
 from .context import AppContext
 
 SAVE_EVERY_S = 5.0
@@ -87,8 +88,8 @@ class StreamResolver(QObject):
         job.on_status("Finding stream…")
         self.ctx.runner.submit(
             self.ctx.catalog.play_request, job.anime_id, job.episode, title=job.title,
-            dub=self.ctx.pref("dub", False) if job.dub is None else job.dub,
-            quality=str(self.ctx.pref("quality", "best")),
+            dub=bool(show_pref(self.ctx, job.anime_id, "dub")) if job.dub is None else job.dub,
+            quality=str(show_pref(self.ctx, job.anime_id, "quality") or "best"),
             on_done=lambda req, j=job: self._resolve(j, req),
             on_error=lambda msg, j=job: self._fail(j, msg),
         )
@@ -347,6 +348,8 @@ class Session(QObject):
             for cmd, url, flag in self.now.pending_tracks:
                 self.ipc.command(cmd, url, flag)   # "auto": added, but not switched on
             self.now.pending_tracks = []
+            for prop, value in sub_style(self.ctx, self.now.anime_id):   # your subtitle style (2.0)
+                self.ipc.command("set_property", prop, value)
         elif name == "end-file":
             reason = msg.get("reason")
             if reason == "eof":
@@ -377,7 +380,7 @@ class Session(QObject):
     SKIP_TEXT = {"intro": "Skipped intro", "ending": "Skipped ending", "recap": "Skipped recap"}
 
     def _skip_kinds(self) -> set[str]:
-        return {kind for kind, key in self.SKIP_PREFS.items() if self.ctx.pref(key)}
+        return {kind for kind, key in self.SKIP_PREFS.items() if show_pref(self.ctx, self.now.anime_id, key)}
 
     def _lookup_skips(self) -> None:
         n = self.now
@@ -454,6 +457,10 @@ class Session(QObject):
         if self.episodes is not None and self.next_season is not None:
             s = self.next_season
             return _Target(s.anime_id, s.title, s.episode, s.label)
+        if self.episodes is not None:                     # Your queue (2.0): the next show you lined up
+            for show, episode in self.ctx.store.queue():
+                if show.anime_id != n.anime_id:
+                    return _Target(show.anime_id, show.title, episode, f"From your queue: {show.title}")
         return None
 
     def _look_up_next_season(self) -> None:
@@ -572,6 +579,7 @@ class Session(QObject):
         self.next_info = None
         if t.anime_id != self.now.anime_id:
             self.next_season = None
+            self.ctx.store.dequeue(t.anime_id)            # (it was from your queue: it's on now)
         self.load(info, t.anime_id, t.title, t.episode, None)
         self.ctx.store.record_progress(t.anime_id, t.episode, 0.0)
         self.episodeChanged.emit(t.anime_id, t.episode)
@@ -605,9 +613,12 @@ class PlaybackController(QObject):
             return self.session.now.anime_id, self.session.now.episode
         return None
 
-    def play(self, anime_id: str, title: str, episode: str, player: str | None = None) -> None:
-        """player: this time only, in this player ("iina", "mpv"), instead of the setting."""
+    def play(self, anime_id: str, title: str, episode: str, player: str | None = None,
+             start: float | None = None) -> None:
+        """player: this time only, in this player ("iina", "mpv"), instead of the setting.
+        start: from this second (a Moment), instead of where you left off."""
         self.cancel()
+        self._start_at = start
         if player and self.session is not None and self.session.alive and self.session.kind != player:
             self.session.close()                 # e.g. the built-in player hands the episode to IINA
         self._player_once = player
@@ -636,7 +647,10 @@ class PlaybackController(QObject):
         if job is not self._job:
             return
         self._job = None
-        start = self.resume_position(job.anime_id, job.episode)
+        start = getattr(self, "_start_at", None)
+        self._start_at = None
+        if start is None:
+            start = self.resume_position(job.anime_id, job.episode)
         if self.session and self.session.alive:
             self.session.load(info, job.anime_id, job.title, job.episode, start)
             kind = self.session.kind

@@ -217,6 +217,9 @@ class MainWindow(QMainWindow):
         self.calendar.libraryChanged.connect(self._local_changed)
         self.library.listsChanged.connect(self._lists_changed)
         self.library.listMenu.connect(self._list_menu)
+        self.library.openMoment.connect(self.play_moment)
+        self.playback.progressSaved.connect(lambda _a, _e: self._check_goal())
+        self.player_host.momentSaved.connect(lambda: self.stack.currentWidget() is self.library and self.library.refresh())
         self.stats.wrappedRequested.connect(lambda: self.open_wrapped())
         self._lists_changed()
         self.calendar.toast.connect(lambda text, err: self.toast.show_message(text, error=err))
@@ -428,6 +431,27 @@ class MainWindow(QMainWindow):
                 shown |= ids
         return hidden - shown
 
+    def _check_goal(self) -> None:
+        """Weekly goal reached: say so, once a week."""
+        from core import goals
+
+        goal = int(self.ctx.pref("weekly_goal") or 0)
+        week = goals.week_start().isoformat()
+        if not goal or self.ctx.pref("goal_met_week", "") == week:
+            return
+        if goals.episodes_this_week(self.ctx.store) >= goal:
+            self.ctx.set_pref("goal_met_week", week)
+            self.toast.show_message(("🎄 " if theme.HOLIDAY else "🎉 ") + f"Weekly goal reached: {goal} episodes!")
+            self.home.update_greeting()
+
+    def play_moment(self, m) -> None:
+        """Back to a saved frame: the show's page, playing from that second."""
+        show = self.ctx.store.get_show(m.anime_id)
+        if show is None:
+            return
+        self.open_item(show)
+        self.playback.play(show.anime_id, show.title, m.episode, start=max(0.0, m.position - 2))
+
     def open_wrapped(self, year: int | None = None) -> None:
         """Your year in anime (worked out in the background: genres may need AniList's cache)."""
         year = year or wrapped_year()
@@ -633,6 +657,8 @@ class MainWindow(QMainWindow):
             self.detail.apply_content_filter()
         elif key == "spoiler_shield":
             self.detail.refresh_if_showing()
+        elif key == "weekly_goal":
+            self.home.update_greeting()
         elif key == "your_name":
             self.home.update_greeting()
         elif key == "home_rows":

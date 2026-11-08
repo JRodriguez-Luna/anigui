@@ -86,3 +86,98 @@ def test_rewatch_from_an_episode(win):
     assert s.rewatch(STARFALL) is None and not d.rewatch_btn.isVisible()
     assert s.start_rewatch(STARFALL, "1") == 2                     # the second time round
     assert any(m.kind == "rewatch" for m in s.timeline())
+
+
+# -- moments -------------------------------------------------------------------------------------
+
+def test_save_a_moment_and_go_back_to_it(win):
+    mpv = play_inside(win)
+    host = win.player_host
+    host.controls.position = 754.0
+    mid = host.save_moment()
+    assert mid and pump(lambda: any(c[0] == "screenshot-to-file" and c[2] == "video" for c in mpv.commands))
+    m = win.ctx.store.moments()[0]
+    assert (m.anime_id, m.episode, int(m.position)) == (STARFALL, "5", 754) and m.image.endswith(".jpg")
+    win.open_library(None)
+    win.library.set_tab("moments")
+    assert win.library.stack.currentWidget() is win.library.moments and win.library.moments.model_.rowCount() == 1
+    played = []
+    win.playback.play = lambda aid, title, ep, player=None, start=None: played.append((aid, ep, start))
+    win.play_moment(m)
+    assert played == [(STARFALL, "5", 752.0)]
+
+
+# -- your queue ----------------------------------------------------------------------------------
+
+def test_queue_on_home_and_after_the_last_episode(win):
+    s = win.ctx.store
+    shows = [r["anime_id"] for r in s._conn().execute("SELECT anime_id FROM shows WHERE anime_id != ? LIMIT 2", (STARFALL,))]
+    s.enqueue(shows[0], "1")
+    s.enqueue(shows[1], "3")
+    s.move_in_queue(shows[1], 0)
+    assert [a.anime_id for a, _e in s.queue()] == [shows[1], shows[0]]
+    win.home.refresh_local()
+    assert win.home.queue_row.model().rowCount() == 2
+    assert win.home.queue_row.model().cards()[0].subtitle == "Up next: episode 3"
+    # after a show's last episode, auto-play turns to your queue
+    from ui.playback import Session
+    sess = Session.__new__(Session)
+    sess.ctx = win.ctx
+    sess.episodes = ["1", "2"]
+
+    class Now:
+        anime_id, title, episode = STARFALL, "Starfall Academy", "2"
+    sess.now = Now()
+    sess.next_season = None
+    sess.filler_keys = set()
+    t = sess._next_target()
+    assert (t.anime_id, t.episode) == (shows[1], "3") and t.label.startswith("From your queue")
+
+
+# -- per-show settings ---------------------------------------------------------------------------
+
+def test_a_show_remembers_sub_or_dub(win):
+    from ui.showprefs import show_pref, sub_style
+    open_starfall(win)
+    d = win.detail
+    d.dub_btn.click()
+    assert win.ctx.store.show_settings(STARFALL)["dub"] is True
+    win.ctx.set_pref("dub", False)                       # your usual changes…
+    assert show_pref(win.ctx, STARFALL, "dub") is True   # …this show keeps its own
+    assert d.dub_btn.isChecked()
+    win.ctx.store.set_show_setting(STARFALL, "sub_size", "huge")
+    win.ctx.set_pref("sub_box", True)
+    props = dict(sub_style(win.ctx, STARFALL))
+    assert props["sub-scale"] == 1.55 and props["sub-border-style"] == "opaque-box"
+    d._reset_show_settings()
+    assert win.ctx.store.show_settings(STARFALL) == {}
+    win.ctx.set_pref("sub_box", False)
+
+
+def test_subtitle_style_reaches_the_player(win):
+    win.ctx.set_pref("sub_size", "large")
+    mpv = play_inside(win)
+    mpv.send_event("file-loaded")
+    assert pump(lambda: ["set_property", "sub-scale", 1.25] in mpv.commands)
+    win.ctx.set_pref("sub_size", "normal")
+
+
+# -- goals ---------------------------------------------------------------------------------------
+
+def test_weekly_goal_and_streak(win):
+    import datetime as dt
+    from core import goals
+    s = win.ctx.store
+    today = dt.date.today()
+    for d in range(3):
+        s.log_watch(STARFALL, str(10 + d), 1300, today - dt.timedelta(days=d))
+    assert goals.streak(s) == 3
+    assert goals.goal_line(2, 5, 3) == "2 of 5 episodes this week · 3-day streak"
+    assert goals.goal_line(5, 5, 0) == "Goal met this week 🎉"
+    win.ctx.set_pref("weekly_goal", 1)
+    s.record_progress(STARFALL, "20", 1400, 1420)
+    win._check_goal()
+    assert win.ctx.pref("goal_met_week") == goals.week_start().isoformat()
+    win.stats.refresh_goal()
+    assert win.stats.goal_ring.goal == 1 and win.stats.goal_btn.text() == "Change goal"
+    win.ctx.set_pref("weekly_goal", 0)

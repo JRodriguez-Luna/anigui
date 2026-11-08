@@ -53,6 +53,11 @@ def win(tmp_path):
         ctx.player.mpv.server.close()
     w.close()
     ctx.shutdown()
+    # Free the window (and its pictures and caches): closing alone keeps it in memory
+    from PySide6.QtCore import QCoreApplication, QEvent
+    w.deleteLater()
+    for _ in range(2):          # (the pop-out window goes in a second pass, after its player)
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
 
 def start_playing(w, anime_id, title, episode):

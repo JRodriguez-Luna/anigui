@@ -37,6 +37,45 @@ class StatTile(QFrame):
         self.note.setVisible(bool(note))
 
 
+class GoalRing(QWidget):
+    """This week's episodes against your goal (2.0). A candy cane in the holiday theme."""
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.done, self.goal = 0, 0
+        self.setFixedSize(92, 92)
+
+    def set(self, done: int, goal: int) -> None:
+        self.done, self.goal = done, goal
+        self.update()
+
+    def paintEvent(self, _e) -> None:
+        from PySide6.QtCore import QRectF
+        from PySide6.QtGui import QColor, QPainter, QPen
+
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        r = QRectF(8, 8, self.width() - 16, self.height() - 16)
+        p.setPen(QPen(QColor(255, 255, 255, 30), 9))
+        p.drawEllipse(r)
+        frac = min(1.0, self.done / self.goal) if self.goal else 0.0
+        span = int(-360 * 16 * frac)
+        if theme.HOLIDAY:
+            p.setPen(QPen(QColor("#E0403C"), 9, Qt.PenStyle.SolidLine, Qt.PenCapStyle.FlatCap))
+            p.drawArc(r, 90 * 16, span)
+            dash = QPen(QColor("#FFFFFF"), 9, Qt.PenStyle.CustomDashLine, Qt.PenCapStyle.FlatCap)
+            dash.setDashPattern([0.8, 1.2])
+            p.setPen(dash)
+            p.drawArc(r, 90 * 16, span)
+        else:
+            p.setPen(QPen(QColor(theme.ACCENT), 9, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            p.drawArc(r, 90 * 16, span)
+        p.setPen(QColor(theme.TEXT))
+        p.setFont(theme.font(17, QFont.Weight.Bold))
+        p.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "🎉" if self.goal and self.done >= self.goal
+                   else f"{self.done}/{self.goal}" if self.goal else "–")
+
+
 class WeeklyChart(QWidget):
     """Hours watched per week. One series, so one color, no legend; hover for exact values."""
 
@@ -239,6 +278,23 @@ class StatsPage(QScrollArea):
         c.setContentsMargins(0, 0, 0, 0)
         c.setSpacing(18)
         c.addLayout(tiles)
+        # Goals (2.0)
+        self.goal_box = QFrame(objectName="StatPanel")
+        gl = QHBoxLayout(self.goal_box)
+        gl.setContentsMargins(18, 14, 18, 14)
+        gl.setSpacing(18)
+        self.goal_ring = GoalRing()
+        gl.addWidget(self.goal_ring)
+        goal_text = QVBoxLayout()
+        self.goal_title = QLabel("Weekly goal", objectName="PanelTitle")
+        self.goal_note = QLabel("", objectName="Muted", wordWrap=True)
+        goal_text.addWidget(self.goal_title)
+        goal_text.addWidget(self.goal_note)
+        gl.addLayout(goal_text, 1)
+        self.goal_btn = QPushButton("Set a goal", objectName="Glass", cursor=Qt.CursorShape.PointingHandCursor)
+        self.goal_btn.clicked.connect(self._set_goal)
+        gl.addWidget(self.goal_btn, 0, Qt.AlignmentFlag.AlignVCenter)
+        c.addWidget(self.goal_box)
         mid = QHBoxLayout()
         mid.setSpacing(12)
         mid.addWidget(chart_box, 3)
@@ -268,7 +324,34 @@ class StatsPage(QScrollArea):
         self.content.setVisible(False)
         self.empty.setVisible(False)
 
+    def refresh_goal(self) -> None:
+        from core import goals
+
+        goal = int(self.ctx.pref("weekly_goal") or 0)
+        done = goals.episodes_this_week(self.ctx.store)
+        run = goals.streak(self.ctx.store)
+        self.goal_ring.set(done, goal)
+        self.goal_btn.setText("Change goal" if goal else "Set a goal")
+        if goal:
+            left = max(0, goal - done)
+            self.goal_note.setText((f"{left} more episode{'s' if left != 1 else ''} to go this week."
+                                    if left else "You did it this week. 🎉") +
+                                   (f" You're on a {run}-day streak." if run >= 2 else ""))
+        else:
+            self.goal_note.setText("Pick how many episodes you'd like to watch each week, and see how you're "
+                                   "doing here and on Home. Totally optional.")
+
+    def _set_goal(self) -> None:
+        from PySide6.QtWidgets import QInputDialog
+
+        value, ok = QInputDialog.getInt(self, "Weekly goal", "Episodes a week (0 for no goal):",
+                                        int(self.ctx.pref("weekly_goal") or 0), 0, 200)
+        if ok:
+            self.ctx.set_pref("weekly_goal", value)
+            self.refresh_goal()
+
     def refresh(self) -> None:
+        self.refresh_goal()
         catalog = self.ctx.catalog
         self.ctx.runner.submit(core_stats.compute, self.ctx.store, catalog.anilist.media, None, catalog.enrich,
                                on_done=self._show, group="stats")

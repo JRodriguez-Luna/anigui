@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import random
 
 from PySide6.QtCore import QPoint, Qt, QTimer, Signal
@@ -71,6 +73,8 @@ class HomePage(QScrollArea):
 
         season, year = current_season()
         self.new_row = CardRow("New Episodes", ctx.images)
+        self.queue_row = CardRow("Your queue", ctx.images)          # (2.0) what you lined up next
+        self.queue_row.cardMenuRequested.connect(self._queue_menu)
         self.continue_row = CardRow("Continue Watching", ctx.images)
         self.clear_btn = self.continue_row.add_action("Clear", "Clear your watch history")
         self.clear_btn.clicked.connect(self.confirm_clear_history)
@@ -88,7 +92,7 @@ class HomePage(QScrollArea):
         self.because_rows = [CardRow("", ctx.images) for _ in range(recommend.MAX_ROWS)]
         self._because: list[recommend.BecauseRow] = []
         self._because_key = None
-        self.rows = [self.new_row, self.continue_row, self.xmas_row, self.trending_row, self.season_row,
+        self.rows = [self.queue_row, self.new_row, self.continue_row, self.xmas_row, self.trending_row, self.season_row,
                      *self.because_rows, self.library_row]
 
         self.holiday_banner = HolidayBanner()
@@ -104,13 +108,13 @@ class HomePage(QScrollArea):
         rows.addWidget(self.holiday_banner)
         for row in self.rows:
             row.cardActivated.connect(lambda card: self.openItem.emit(card.payload))
-            if row is not self.continue_row:
+            if row not in (self.continue_row, self.queue_row):
                 row.cardMenuRequested.connect(self._suggestion_menu)
         # Make it yours (2.0): each row sits in a holder, so you can hide rows and change their
         # order without touching when a row shows itself (empty rows still hide)
         self.holders: dict[str, QWidget] = {}
         self.list_rows: dict[int, CardRow] = {}
-        for key, members in (("new", [self.new_row]), ("continue", [self.continue_row]), ("xmas", [self.xmas_row]),
+        for key, members in (("queue", [self.queue_row]), ("new", [self.new_row]), ("continue", [self.continue_row]), ("xmas", [self.xmas_row]),
                              ("trending", [self.trending_row]), ("season", [self.season_row]),
                              ("because", self.because_rows), ("saved", [self.library_row])):
             self.holders[key] = self._holder(members)
@@ -132,6 +136,7 @@ class HomePage(QScrollArea):
         self.setWidget(body)
 
         self.new_row.setVisible(False)
+        self.queue_row.setVisible(False)
         self.continue_row.setVisible(False)
         self.library_row.setVisible(False)
         self.xmas_row.setVisible(False)
@@ -160,6 +165,11 @@ class HomePage(QScrollArea):
         store = self.ctx.store
         self.continue_row.set_cards(decorate_all(self.ctx, [continue_card(i, bool(store.rewatch(i.show.anime_id)))
                                                             for i in items]))
+        queued = self.ctx.store.queue()
+        self.queue_row.set_cards(decorate_all(self.ctx, [replace(show_card(s), subtitle=f"Up next: episode {ep}",
+                                                                 key=f"queue:{s.anime_id}")
+                                                         for s, ep in queued]))
+        self.queue_row.setVisible(bool(queued))
         library = self.ctx.store.library()
         self.library_row.set_cards(decorate_all(self.ctx, [show_card(s, new_by_id.get(s.anime_id))
                                                            for s in library]))
@@ -227,9 +237,15 @@ class HomePage(QScrollArea):
                 at += 1
 
     def update_greeting(self) -> None:
+        from core import goals
+
         from .yours import greeting
 
         text = greeting(str(self.ctx.pref("your_name") or ""), holiday=theme.HOLIDAY)
+        goal = int(self.ctx.pref("weekly_goal") or 0)
+        line = goals.goal_line(goals.episodes_this_week(self.ctx.store), goal, goals.streak(self.ctx.store)) \
+            if goal else ""
+        text = "  ·  ".join(t for t in (text, line) if t)
         self.greeting.setText(text)
         self.greeting.adjustSize()
         self.greeting.setVisible(bool(text))
@@ -391,6 +407,16 @@ class HomePage(QScrollArea):
         shown, _hidden = visible(self.ctx, items)
         self.xmas_row.set_cards(decorate_all(self.ctx, [media_card(m) for m in shown]))
         self.xmas_row.setVisible(bool(shown) and theme.HOLIDAY)
+
+    def _queue_menu(self, card, pos) -> None:
+        show = card.payload
+        store = self.ctx.store
+        menu = QMenu(self)
+        menu.addAction("Watch this first").triggered.connect(lambda: (store.move_in_queue(show.anime_id, 0),
+                                                                      self.refresh_local()))
+        menu.addAction("Remove from your queue").triggered.connect(lambda: (store.dequeue(show.anime_id),
+                                                                            self.refresh_local()))
+        menu.exec(pos)
 
     def _suggestion_menu(self, card, pos) -> None:
         """Right-click a suggestion: Not interested (2.0)."""

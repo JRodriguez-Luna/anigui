@@ -329,7 +329,8 @@ class ListsButton(QPushButton):
         super().__init__("☰  Lists ▾", parent, objectName="Glass", cursor=Qt.CursorShape.PointingHandCursor)
         self.store = store
         self.anime_id: str | None = None
-        self.setToolTip("Add to one of your lists")
+        self.episode_for = lambda: None     # the episode a queued show starts at (the page's Play)
+        self.setToolTip("Add to one of your lists, or your queue")
         self.menu_ = QMenu(self)
         self.menu_.aboutToShow.connect(self._build)
         self.setMenu(self.menu_)
@@ -347,6 +348,11 @@ class ListsButton(QPushButton):
         if not self.anime_id:
             return
         mine = self.store.lists_for(self.anime_id)
+        if self.store.in_queue(self.anime_id):
+            self.menu_.addAction("✓  In your queue (remove)").triggered.connect(self._unqueue)
+        else:
+            self.menu_.addAction("⏭  Add to your queue").triggered.connect(self._queue)
+        self.menu_.addSeparator()
         for sl in self.store.lists():
             if sl.list_id == SAVED:
                 continue
@@ -357,6 +363,14 @@ class ListsButton(QPushButton):
         if len(self.menu_.actions()):
             self.menu_.addSeparator()
         self.menu_.addAction("New list…").triggered.connect(self._new)
+
+    def _queue(self) -> None:
+        self.store.enqueue(self.anime_id, str(self.episode_for() or "1"))
+        self.changed.emit()
+
+    def _unqueue(self) -> None:
+        self.store.dequeue(self.anime_id)
+        self.changed.emit()
 
     def _toggle(self, list_id: int, on: bool) -> None:
         (self.store.add_to_list if on else self.store.remove_from_list)(list_id, self.anime_id)
