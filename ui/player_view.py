@@ -85,6 +85,7 @@ class VideoView(QOpenGLWidget):
         self._gl_context = None
         self._vid: str | None = None             # the video track, while between windows
         self.frameReady.connect(self.update, Qt.ConnectionType.QueuedConnection)
+        self.frameSwapped.connect(self._swapped)       # (helps mpv keep the timing even)
         self.wakeup.connect(self._drain, Qt.ConnectionType.QueuedConnection)
         self.mpv.on_wakeup(self.wakeup.emit)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
@@ -109,6 +110,10 @@ class VideoView(QOpenGLWidget):
                 except libmpv.LibMpvError:
                     self.mpv.set("vid", "auto")
                 self._vid = None
+
+    def _swapped(self) -> None:
+        if self.renderer is not None:
+            self.renderer.report_swap()
 
     def _release_gl(self) -> None:
         if self.renderer is None:

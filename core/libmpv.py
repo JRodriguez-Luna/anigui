@@ -24,6 +24,7 @@ EVENT_NONE, EVENT_SHUTDOWN, EVENT_START_FILE, EVENT_END_FILE, EVENT_FILE_LOADED 
 EVENT_VIDEO_RECONFIG, EVENT_PLAYBACK_RESTART, EVENT_PROPERTY_CHANGE = 17, 21, 22
 # mpv_render_param_type
 RENDER_INVALID, RENDER_API_TYPE, RENDER_OPENGL_INIT, RENDER_OPENGL_FBO, RENDER_FLIP_Y = 0, 1, 2, 3, 4
+RENDER_BLOCK_FOR_TARGET_TIME = 12
 RENDER_UPDATE_FRAME = 1
 
 
@@ -280,9 +281,14 @@ class GlRenderer:
         lib.mpv_render_context_update(self.ctx)
         target = _Fbo(fbo, width, height, 0)
         flip = c_int(1)
-        params = (_RenderParam * 3)(
+        # Don't wait for the frame's display time inside render: that wait happens on
+        # AniGUI's main thread, and it held everything else (scrolling, animations, clicks)
+        # back while a video played (2.0). mpv still paces frames to the audio.
+        no_wait = c_int(0)
+        params = (_RenderParam * 4)(
             _RenderParam(RENDER_OPENGL_FBO, ctypes.cast(ctypes.pointer(target), c_void_p)),
             _RenderParam(RENDER_FLIP_Y, ctypes.cast(ctypes.pointer(flip), c_void_p)),
+            _RenderParam(RENDER_BLOCK_FOR_TARGET_TIME, ctypes.cast(ctypes.pointer(no_wait), c_void_p)),
             _RenderParam(RENDER_INVALID, None),
         )
         lib.mpv_render_context_render(self.ctx, params)

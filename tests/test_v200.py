@@ -362,3 +362,12 @@ def test_frame_rate_readout(win):
     assert "fps" in m.text() and "slowest frame" in m.text()
     m.toggle()
     assert m.isHidden() and not m._tick.isActive()
+
+
+def test_mpv_never_holds_the_main_thread():
+    """Rendering must not wait for the frame's display time (it made the app 26 fps while playing)."""
+    import inspect
+    from core import libmpv
+    assert libmpv.RENDER_BLOCK_FOR_TARGET_TIME == 12
+    src = inspect.getsource(libmpv.GlRenderer.render)
+    assert "RENDER_BLOCK_FOR_TARGET_TIME" in src and "c_int(0)" in src
