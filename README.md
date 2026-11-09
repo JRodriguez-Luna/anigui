@@ -26,9 +26,23 @@
 
 ---
 
+## New in 2.0: yours
+
+AniGUI 2.0 is personal and private, and everything stays on your Mac. New features start off; switch on what you like in Settings.
+
+- **Cinema:** each show's colors fill the page, a full-bleed player, and a pop-out window (<kbd>P</kbd>) that floats over other apps and full-screen windows.
+- **My Library:** your own lists, half-star ratings, tags, notes and a timeline of what you watched. My List is now **Saved**.
+- **Private:** Private mode (<kbd>⌘⇧N</kbd>), Touch ID locks for the app, a list or 18+ shows, and Settings › Privacy, which lists every place AniGUI connects to and why.
+- **Your data:** back up to one file and restore on any Mac (daily automatic backups if you like), and import your list from AniList or MyAnimeList. Updating from 1.x backs your data up first.
+- **Downloads:** right-click an episode › Download to watch with no internet.
+- **In the player:** save a moment (<kbd>B</kbd>), sleep timer, a queue, Sharper picture ([Anime4K](https://github.com/bloc97/Anime4K)), and your Mac's media keys, AirPods and Control Center.
+- **Your shows, your way:** per-show Sub/Dub, quality, skipping and subtitle size; subtitle style; Spoiler shield; Rewatch mode; Not interested.
+- **Wrapped and goals:** your year in anime, a weekly goal and streaks.
+- **Make it yours:** your color and a matching app icon, your name on Home, and Home's rows in your order.
+
 ## Highlights
 
-- **Home that feels like a streaming service:** a rotating spotlight of trending shows, plus rows for Continue Watching, Trending Now, This Season and My List.
+- **Home that feels like a streaming service:** a rotating spotlight of trending shows, plus rows for your queue, Continue Watching, Trending Now, This Season, Saved and your own lists.
 - **Search as you type** across everything ani-cli can stream, or browse with filters for genre, year, season, format and status.
 - **Rich show pages** with cover art, banners, scores, genres and next-episode countdowns from [AniList](https://anilist.co), plus Sub/Dub and quality choices.
 - **18+ shows handled:** a red 18+ badge, a Hide 18+ shows setting (on by default) that keeps them out of suggestions and blurs the ones you added, a quick check before opening one, and Content notes (nudity, gore…) on every show page.
@@ -38,7 +52,7 @@
 - **Real watch tracking** over mpv's IPC socket: your position saves as you watch, episodes count as watched past 90%, and Resume picks up exactly where you stopped.
 - **Auto-play next:** the next episode is fetched in the background and starts in the same player window after a short countdown.
 - **Skips intros, endings and recaps** using [AniSkip](https://aniskip.com)'s community timings, in IINA or mpv, with nothing extra to install.
-- **New episode alerts:** when a show in My List gets a new episode, it shows up at the top of Home with a NEW badge, plus a Mac notification.
+- **New episode alerts:** when a show you saved gets a new episode, it shows up at the top of Home with a NEW badge, plus a Mac notification.
 - **Seasons on one page:** every season of a series in order on its show page, with your progress in each and its movies and specials; finish a season and Up next (or auto-play) moves on to the next one.
 - **More like this:** every show page lists related shows, plus shows other fans recommend.
 - **Smooth and calm:** pages and pictures fade in, posters lift on hover, loading placeholders shimmer; macOS's Reduce motion keeps it to gentle fades.
@@ -58,7 +72,7 @@
   </tr>
   <tr>
     <td width="50%"><img src="docs/screenshots/search.png" alt="Search"><p align="center"><sub>Search as you type</sub></p></td>
-    <td width="50%"><img src="docs/screenshots/my-list.png" alt="My List"><p align="center"><sub>My List</sub></p></td>
+    <td width="50%"><img src="docs/screenshots/my-list.png" alt="Saved"><p align="center"><sub>Saved (My List before 2.0)</sub></p></td>
   </tr>
 </table>
 
@@ -141,16 +155,18 @@ Or double-click **`AniGUI.command`**, which does the same and keeps the setup fo
 | **Mark episodes** | Right-click an episode: mark watched, unwatched, or everything up to it. |
 | **Settings** (<kbd>⌘,</kbd>) | Player, sub or dub, quality, auto-play, skipping, new-episode alerts, history, connection and updates. |
 | **Sub / Dub / quality** | Also on every show page; remembered between launches. |
-| **Clear history** | **Clear** next to Continue Watching, right-click a show there, or **History → Clear Watch History**. My List is kept. |
+| **Clear history** | **Clear** next to Continue Watching, right-click a show there, or **History → Clear Watch History**. Saved shows and your lists are kept. |
 | **What's New** | Opens once after each update; anytime from the **AniGUI** menu. |
 
-**Keyboard shortcuts:** <kbd>⌘,</kbd> Settings · <kbd>⌘1</kbd> Home · <kbd>⌘2</kbd> Search · <kbd>⌘3</kbd> My List · <kbd>⌘4</kbd> Stats · <kbd>⌘5</kbd> Calendar · <kbd>⌘F</kbd> jump to search · <kbd>⌘[</kbd> or <kbd>Esc</kbd> back
+**Keyboard shortcuts:** <kbd>⌘,</kbd> Settings · <kbd>⌘1</kbd> Home · <kbd>⌘2</kbd> Search · <kbd>⌘3</kbd> My Library · <kbd>⌘4</kbd> Stats · <kbd>⌘5</kbd> Calendar · <kbd>⌘F</kbd> jump to search · <kbd>⌘[</kbd> or <kbd>Esc</kbd> back
 
 **Where your data lives**
 
 | What | Where |
 |---|---|
 | Library, watch progress, metadata cache (SQLite) | `~/Library/Application Support/AniGUI/anigui.db` |
+| Backups (automatic, before a restore or import, and before updating to 2.0) | `~/Library/Application Support/AniGUI/Backups/` |
+| Downloaded episodes (you can pick another folder) | `~/Movies/AniGUI/` |
 | Cover images (400 MB, oldest removed first) | `~/Library/Caches/AniGUI/covers/` |
 | App log (when run as `AniGUI.app`) | `~/Library/Logs/AniGUI/anigui.log` |
 | ani-cli history (read only, imported on launch) | `~/.local/state/ani-cli/ani-hsts` |
@@ -196,7 +212,7 @@ anigui/
 │   ├── cli_bridge.py          same, wrapped in QProcess with signals
 │   ├── anilist.py             AniList GraphQL client with caching + rate-limit handling
 │   ├── catalog.py             links hianime ⇄ AniList, resume logic, stale-ID repair
-│   ├── store.py               SQLite: shows, My List, progress, TTL cache
+│   ├── store.py               SQLite: shows, lists, progress, downloads, TTL cache
 │   ├── covers.py              on-disk image cache
 │   ├── mpv_ipc.py             mpv JSON IPC client
 │   ├── player.py              launches IINA / mpv
@@ -288,6 +304,7 @@ AniGUI is a desktop interface for ani-cli. It does not host, store or distribute
 - [ani-cli](https://github.com/pystardust/ani-cli): the engine behind every stream
 - [AniList](https://anilist.co): artwork and show information through its public API
 - [mpv](https://mpv.io) and [IINA](https://iina.io): playback
+- [Anime4K](https://github.com/bloc97/Anime4K) by bloc97: the Sharper picture shaders (MIT, license in `assets/anime4k/`)
 - [Qt for Python (PySide6)](https://doc.qt.io/qtforpython-6/) and [PyInstaller](https://pyinstaller.org)
 
 ## License

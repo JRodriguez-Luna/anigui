@@ -39,7 +39,7 @@ DEFAULTS: dict[str, Any] = {
     "downloads_folder": "",      # Downloads (2.0); empty: ~/Movies/AniGUI
     "media_keys": True,          # Now Playing in Control Center, ⏯ ⏭ keys (built-in player)
     "sharper": False,            # Sharper picture (Anime4K shaders, built-in player)
-    "weekly_goal": 0,            # Goals (2.0): episodes a week (0 = off)     # blur episodes you haven't reached (2.0)
+    "weekly_goal": 0,            # Goals (2.0): episodes a week (0 = off)
     "lock_app": False,           # Touch ID to open AniGUI (2.0)
     "lock_mature": False,        # Touch ID before 18+ shows (2.0)
     "hide_mature": True,         # keep 18+ shows out of suggestions; blur and ask for your own

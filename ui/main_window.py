@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 from core import holiday
 from core.anilist import Media
 from core import __version__
+from core.setup import parse_version
 from core import self_update, setup, updates
 from core.player import Player
 from core.store import SAVED
@@ -654,7 +655,18 @@ class MainWindow(QMainWindow):
         if not last and not self.ctx.pref("setup_done", False):
             return None  # first launch ever
         # No record but Setup was done: updated from 1.1.x, which didn't record versions
-        return self.show_whats_new(last or "1.1.0")
+        since = last or "1.1.0"
+        if parse_version(since) < (2, 0, 0) <= parse_version(__version__):
+            return self.show_tour()            # the big one: a short tour instead of the list
+        return self.show_whats_new(since)
+
+    def show_tour(self):
+        from .tour import TourDialog
+        dialog = TourDialog(self.ctx, self, backup=self.ctx.store.upgrade_backup)
+        dialog.openSettings.connect(lambda section: QTimer.singleShot(0, lambda: self.open_settings(section)))
+        dialog.open()
+        self._tour = dialog
+        return dialog
 
     def apply_yours(self) -> None:
         """Your accent and app icon (Make it yours, 2.0)."""

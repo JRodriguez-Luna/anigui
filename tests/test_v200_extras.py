@@ -356,3 +356,63 @@ def test_welcome_skip_and_escape_both_count(win):
         dlg = WelcomeDialog(win.ctx, win)
         dlg.skip.click() if close == "skip" else dlg.reject()
         assert win.ctx.pref("welcomed") is True
+
+
+# -- Stage 4: the upgrade to 2.0 -----------------------------------------------------------------
+
+def test_upgrading_a_1x_database_backs_it_up_first(tmp_path):
+    import sqlite3
+    import zipfile
+    from core.store import SCHEMA_VERSION, Store
+    db = tmp_path / "anigui.db"
+    s = Store(db)
+    s.upsert_show("a", "A")
+    s.set_in_library("a", True)                     # My List in 1.x
+    s.record_progress("a", "3", 600, 1400)
+    assert s.upgraded_from is None and s.upgrade_backup is None      # a new database: nothing to back up
+    s._conn().execute("PRAGMA user_version=2")      # what 1.11 left behind
+    s.close()
+    s2 = Store(db)
+    assert s2.upgraded_from == 2 and s2.upgrade_backup.is_file()
+    assert s2.upgrade_backup.parent == tmp_path / "Backups"
+    with zipfile.ZipFile(s2.upgrade_backup) as z:
+        assert {"manifest.json", "anigui.db"} <= set(z.namelist())
+        z.extract("anigui.db", tmp_path / "x")
+    old = sqlite3.connect(tmp_path / "x" / "anigui.db")
+    assert old.execute("PRAGMA user_version").fetchone()[0] == 2           # as it was before
+    assert s2._conn().execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
+    assert [sh.anime_id for sh in s2.list_shows(0)] == ["a"]              # My List → Saved
+    assert s2.get_progress("a", "3").position == 600
+    from core.backup import read_manifest
+    assert read_manifest(s2.upgrade_backup)["reason"] == "before upgrade"  # Restore can use it
+    s3 = Store(db)
+    assert s3.upgraded_from is None                                        # only once
+
+
+def test_new_features_start_off():
+    from ui.context import DEFAULTS
+    for key in ("lock_app", "lock_mature", "auto_backup", "spoiler_shield", "sharper", "sub_box"):
+        assert DEFAULTS[key] is False, key
+    assert DEFAULTS["weekly_goal"] == 0 and DEFAULTS["your_name"] == "" and DEFAULTS["accent"] == "ember"
+    assert DEFAULTS["app_icon"] == "classic" and DEFAULTS["home_rows"] == ""
+
+
+def test_updating_from_1x_shows_the_tour_once(win, monkeypatch):
+    from core import __version__
+    from ui.tour import TourDialog
+    assert __version__.startswith("2.")
+    win.ctx.set_pref("setup_done", True)
+    win.ctx.set_pref("last_version", "1.11.1")
+    dlg = win._maybe_show_whats_new()
+    assert isinstance(dlg, TourDialog)
+    opened = []
+    monkeypatch.setattr(win, "open_settings", lambda section=None: opened.append(section))
+    for _ in range(dlg.pages.count() - 1):
+        dlg.next.click()
+    assert dlg.next.text() == "Done" and not dlg.skip.isVisible()
+    btn = next(b for b in dlg.pages.currentWidget().findChildren(type(dlg.next)) if b.text() == "Pick your color and name")
+    btn.click()
+    assert pump(lambda: opened == ["Make it yours"])
+    assert win._maybe_show_whats_new() is None                          # once
+    win.ctx.set_pref("last_version", "1.9.0")
+    assert isinstance(win._maybe_show_whats_new(), TourDialog)

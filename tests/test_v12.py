@@ -385,20 +385,22 @@ def test_whats_new_after_update_once(win, monkeypatch):
     monkeypatch.setattr(win, "_check_updates", lambda status: checks.append(status))
     win.ctx.set_pref("setup_done", True)            # a 1.1 user: Setup done, no version recorded
     win._on_status(_status())
-    dlg = win._whats_new
+    assert win._tour.isVisible()                     # 1.x → 2.0: the tour (2.0) instead of the list
+    win._tour.accept()
+    assert pump(lambda: checks)
+    checks.clear()
+    dlg = win.show_whats_new("1.1.0")                # the list itself, as an update within 2.x shows it
     assert dlg.isVisible() and dlg.subtitle.text() == "Updated from 1.1.0."
     from core import changelog
     newer = {r.version for r in changelog.since("1.1.0")}
     assert [b.property("highlight") for b in dlg.release_boxes] == [r.version in newer for r in changelog.RELEASES]
     assert dlg.release_boxes[-1].property("highlight") is False   # 1.0.0
-    assert checks == []                              # update pop-ups wait until it's closed
     dlg.accept()
-    assert pump(lambda: checks)
     assert win.ctx.pref("last_version") == __version__
 
-    win._whats_new = None
+    win._whats_new = win._tour = None
     win._on_status(_status())                        # next launch: not again
-    assert win._whats_new is None and len(checks) == 2
+    assert win._whats_new is None and win._tour is None and len(checks) == 1
 
 
 def test_no_whats_new_on_fresh_install(win, monkeypatch):
@@ -486,8 +488,8 @@ def test_whats_new_after_setup_when_update_needed_setup(win, monkeypatch):
     win._on_status(_status(ready=False))                  # e.g. ani-cli went missing: Setup first
     assert getattr(win, "_whats_new", None) is None
     win._after_setup(_status())                           # Setup finished
-    assert win._whats_new.isVisible() and checks == []
-    win._whats_new.accept()
+    assert win._tour.isVisible() and checks == []         # (1.x → 2.0: the tour)
+    win._tour.accept()
     assert pump(lambda: checks)
 
 

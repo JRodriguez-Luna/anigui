@@ -30,6 +30,35 @@ class Release:
 
 
 RELEASES: tuple[Release, ...] = (
+    Release("2.0.0", "November 9, 2026", (
+        Change("Yours", "AniGUI 2.0 is personal and private, and everything stays on your Mac. A short tour shows "
+                        "what's new the first time you open it. New features start off; switch on what you like in "
+                        "Settings."),
+        Change("Cinema", "A new look: each show's colors fill the page, the player goes full bleed, and the video "
+                         "can pop out (P) to float over other apps and full-screen windows."),
+        Change("My Library", "Make your own lists, rate shows with half stars, add tags and a note, and see a "
+                             "timeline of what you watched. My List is now called Saved (everything in it is "
+                             "still there)."),
+        Change("Private", "Private mode (⌘⇧N) keeps what you watch out of your history. Lock AniGUI, a list or "
+                          "18+ shows with Touch ID. Settings → Privacy shows every place AniGUI connects to, "
+                          "and why."),
+        Change("Back up and bring your list", "Back up everything to one file and restore it on any Mac, with "
+                                              "automatic daily backups if you like. Import your list from "
+                                              "AniList or MyAnimeList. Your data was backed up before this "
+                                              "update, just in case."),
+        Change("Downloads", "Right-click an episode → Download to watch with no internet. Find them in "
+                            "My Library → Downloads."),
+        Change("In the player", "Save a moment (B) and come back to that second later, a sleep timer, a queue "
+                                "for what's next, Sharper picture (Anime4K) for older or lower-quality video, and "
+                                "your Mac's media keys, AirPods and Control Center control the built-in player."),
+        Change("Your shows, your way", "Per-show Sub/Dub, quality, skipping and subtitle size; subtitle size, "
+                                       "color and a box behind them; Spoiler shield blurs episodes you haven't "
+                                       "reached; Rewatch mode; and “Not interested” hides a suggestion."),
+        Change("Wrapped and goals", "Your year in anime on the Stats page, plus a weekly goal and streaks."),
+        Change("Make it yours", "Pick your color and a matching app icon, put your name on Home, and choose "
+                                "Home's rows and their order."),
+        Change("Smoother", "Scrolling, playing and the holiday snow all use far less of your Mac."),
+    )),
     Release("1.11.1", "November 3, 2026", (
         Change("Built-in player shows the episode", "The video area showed a flipped copy of the window instead of "
                                                     "the episode. Fixed."),

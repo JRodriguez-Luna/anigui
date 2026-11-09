@@ -298,11 +298,49 @@ class Store:
             conn.close()
             self._local.conn = None
 
+    upgraded_from: int | None = None     # the schema this database had before this launch upgraded it
+    upgrade_backup: Path | None = None   # the backup made just before (Settings → Your data → Restore)
+
+    def _backup_before_upgrade(self, conn: sqlite3.Connection, version: int) -> Path | None:
+        """Your data as it was, in an .anigui-backup next to the database, before anything changes.
+        The upgrade only adds tables, but this way nothing can be lost. Never blocks the upgrade."""
+        import datetime as _dt
+        import json as _json
+        import tempfile
+        import zipfile
+
+        from . import __version__
+        folder = self.path.parent / "Backups"
+        now = _dt.datetime.now()
+        dest = folder / f"AniGUI {now.strftime('%Y-%m-%d %H.%M')} before {__version__}.anigui-backup"
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+            with tempfile.TemporaryDirectory() as tmp:
+                snap = Path(tmp) / "anigui.db"
+                target = sqlite3.connect(snap)
+                try:
+                    conn.backup(target)
+                finally:
+                    target.close()
+                manifest = {"app": "AniGUI", "version": f"before {__version__}", "schema": version,
+                            "reason": "before upgrade", "created": now.isoformat(timespec="seconds")}
+                partial = dest.with_name(dest.name + ".part")
+                with zipfile.ZipFile(partial, "w", zipfile.ZIP_DEFLATED) as z:
+                    z.writestr("manifest.json", _json.dumps(manifest, indent=2))
+                    z.write(snap, "anigui.db")
+                partial.replace(dest)
+            return dest
+        except (OSError, sqlite3.Error):
+            return None
+
     def _migrate(self) -> None:
         conn = self._conn()
         version = conn.execute("PRAGMA user_version").fetchone()[0]
         if version > SCHEMA_VERSION:
             raise RuntimeError(f"Database {self.path} is from a newer AniGUI (schema {version})")
+        if 0 < version < SCHEMA_VERSION:
+            self.upgrade_backup = self._backup_before_upgrade(conn, version)
+            self.upgraded_from = version
         # Every table is CREATE IF NOT EXISTS, so running the schema also adds tables
         # that are new since this database was made.
         conn.executescript(_SCHEMA)
