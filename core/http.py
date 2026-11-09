@@ -37,3 +37,12 @@ def request(url: str, data: bytes | None = None, headers: dict[str, str] | None 
             return Response(resp.status, {k.lower(): v for k, v in resp.headers.items()}, resp.read())
     except urllib.error.HTTPError as exc:
         return Response(exc.code, {k.lower(): v for k, v in (exc.headers or {}).items()}, exc.read() or b"")
+
+
+def open_stream(url: str, headers: dict[str, str] | None = None, timeout: float = 30.0):
+    """A response to read in pieces (big downloads). Raises OSError on network errors and
+    urllib.error.HTTPError (an OSError) for 4xx/5xx."""
+    privacy.LOG.record(url)
+    hdrs = {"User-Agent": USER_AGENT, **(headers or {})}
+    req = urllib.request.Request(url, headers=hdrs)
+    return urllib.request.urlopen(req, timeout=timeout, context=_SSL)

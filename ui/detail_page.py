@@ -268,6 +268,7 @@ class DetailPage(QScrollArea):
         self.theater.episodeClicked.connect(self.play)
         self.theater.listToggled.connect(self._toggle_library)
         self.theater.rail.markRequested.connect(self._mark)
+        self.theater.rail.saved_state = lambda n: self._saved_state()(n)
         self.theater.rail.fillersToggled.connect(lambda key, on: ctx.set_pref(key, on))
         self.theater.dubChanged.connect(self._theater_dub)
         self.theater.qualityChanged.connect(self._theater_quality)
@@ -659,6 +660,7 @@ class DetailPage(QScrollArea):
             self.pager.set_pages([label for _a, _b, label in pages], self.page)
         hide = bool(skippable) and self.ctx.pref("hide_fillers")
         xmas = holiday.christmas_episodes_for(self.media.anilist_id if self.media else None)
+        saved = self._saved_state()
         items = []
         for ep in self.episodes[first:last]:
             p = progress.get(ep.number)
@@ -675,6 +677,7 @@ class DetailPage(QScrollArea):
                 hit=ep.number == self.jumped_to,
                 kind=fillers.kind(ep.number) if fillers else None,
                 christmas=ep.number in xmas,
+                saved=saved(ep.number),
             )
             if hide and item.kind and not (item.up_next or item.playing or item.hit):
                 continue   # Hide fillers (but never the episode you're on or just jumped to)
@@ -896,8 +899,30 @@ class DetailPage(QScrollArea):
             self._refresh_episode_states()
             self.libraryChanged.emit()
 
+    def _saved_state(self):
+        dl = self.ctx.downloads
+        if dl is None or not self.anime_id:
+            return lambda _n: None
+        return dl.states_for(self.anime_id)
+
+    def refresh_downloads(self) -> None:
+        """Downloads (2.0) changed: the ⬇ badges on the episode cards."""
+        if self.anime_id and self.episodes:
+            self.grid.model_.set_saved(self._saved_state())
+
     def _mark(self, episode: str, action: str) -> None:
         if not self.anime_id:
+            return
+        dl = self.ctx.downloads
+        if action == "download" and dl is not None:
+            if dl.start(self.anime_id, self.show_title, episode):
+                self.toast.emit(f"Downloading episode {episode}. You'll find it in My Library → Downloads.", False)
+            return
+        if action == "cancel_download" and dl is not None:
+            dl.cancel(self.anime_id, episode)
+            return
+        if action == "remove_download" and dl is not None:
+            dl.remove(self.anime_id, episode)
             return
         if action == "rewatch":
             self.ctx.store.start_rewatch(self.anime_id, episode)

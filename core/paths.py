@@ -45,6 +45,15 @@ def covers_dir() -> Path:
     return path
 
 
+def downloads_dir(create: bool = True) -> Path:
+    """Where Downloads (2.0) go unless you pick another folder: ~/Movies/AniGUI."""
+    override = os.environ.get("ANIGUI_HOME")
+    path = Path(override) / "downloads" if override else Path.home() / "Movies" / "AniGUI"
+    if create:
+        path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def ani_cli_history_file() -> Path:
     """Same resolution order as ani-cli: ANI_CLI_HIST_DIR, then XDG_STATE_HOME, then ~/.local/state."""
     hist_dir = os.environ.get("ANI_CLI_HIST_DIR")

@@ -27,6 +27,7 @@ a = Analysis(
     datas=[
         (str(ROOT / "core" / "bin" / "anigui-mpv-shim"), "core/bin"),
         (str(ROOT / "packaging" / "AniGUI.png"), "packaging"),
+        (str(ROOT / "assets" / "anime4k"), "assets/anime4k"),
     ],
     hiddenimports=["PySide6.QtNetwork", "PySide6.QtOpenGL", "PySide6.QtOpenGLWidgets"],
     excludes=[

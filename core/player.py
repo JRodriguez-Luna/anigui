@@ -7,7 +7,7 @@ import subprocess
 import tempfile
 
 from . import privacy
-from .ani_cli import StreamInfo, is_web_url
+from .ani_cli import StreamInfo, is_playable, is_web_url
 from .env import child_env, find_player
 
 INSTALL_HINT = "No video player found. Open Setup in AniGUI to install IINA."
@@ -41,8 +41,10 @@ def build_player_command(kind: str, path: str, info: StreamInfo, title: str,
     Every link is checked again here (http(s) only), so nothing from a website can
     be read by the player as an option.
     """
-    for link in (info.url, info.audio_url, info.subtitle_url, info.referrer):
-        if link is not None and not is_web_url(link):
+    for link in (info.url, info.audio_url, info.subtitle_url):
+        if link is not None and not is_playable(link):
+            raise PlayerError("The stream link didn't look right, so it wasn't opened.")
+    if info.referrer is not None and not is_web_url(info.referrer):
             raise PlayerError("The stream link didn't look right, so it wasn't opened.")
     opts: list[tuple[str, str]] = []
     if info.referrer:
@@ -87,8 +89,10 @@ def embedded_options(info: StreamInfo, title: str, ipc_path: str | None = None,
                      start: float | None = None) -> tuple[dict[str, str], str]:
     """libmpv options and the link, for playing inside AniGUI's window (same checks and the
     same choices as the mpv command line)."""
-    for link in (info.url, info.audio_url, info.subtitle_url, info.referrer):
-        if link is not None and not is_web_url(link):
+    for link in (info.url, info.audio_url, info.subtitle_url):
+        if link is not None and not is_playable(link):
+            raise PlayerError("The stream link didn't look right, so it wasn't opened.")
+    if info.referrer is not None and not is_web_url(info.referrer):
             raise PlayerError("The stream link didn't look right, so it wasn't opened.")
     opts = {
         "vo": "libmpv", "hwdec": "auto-safe", "idle": "yes", "keep-open": "no",

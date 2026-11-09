@@ -20,6 +20,7 @@ from core.store import SAVED, Moment, Show, stars
 from . import theme
 from .cards import CardGrid
 from .context import AppContext
+from .downloads import DownloadsView
 from .home_page import show_card
 from .library import list_label
 from .mature import decorate_all
@@ -271,8 +272,9 @@ class LibraryPage(QWidget):
     listMenu = Signal(int, QPoint)   # the ⋯ on a list's page
 
     TABS = (("all", "All shows"), ("timeline", "Timeline"), ("moments", "Moments"), ("ratings", "Ratings"),
-            ("tags", "Tags"))
+            ("tags", "Tags"), ("downloads", "Downloads"))
     openMoment = Signal(object)      # Moment_
+    playDownload = Signal(str, str, str)   # anime_id, title, episode
 
     def __init__(self, ctx: AppContext, parent=None) -> None:
         super().__init__(parent)
@@ -327,10 +329,15 @@ class LibraryPage(QWidget):
         self.moments = MomentsView(ctx.store)
         self.moments.openMoment.connect(self.openMoment)
         self.moments.changed.connect(self.refresh)
+        self.downloads = DownloadsView(ctx, ctx.downloads) if ctx.downloads is not None else None
+        if self.downloads is not None:
+            self.downloads.play.connect(self.playDownload)
         self.empty = empty_state("")
         body = QWidget()
         self.stack = QStackedLayout(body)
-        for w in (self.empty, self.grid, self.timeline, self.moments):
+        for w in (self.empty, self.grid, self.timeline, self.moments, self.downloads):
+            if w is None:
+                continue
             self.stack.addWidget(w)
 
         col = QVBoxLayout(self)
@@ -400,6 +407,8 @@ class LibraryPage(QWidget):
                 self.empty.setText("Press B (or ⌘S) while an episode plays to keep that frame. "
                                    "Your moments show up here; click one to watch from that second.")
                 self.stack.setCurrentWidget(self.empty)
+        elif self.tab == "downloads":
+            self.refresh_downloads()
         elif self.tab == "ratings":
             rated = [(s, r) for s, r in store.rated() if s.anime_id not in hide]
             cards = [replace(show_card(s), subtitle=stars(r)) for s, r in rated]
@@ -408,6 +417,22 @@ class LibraryPage(QWidget):
             self._tags(hide)
         else:
             self._grid([s for s in store.library_all() if s.anime_id not in hide], "Save a show, add one to a list, or rate one, and it shows up here.")
+
+    def refresh_downloads(self) -> None:
+        if self.downloads is None:
+            self.empty.setText("Downloads aren't available here.")
+            self.stack.setCurrentWidget(self.empty)
+            return
+        n = self.downloads.refresh()
+        saved = self.ctx.store.downloads()
+        self.count.setText(str(len(saved)) if saved else "")
+        if n:
+            self.subtitle.setText("Episodes saved on this Mac play with no internet. Right-click one for more.")
+            self.stack.setCurrentWidget(self.downloads)
+        else:
+            self.empty.setText("Right-click any episode and choose Download to watch it with no internet "
+                               "(on a plane, say). Saved episodes show up here.")
+            self.stack.setCurrentWidget(self.empty)
 
     def _tags(self, hide: set[str]) -> None:
         while self.tag_row.count():

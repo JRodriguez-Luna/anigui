@@ -37,6 +37,19 @@ class EpisodeItem:
     upcoming: str | None = None  # "Thu 9:30 PM · in 3d 4h": the next episode, not out yet
     christmas: bool = False      # a Christmas episode (tagged while the holiday theme is on)
     shield: bool = False         # Spoiler shield (2.0): picture blurred, title hidden until you get there
+    saved: str | None = None     # Downloads (2.0): "saved" | "waiting" | "42%"
+
+
+def add_download_actions(menu: QMenu, number: str, saved: str | None, emit) -> None:
+    """Downloads (2.0) in an episode's right-click menu."""
+    menu.addSeparator()
+    if saved == "saved":
+        menu.addAction("Downloaded ✓  (plays with no internet)").setEnabled(False)
+        menu.addAction("Remove download", lambda: emit(number, "remove_download"))
+    elif saved:
+        menu.addAction("Cancel download", lambda: emit(number, "cancel_download"))
+    else:
+        menu.addAction("Download", lambda: emit(number, "download"))
 
 
 class EpisodeModel(QAbstractListModel):
@@ -83,6 +96,15 @@ class EpisodeModel(QAbstractListModel):
             busy = text if item.number == number else None
             if item.busy != busy:
                 self._change(row, busy=busy)
+
+    def set_saved(self, state) -> None:
+        """state(number) -> None | "saved" | "waiting" | "42%" (Downloads)."""
+        for row, item in enumerate(self.items):
+            if item.upcoming:
+                continue
+            saved = state(item.number)
+            if saved != item.saved:
+                self._change(row, saved=saved)
 
     def set_stills(self, stills: dict[str, str]) -> None:
         for row, item in enumerate(self.items):
@@ -229,6 +251,8 @@ class EpisodeDelegate(QStyledItemDelegate):
 
         if item.kind in ("filler", "recap"):
             self._kind_badge(p, still, item.kind)
+        if item.saved:
+            self._saved_badge(p, still, item.saved)
         elif item.christmas and theme.HOLIDAY:
             festive.christmas_tag(p, still)
 
@@ -335,6 +359,18 @@ class EpisodeDelegate(QStyledItemDelegate):
         p.setPen(QColor(fg))
         p.drawText(pill, Qt.AlignmentFlag.AlignCenter, text)
 
+    def _saved_badge(self, p: QPainter, still: QRectF, saved: str) -> None:
+        """Downloads (2.0): on this Mac (✓), or how far along it is."""
+        text = "⬇ SAVED" if saved == "saved" else ("⬇ WAITING" if saved == "waiting" else f"⬇ {saved}")
+        p.setFont(self.small)
+        w = p.fontMetrics().horizontalAdvance(text) + 12
+        pill = QRectF(still.right() - w - 8, still.top() + 8, w, 19)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor(10, 10, 15, 200))
+        p.drawRoundedRect(pill, 5, 5)
+        p.setPen(QColor(theme.GOOD if saved == "saved" else "#FFFFFF"))
+        p.drawText(pill, Qt.AlignmentFlag.AlignCenter, text)
+
     @staticmethod
     def _play_button(p: QPainter, center: QPointF) -> None:
         p.setPen(Qt.PenStyle.NoPen)
@@ -405,7 +441,10 @@ class EpisodeGrid(QListView):
         menu.addAction(f"Mark episodes up to {item.number} as watched", lambda: self.markRequested.emit(item.number, "upto"))
         menu.addSeparator()
         menu.addAction(f"Rewatch from episode {item.number}", lambda: self.markRequested.emit(item.number, "rewatch"))
-        menu.exec(self.viewport().mapToGlobal(pos))
+        add_download_actions(menu, item.number, item.saved, self.markRequested.emit)
+        self.last_menu = menu
+        if not getattr(self, "menu_test", False):
+            menu.exec(self.viewport().mapToGlobal(pos))
 
     def wheelEvent(self, event) -> None:
         event.ignore()  # the page scrolls, not the grid

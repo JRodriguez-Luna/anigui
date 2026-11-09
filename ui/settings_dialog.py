@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Callable
 
 from PySide6.QtCore import Qt, Signal
@@ -15,6 +16,7 @@ from core import __version__
 from .context import AppContext
 from .widgets import Combo
 from .detail_page import QUALITIES
+from .showprefs import SUB_COLORS, SUB_SIZES
 
 PLAYERS = [("AniGUI (built-in)", "anigui"), ("Auto (IINA, then mpv)", "auto"), ("IINA", "iina"), ("mpv", "mpv")]
 AUDIO = [("Sub (original audio, subtitles)", False), ("Dub (English audio)", True)]
@@ -176,6 +178,17 @@ class SettingsDialog(QDialog):
                        self._choice("quality", QUALITIES)),
             SettingRow("Auto-play next episode", "Counts down at the end of an episode, then plays the next one.",
                        self._check("autoplay")),
+            SettingRow("Media keys and Now Playing", "Your keyboard's ⏯ and ⏭ keys, AirPods and Control Center "
+                       "control the built-in player, and show what's playing. It stays on your Mac.",
+                       self._check("media_keys")),
+            SettingRow("Sharper picture", "Cleans up and sharpens the picture with Anime4K, on your Mac's graphics "
+                       "chip. Best for 1080p and lower; uses more battery. Built-in player only. You can also switch "
+                       "it in the player's ⚙ menu.", self._check("sharper")),
+            SettingRow("Subtitle size", "A show can have its own size: its page's ⚙ menu.",
+                       self._choice("sub_size", [(n, k) for k, n, _v in SUB_SIZES])),
+            SettingRow("Subtitle color", "", self._choice("sub_color", [(n, k) for k, n, _v in SUB_COLORS])),
+            SettingRow("Subtitle box", "A dark box behind subtitles, easier to read over bright scenes.",
+                       self._check("sub_box")),
         ]
 
     def _skipping(self) -> list[QWidget]:
@@ -325,7 +338,33 @@ class SettingsDialog(QDialog):
                        self._button("Choose file…", self.importMalRequested.emit)),
             self._note("Importing reads your list once and never writes to AniList or MyAnimeList. Shows hianime "
                        "doesn't have are skipped. A backup is made first, so you can undo it with Restore."),
+            self._downloads_row(),
         ]
+
+    def _downloads_row(self) -> QWidget:
+        from .downloads import folder
+
+        where = QLabel("", objectName="Muted")
+        where.setText(str(folder(self.ctx, create=False)).replace(str(Path.home()), "~"))
+
+        def choose():
+            from PySide6.QtWidgets import QFileDialog
+            path = QFileDialog.getExistingDirectory(self, "Downloads folder", str(folder(self.ctx, create=False)))
+            if path:
+                self.ctx.set_pref("downloads_folder", path)
+                where.setText(path.replace(str(Path.home()), "~"))
+
+        box = QWidget()
+        row = QHBoxLayout(box)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(8)
+        row.addWidget(where)
+        row.addWidget(self._button("Change…", choose))
+        if self.ctx.downloads is not None:
+            row.addWidget(self._button("Show", lambda: self.ctx.downloads.show_in_finder()))
+        self.controls["downloads_folder"] = where
+        return SettingRow("Downloads folder", "Where downloaded episodes go. Episodes already downloaded stay where "
+                          "they are.", box)
 
     def _bring_back(self) -> None:
         from PySide6.QtGui import QCursor

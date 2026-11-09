@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 )
 
 from . import festive, theme
+from .episodes import add_download_actions
 from .holiday import SnowLayer
 from .paintcache import CARDS
 from .motion import reduce_motion, scrolling
@@ -415,6 +416,8 @@ class EpisodeRail(QFrame):
         else:
             menu.addAction("Mark as watched", lambda: self.markRequested.emit(number, "watched"))
         menu.addAction(f"Mark episodes up to {number} as watched", lambda: self.markRequested.emit(number, "upto"))
+        state = getattr(self, "saved_state", None)
+        add_download_actions(menu, number, state(number) if state else None, self.markRequested.emit)
         menu.exec(self.view.viewport().mapToGlobal(pos))
 
 

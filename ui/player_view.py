@@ -19,7 +19,7 @@ from PySide6.QtCore import QEvent, QPoint, QPointF, QRect, QRectF, Qt, QTimer, S
 from PySide6.QtGui import QColor, QCursor, QFont, QGuiApplication, QPainter, QPainterPath, QPen, QSurfaceFormat
 from PySide6.QtWidgets import QApplication, QFrame, QMenu, QPushButton, QVBoxLayout, QWidget
 
-from core import libmpv, macwin
+from core import libmpv, macwin, sharper
 from core.power import KeepAwake
 
 from . import festive, theme
@@ -1275,6 +1275,11 @@ class PlayerHost(QWidget):
             act.setCheckable(True)
             act.setChecked(abs(value - self._speed) < 0.01)
             act.triggered.connect(lambda _c=False, v=value: self._cmd("set_property", "speed", v))
+        sharp = menu.addAction("Sharper picture")
+        sharp.setCheckable(True)
+        sharp.setChecked(bool(self.ctx.pref("sharper")))
+        sharp.setEnabled(sharper.available())
+        sharp.toggled.connect(self.set_sharper)
         menu.addSeparator()
         menu.addAction("Save this moment  (B)").triggered.connect(self.save_moment)
         menu.addSeparator()
@@ -1300,6 +1305,11 @@ class PlayerHost(QWidget):
             menu.popup(at - QPoint(0, menu.sizeHint().height() + 6))
         self.last_menu = menu
         return menu
+
+    def set_sharper(self, on: bool) -> None:
+        """Anime4K on or off, for this episode and the next ones."""
+        self.ctx.set_pref("sharper", bool(on))
+        self._cmd("set_property", "glsl-shaders", sharper.shaders_value(bool(on)))
 
     # -- placing ---------------------------------------------------------------------------------
 

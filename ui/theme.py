@@ -111,6 +111,13 @@ QPushButton#DrawerClose {{ background: rgba(255,255,255,0.08); border: none; bor
 QPushButton#DrawerClose:hover {{ background: rgba(255,255,255,0.18); color: {TEXT}; }}
 #Greeting {{ color: rgba(255, 255, 255, 0.86); font-size: 15px; font-weight: 700; background: rgba(0, 0, 0, 0.28);
     border-radius: 12px; padding: 5px 12px; }}
+#WelcomeTitle {{ font-size: 28px; font-weight: 800; }}
+#WelcomeRow {{ background: {SURFACE}; border: 1px solid {BORDER}; border-radius: 12px; }}
+#WelcomeIcon {{ font-size: 22px; }}
+#WelcomeKey {{ background: {SURFACE_3}; border: 1px solid {BORDER}; border-radius: 6px; padding: 3px 8px;
+    font-size: 12px; font-weight: 800; color: {TEXT}; }}
+#WelcomeDot {{ background: {FAINT}; border-radius: 4px; }}
+#WelcomeDot[on="true"] {{ background: {ACCENT}; }}
 #SidebarFooter {{ color: {FAINT}; font-size: 11px; padding: 6px; }}
 #SidebarHeading {{ color: {FAINT}; font-size: 11px; font-weight: 800; letter-spacing: 1.5px; }}
 #Sidebar QComboBox {{ font-size: 12px; padding: 6px 10px; }}

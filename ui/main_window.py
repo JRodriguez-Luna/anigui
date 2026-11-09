@@ -43,6 +43,8 @@ from .holiday import is_on as holiday_on
 from .motion import crossfade
 from .library_page import LibraryPage
 from .playback import PlaybackController
+from .downloads import DownloadManager
+from .now_playing import NowPlayingBridge
 from .player_view import PlayerHost, available as player_available
 from .search_page import SearchPage
 from .settings_dialog import SettingsDialog
@@ -64,6 +66,7 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(980, 640)
 
         self.playback = PlaybackController(ctx, self)
+        ctx.downloads = DownloadManager(ctx, self.playback.resolver, self)      # Downloads (2.0)
         self.alerts = AlertsController(ctx, self)
         self.home = HomePage(ctx)
         self.search = SearchPage(ctx)
@@ -177,6 +180,7 @@ class MainWindow(QMainWindow):
         self.fireworks = Fireworks(central)
         # The built-in player floats above the pages (on the show page, in the corner, or full screen)
         self.player_host = PlayerHost(ctx, central)
+        self.now_playing = NowPlayingBridge(ctx, self.playback, self.player_host, self)
         self.player_host.slot = self._player_slot
         self.player_host.slot_widget = lambda: self.detail.theater.slot
         self.player_host.closed.connect(self._sync_theater)
@@ -218,6 +222,12 @@ class MainWindow(QMainWindow):
         self.library.listsChanged.connect(self._lists_changed)
         self.library.listMenu.connect(self._list_menu)
         self.library.openMoment.connect(self.play_moment)
+        self.library.playDownload.connect(self.play_download)
+        dl = ctx.downloads
+        dl.changed.connect(self._downloads_changed)
+        dl.finished.connect(self._download_done)
+        dl.failed.connect(lambda _aid, ep, msg: self.toast.show_message(f"Couldn't download episode {ep}: {msg}",
+                                                                        error=True))
         self.playback.progressSaved.connect(lambda _a, _e: self._check_goal())
         self.player_host.momentSaved.connect(lambda: self.stack.currentWidget() is self.library and self.library.refresh())
         self.stats.wrappedRequested.connect(lambda: self.open_wrapped())
@@ -452,6 +462,24 @@ class MainWindow(QMainWindow):
         self.open_item(show)
         self.playback.play(show.anime_id, show.title, m.episode, start=max(0.0, m.position - 2))
 
+    def play_download(self, anime_id: str, title: str, episode: str) -> None:
+        show = self.ctx.store.get_show(anime_id)
+        if show is None:
+            return
+        self.open_item(show)
+        self.playback.play(show.anime_id, show.title, episode)
+
+    def _download_done(self, anime_id: str, episode: str) -> None:
+        show = self.ctx.store.get_show(anime_id)
+        name = f"{show.title}, episode {episode}" if show else f"Episode {episode}"
+        self.toast.show_message(f"Downloaded {name}. It plays with no internet.", error=False)
+
+    def _downloads_changed(self) -> None:
+        self.detail.refresh_downloads()
+        if self.stack.currentWidget() is self.library and self.library.list_id is None \
+                and self.library.tab == "downloads":
+            self.library.refresh_downloads()
+
     def open_wrapped(self, year: int | None = None) -> None:
         """Your year in anime (worked out in the background: genres may need AniList's cache)."""
         year = year or wrapped_year()
@@ -661,6 +689,8 @@ class MainWindow(QMainWindow):
             self.home.update_greeting()
         elif key == "your_name":
             self.home.update_greeting()
+        elif key in ("sub_size", "sub_color", "sub_box", "sharper"):
+            self.playback.restyle()
         elif key == "home_rows":
             self.home.apply_rows()
         elif key == "alerts":
@@ -853,6 +883,7 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event) -> None:
         self.playback.shutdown()  # save the current position before quitting
+        self.ctx.downloads.shutdown()
         super().closeEvent(event)
 
     # -- startup ------------------------------------------------------------------------
@@ -893,6 +924,8 @@ class MainWindow(QMainWindow):
             if not self.ctx.pref("setup_done", False):
                 self.ctx.set_pref("last_version", __version__)  # first launch: nothing is "new"
             QTimer.singleShot(400, self.open_setup)  # first launch, or something's missing
+        elif (welcome := self.open_welcome()) is not None:
+            welcome.finished.connect(lambda _r: self._check_updates(status))
         elif (whats_new := self._maybe_show_whats_new()) is not None:
             whats_new.finished.connect(lambda _r: self._check_updates(status))  # after the user reads it
         else:
@@ -924,6 +957,19 @@ class MainWindow(QMainWindow):
         else:
             self.open_setup()
 
+    def open_welcome(self, force: bool = False):
+        """Welcome (2.0), once, for a new install. Returns the dialog if it opened."""
+        from .welcome import WelcomeDialog, should_welcome
+        if not force and not should_welcome(self.ctx):
+            return None
+        dlg = WelcomeDialog(self.ctx, self)
+        dlg.importAniList.connect(self.data.import_anilist)
+        dlg.importMal.connect(lambda: self.data.import_mal())
+        dlg.finished.connect(lambda _r: self.home.update_greeting())
+        dlg.open()
+        self._welcome = dlg
+        return dlg
+
     def open_setup(self) -> None:
         dialog = SetupDialog(self.ctx, self)
         dialog.finished_setup.connect(lambda: self.ctx.runner.submit(setup.current_status, on_done=self._after_setup))
@@ -934,6 +980,8 @@ class MainWindow(QMainWindow):
         self._set_versions(status.ani_cli_version)
         self.banner.setVisible(not status.ready)
         if not status.ready:
+            return
+        if self.open_welcome():           # new install: say hello (2.0); nothing is "new" yet
             return
         # An update that needed Setup first (e.g. ani-cli was missing) still gets What's New
         whats_new = self._maybe_show_whats_new()

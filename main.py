@@ -70,6 +70,15 @@ def self_test() -> int:
                 m.close()
             except Exception as exc:  # noqa: BLE001
                 problems.append(f"built-in player: {exc}")
+        # Downloads (2.0): HLS pieces decrypt (AES-128) in the built app
+        from core.downloads import decrypt
+        sample = bytes.fromhex("634766a9edc6b39e18d79df46b64bb58")       # "AniGUI", zero key and IV
+        try:
+            if decrypt(bytes(16), bytes(16), sample) != b"AniGUI":
+                raise ValueError("wrong result")
+            print("self-test: Downloads ok (decrypt)")
+        except Exception as exc:  # noqa: BLE001
+            problems.append(f"Downloads: can't decrypt ({exc})")
         # Touch ID locks (2.0): reach LocalAuthentication without asking anything
         if sys.platform == "darwin":
             from core.touchid import TouchID
@@ -78,6 +87,16 @@ def self_test() -> int:
                 problems.append("Touch ID: LocalAuthentication not reachable")
             else:
                 print(f"self-test: Touch ID ok (can ask on this Mac: {tid.available()})")
+            # Now Playing and media keys (2.0): reach MediaPlayer, register the keys, hand them back
+            from core.nowplaying import NowPlaying
+            np_ = NowPlaying()
+            if not np_.ok or not np_.start(lambda *_a: None):
+                problems.append("Now Playing: MediaPlayer not reachable")
+            else:
+                icon = ROOT / "packaging" / "AniGUI.png"
+                np_.show("Episode 1", "AniGUI self-test", 12.0, 1420.0, False, str(icon) if icon.is_file() else None)
+                np_.stop()
+                print(f"self-test: Now Playing ok ({len(np_._keep) // 3} handlers)")
     except Exception as exc:  # noqa: BLE001
         problems.append(f"{type(exc).__name__}: {exc}")
     for p in problems:

@@ -35,6 +35,10 @@ DEFAULTS: dict[str, Any] = {
     "sub_size": "normal",        # subtitle style (2.0): small | normal | large | huge
     "sub_color": "white",        # white | yellow
     "sub_box": False,            # a dark box behind subtitles
+    "welcomed": False,           # Welcome (2.0) shown (or not needed: you had history)
+    "downloads_folder": "",      # Downloads (2.0); empty: ~/Movies/AniGUI
+    "media_keys": True,          # Now Playing in Control Center, ⏯ ⏭ keys (built-in player)
+    "sharper": False,            # Sharper picture (Anime4K shaders, built-in player)
     "weekly_goal": 0,            # Goals (2.0): episodes a week (0 = off)     # blur episodes you haven't reached (2.0)
     "lock_app": False,           # Touch ID to open AniGUI (2.0)
     "lock_mature": False,        # Touch ID before 18+ shows (2.0)
@@ -69,6 +73,7 @@ class AppContext:
     events: PrefEvents = field(default_factory=PrefEvents)
     stills: Any = None      # core.stills.EpisodeStills; None = numbered tiles only
     fillers: Any = None     # core.fillers.FillerGuide; None = no filler info
+    downloads: Any = None   # ui.downloads.DownloadManager (the main window makes it)
 
     @classmethod
     def create(cls) -> "AppContext":

@@ -126,6 +126,16 @@ CREATE TABLE IF NOT EXISTS rewatch (              -- Rewatch mode (2.0): where y
     round      INTEGER NOT NULL DEFAULT 1,
     started_at REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS downloads (            -- Downloads (2.0): episodes saved on this Mac
+    anime_id   TEXT NOT NULL REFERENCES shows(anime_id) ON DELETE CASCADE,
+    episode    TEXT NOT NULL,
+    video      TEXT NOT NULL,
+    audio      TEXT,
+    subtitles  TEXT,
+    size       INTEGER NOT NULL DEFAULT 0,
+    added_at   REAL NOT NULL,
+    PRIMARY KEY (anime_id, episode)
+);
 CREATE TABLE IF NOT EXISTS cache (
     key        TEXT PRIMARY KEY,
     value      TEXT NOT NULL,
@@ -218,6 +228,24 @@ class Moment_:
     at: float
     title: str = ""
     poster: str | None = None
+
+
+@dataclass(frozen=True)
+class Download:
+    """An episode saved on this Mac (Downloads)."""
+    anime_id: str
+    episode: str
+    video: str
+    audio: str | None
+    subtitles: str | None
+    size: int
+    added_at: float
+    title: str = ""
+    poster: str | None = None
+
+    @property
+    def present(self) -> bool:
+        return Path(self.video).is_file()
 
 
 def stars(rating: int | None) -> str:
@@ -348,6 +376,7 @@ class Store:
             c.execute("UPDATE moments SET anime_id = ? WHERE anime_id = ?", (new_id, old_id))
             c.execute("UPDATE OR IGNORE queue SET anime_id = ? WHERE anime_id = ?", (new_id, old_id))
             c.execute("UPDATE OR IGNORE show_settings SET anime_id = ? WHERE anime_id = ?", (new_id, old_id))
+            c.execute("UPDATE OR IGNORE downloads SET anime_id = ? WHERE anime_id = ?", (new_id, old_id))
             c.execute("DELETE FROM shows WHERE anime_id = ?", (old_id,))  # cascades old progress
 
     def find_by_anilist(self, anilist_id: int) -> Show | None:
@@ -719,6 +748,33 @@ class Store:
     def rewatch_count(self, anime_id: str) -> int:
         r = self._conn().execute("SELECT round FROM rewatch WHERE anime_id = ?", (anime_id,)).fetchone()
         return r[0] if r else 0
+
+    # -- Downloads (2.0) ------------------------------------------------------------
+
+    _DL = """SELECT d.anime_id, d.episode, d.video, d.audio, d.subtitles, d.size, d.added_at, s.title, s.poster
+             FROM downloads d JOIN shows s USING (anime_id)"""
+
+    def add_download(self, anime_id: str, episode: str, video: str, audio: str | None, subtitles: str | None,
+                     size: int) -> None:
+        with self._tx() as c:
+            c.execute("""INSERT OR REPLACE INTO downloads (anime_id, episode, video, audio, subtitles, size, added_at)
+                         VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                      (anime_id, episode, video, audio, subtitles, int(size), time.time()))
+
+    def download(self, anime_id: str, episode: str) -> Download | None:
+        r = self._conn().execute(self._DL + " WHERE d.anime_id = ? AND d.episode = ?", (anime_id, episode)).fetchone()
+        return Download(*r) if r else None
+
+    def downloads(self) -> list[Download]:
+        rows = self._conn().execute(self._DL + " ORDER BY d.added_at DESC").fetchall()
+        return [Download(*r) for r in rows]
+
+    def downloaded_episodes(self, anime_id: str) -> set[str]:
+        return {r[0] for r in self._conn().execute("SELECT episode FROM downloads WHERE anime_id = ?", (anime_id,))}
+
+    def remove_download(self, anime_id: str, episode: str) -> None:
+        with self._tx() as c:
+            c.execute("DELETE FROM downloads WHERE anime_id = ? AND episode = ?", (anime_id, episode))
 
     # -- progress ------------------------------------------------------------------
 

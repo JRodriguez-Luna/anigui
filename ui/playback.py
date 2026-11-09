@@ -18,8 +18,8 @@ from typing import Callable
 
 from PySide6.QtCore import QObject, QTimer, Signal
 
-from core import aniskip
-from core.ani_cli import StreamInfo, is_web_url
+from core import aniskip, sharper
+from core.ani_cli import StreamInfo, is_playable
 from core.catalog import CatalogError
 from core.mpv_ipc import MpvIpc
 from core.player import PLAYER_NAMES
@@ -27,6 +27,7 @@ from core.stills import number_key
 
 from .showprefs import show_pref, sub_style
 from .context import AppContext
+from .downloads import offline_stream
 
 SAVE_EVERY_S = 5.0
 PREFETCH_REMAINING_S = 120.0
@@ -71,8 +72,14 @@ class StreamResolver(QObject):
         ctx.bridge.streamResolved.connect(self._on_resolved)
         ctx.bridge.failed.connect(self._on_failed)
 
-    def prepare(self, anime_id: str, title: str, episode: str, on_ready, on_fail, on_status=None) -> ResolveJob:
+    def prepare(self, anime_id: str, title: str, episode: str, on_ready, on_fail, on_status=None,
+                online: bool = False) -> ResolveJob:
+        """online: always find the stream, even for an episode saved on this Mac (Downloads)."""
         job = ResolveJob(anime_id, title, episode, on_ready, on_fail, on_status or (lambda _s: None))
+        local = None if online else offline_stream(self.ctx, anime_id, episode)
+        if local is not None:          # saved on this Mac (2.0): no internet needed
+            QTimer.singleShot(0, lambda: job.cancelled or job.on_ready(local))
+            return job
         self._locate(job)
         return job
 
@@ -278,7 +285,7 @@ class Session(QObject):
         if info.subtitle_url:
             self.now.pending_tracks.append(("sub-add", info.subtitle_url,
                                             "select" if info.show_subtitles else "auto"))
-        if not is_web_url(info.url) or any(u and not is_web_url(u) for u in (info.audio_url, info.subtitle_url)):
+        if not is_playable(info.url) or any(u and not is_playable(u) for u in (info.audio_url, info.subtitle_url)):
             self.notice.emit("The stream link didn't look right, so it wasn't opened.", True)
             return
         self.ipc.command("loadfile", info.url, "replace")
@@ -350,6 +357,8 @@ class Session(QObject):
             self.now.pending_tracks = []
             for prop, value in sub_style(self.ctx, self.now.anime_id):   # your subtitle style (2.0)
                 self.ipc.command("set_property", prop, value)
+            if self.ctx.pref("sharper"):   # Sharper picture (2.0)
+                self.ipc.command("set_property", "glsl-shaders", sharper.shaders_value(True))
         elif name == "end-file":
             reason = msg.get("reason")
             if reason == "eof":
@@ -606,6 +615,15 @@ class PlaybackController(QObject):
     @property
     def active(self) -> tuple[str, str] | None:
         return (self._job.anime_id, self._job.episode) if self._job else None
+
+    def restyle(self) -> None:
+        """Your subtitle style and Sharper picture, applied to the episode that's playing now."""
+        s = self.session
+        if not (s and s.alive and not s.loading):
+            return
+        for prop, value in sub_style(self.ctx, s.now.anime_id):
+            s.ipc.command("set_property", prop, value)
+        s.ipc.command("set_property", "glsl-shaders", sharper.shaders_value(bool(self.ctx.pref("sharper"))))
 
     @property
     def now_playing(self) -> tuple[str, str] | None:

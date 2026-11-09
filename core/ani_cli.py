@@ -206,6 +206,24 @@ def is_web_url(value: str) -> bool:
     return not any(ord(c) < 32 or c in ' "\\' or ord(c) == 127 for c in value)
 
 
+MEDIA_EXTS = {".ts", ".mp4", ".m4a", ".aac", ".mkv", ".vtt", ".ass", ".srt"}
+
+
+def is_download(value: str | None) -> bool:
+    """A file AniGUI saved (Downloads, 2.0): a full path to a media file that exists, with
+    nothing in it a player could read as an option."""
+    if not value or not os.path.isabs(value) or len(value) > 4096:
+        return False
+    if any(ord(c) < 32 or ord(c) == 127 for c in value):
+        return False
+    return Path(value).suffix.lower() in MEDIA_EXTS and os.path.isfile(value)
+
+
+def is_playable(value: str) -> bool:
+    """A web link, or an episode saved on this Mac."""
+    return is_web_url(value) or is_download(value)
+
+
 def clean_output(text: str) -> str:
     return _ANSI.sub("", text)
 
