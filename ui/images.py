@@ -36,11 +36,18 @@ def load_cropped(covers: CoverCache, url: str, w: int, h: int, dpr: float) -> QI
 class ImageLoader(QObject):
     loaded = Signal(str)  # url
 
-    def __init__(self, covers: CoverCache, parent: QObject | None = None, max_items: int = 500) -> None:
+    MAX_BYTES = 192 * 1024 * 1024
+
+    def __init__(self, covers: CoverCache, parent: QObject | None = None, max_items: int = 500,
+                 max_bytes: int | None = None) -> None:
         super().__init__(parent)
         self.covers = covers
         self.runner = TaskRunner(self, max_threads=6)  # own pool so images never starve data calls
         self.max_items = max_items
+        # Pictures are kept by how much memory they take, not how many: a banner on a 4K screen
+        # is 15 MB, a poster under 1 MB. 500 of anything grew AniGUI past 2 GB (2.0.1).
+        self.max_bytes = max_bytes or self.MAX_BYTES
+        self.bytes = 0
         self._cache: OrderedDict[Key, QPixmap] = OrderedDict()
         self._pending: set[Key] = set()
         self._failed: set[str] = set()
@@ -84,8 +91,22 @@ class ImageLoader(QObject):
                            Qt.TransformationMode.SmoothTransformation)
         out = QPixmap.fromImage(soft)
         out.setDevicePixelRatio(pm.devicePixelRatio())
-        self._cache[key] = out
+        self._put(key, out)
         return out
+
+    @staticmethod
+    def _size(pm: QPixmap) -> int:
+        return pm.width() * pm.height() * 4
+
+    def _put(self, key: Key, pm: QPixmap) -> None:
+        old = self._cache.pop(key, None)
+        if old is not None:
+            self.bytes -= self._size(old)
+        self._cache[key] = pm
+        self.bytes += self._size(pm)
+        while len(self._cache) > 1 and (len(self._cache) > self.max_items or self.bytes > self.max_bytes):
+            _k, gone = self._cache.popitem(last=False)
+            self.bytes -= self._size(gone)
 
     def prefetch(self, url: str | None, w: int, h: int) -> None:
         self.pixmap(url, w, h)
@@ -94,9 +115,7 @@ class ImageLoader(QObject):
         self._pending.discard(key)
         pm = QPixmap.fromImage(img)
         pm.setDevicePixelRatio(dpr)
-        self._cache[key] = pm
-        while len(self._cache) > self.max_items:
-            self._cache.popitem(last=False)
+        self._put(key, pm)
         # A short fade-in (fine with Reduce motion too: nothing moves)
         self._born.setdefault(key[0], time.monotonic())
         if not self._fade_timer.isActive():

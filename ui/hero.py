@@ -14,7 +14,7 @@ from . import theme
 from .cards import format_label
 from .images import ImageLoader
 from . import festive
-from .motion import Fader, crossfade
+from .motion import Fader, crossfade, quiet
 from .widgets import WrapLabel
 
 BUCKET = 320  # request banner widths in steps so resizing doesn't refetch constantly
@@ -178,7 +178,7 @@ class HeroBanner(Backdrop):
         col.addLayout(buttons)
 
         self.timer = QTimer(self, interval=self.ROTATE_MS)
-        self.timer.timeout.connect(lambda: self.show_item((self.current + 1) % max(1, len(self.items))))
+        self.timer.timeout.connect(self._rotate)
         self.set_loading()
 
     def set_loading(self) -> None:
@@ -197,6 +197,11 @@ class HeroBanner(Backdrop):
         if self.items:
             self.show_item(0)
             self.timer.start()
+
+    def _rotate(self) -> None:
+        if quiet():          # an episode is playing, or you're in another app: no need to (2.0.1)
+            return
+        self.show_item((self.current + 1) % max(1, len(self.items)))
 
     def show_item(self, i: int) -> None:
         if not self.items:

@@ -19,13 +19,16 @@ from . import theme
 
 
 class PaintCache:
-    def __init__(self, max_items: int = 700) -> None:
+    def __init__(self, max_items: int = 700, max_bytes: int = 96 * 1024 * 1024) -> None:
         self.max_items = max_items
+        self.max_bytes = max_bytes          # by memory, not count: big cards on a 4K screen (2.0.1)
+        self.bytes = 0
         self._items: OrderedDict[Hashable, QPixmap] = OrderedDict()
         self.hits = self.misses = 0
 
     def clear(self) -> None:
         self._items.clear()
+        self.bytes = 0
 
     def __len__(self) -> int:
         return len(self._items)
@@ -56,8 +59,10 @@ class PaintCache:
         p.drawPixmap(QPointF(rect.x() - margin, rect.y() - margin), pm)
         if keep:
             self._items[full] = pm
-            while len(self._items) > self.max_items:
-                self._items.popitem(last=False)
+            self.bytes += pm.width() * pm.height() * 4
+            while len(self._items) > 1 and (len(self._items) > self.max_items or self.bytes > self.max_bytes):
+                _k, gone = self._items.popitem(last=False)
+                self.bytes -= gone.width() * gone.height() * 4
 
 
 CARDS = PaintCache()

@@ -30,6 +30,14 @@ class Release:
 
 
 RELEASES: tuple[Release, ...] = (
+    Release("2.0.1", "November 12, 2026", (
+        Change("Lighter while you watch", "AniGUI uses far less of your Mac while an episode plays, most of all "
+                                          "in full screen, on a TV or big display, and with the holiday theme "
+                                          "on. Snow and lights hold still while an episode plays or while "
+                                          "you're in another app, and pick up again after."),
+        Change("Less memory", "Pictures AniGUI keeps ready for scrolling now stay within a fixed budget, so it "
+                              "no longer grows to gigabytes after a long evening of browsing."),
+    )),
     Release("2.0.0", "November 9, 2026", (
         Change("Yours", "AniGUI 2.0 is personal and private, and everything stays on your Mac. A short tour shows "
                         "what's new the first time you open it. New features start off; switch on what you like in "

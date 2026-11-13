@@ -23,7 +23,7 @@ from core import libmpv, macwin, sharper
 from core.power import KeepAwake
 
 from . import festive, theme
-from .motion import reduce_motion
+from .motion import reduce_motion, set_quiet
 
 MINI_W, MINI_H = 336, 189
 HIDE_AFTER_MS = 2500
@@ -1044,6 +1044,7 @@ class PlayerHost(QWidget):
     def stop(self) -> None:
         """The session ended (or you closed the player)."""
         self.awake.release()
+        set_quiet("video", False)
         self.sleep_at, self.sleep_after_episode = None, False      # (a sleep timer ends with the player)
         self._sleep_tick.stop()
         self.controls.sleep_text = ""
@@ -1100,6 +1101,7 @@ class PlayerHost(QWidget):
                 self.awake.release()
             else:
                 self.awake.hold()
+            set_quiet("video", not c.paused)      # decorations hold still while it plays (2.0.1)
         elif name == "mute":
             c.muted = value is True
         elif name == "volume" and isinstance(value, (int, float)):
@@ -1331,7 +1333,27 @@ class PlayerHost(QWidget):
         self.modeChanged.emit(mode)
         self.place()
 
+    def _cover(self, on: bool) -> None:
+        """Full screen hides the sidebar and the page under the video. They stop repainting
+        meanwhile: otherwise every change to the controls repainted all of them, under the
+        video, on every frame (2.0.1)."""
+        covered = getattr(self, "_covered", [])
+        if on and not covered:
+            self._covered = [w for w in self.home.findChildren(QWidget, options=Qt.FindChildOption.FindDirectChildrenOnly)
+                             if w is not self and not w.isWindow() and w.updatesEnabled()]
+            for w in self._covered:
+                w.setUpdatesEnabled(False)
+        elif not on and covered:
+            self._covered = []
+            for w in covered:
+                try:
+                    w.setUpdatesEnabled(True)
+                    w.update()
+                except RuntimeError:       # (deleted meanwhile)
+                    pass
+
     def _leave_full(self) -> None:
+        self._cover(False)
         win = self.window()
         if win.isFullScreen():
             win.showMaximized() if self._was_maximized else win.showNormal()
@@ -1380,6 +1402,7 @@ class PlayerHost(QWidget):
                 x = max(area.left() + 8, min(area.right() - w - 8, self.mini_pos.x()))
                 y = max(area.top() + 8, min(area.bottom() - h - 8, self.mini_pos.y()))
             target = QRect(int(x), int(y), w, h)
+        self._cover(self.mode == "full")
         holder = self.slot_widget() if (self.mode == "theater" and self.slot_widget) else None
         if holder is not None:
             # On the show page the video is part of the page (inside its slot), so it scrolls

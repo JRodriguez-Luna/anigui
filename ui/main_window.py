@@ -5,7 +5,7 @@ from __future__ import annotations
 import datetime as dt
 import html
 
-from PySide6.QtCore import QPoint, QRect, QSize, Qt, QTimer, QUrl
+from PySide6.QtCore import QEvent, QPoint, QRect, QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import QAction, QDesktopServices, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication, QMessageBox, QButtonGroup, QHBoxLayout, QInputDialog, QLabel, QMenu, QMainWindow, QPushButton, QScrollArea, QStackedWidget,
@@ -37,7 +37,7 @@ from .lock import Gate, LockScreen
 from .privacy_page import PrivacyPage
 from .library import LibraryNav, ask_new_list
 from .festive import ChristmasCard, CountdownChip, Fireworks, Flurry, SidebarLights, first_name, greeting_lines
-from .motion import reduce_motion
+from .motion import reduce_motion, reset_quiet, set_quiet
 from .holiday import Brand, holiday_icon
 from .holidays_page import HolidaysPage
 from .holiday import is_on as holiday_on
@@ -182,6 +182,11 @@ class MainWindow(QMainWindow):
         # The built-in player floats above the pages (on the show page, in the corner, or full screen)
         self.player_host = PlayerHost(ctx, central)
         self.now_playing = NowPlayingBridge(ctx, self.playback, self.player_host, self)
+        # Decorations hold still while you're in another app (2.0.1)
+        reset_quiet()
+        app = QApplication.instance()
+        if app is not None:
+            app.applicationStateChanged.connect(self._app_state)
         self.player_host.slot = self._player_slot
         self.player_host.slot_widget = lambda: self.detail.theater.slot
         self.player_host.closed.connect(self._sync_theater)
@@ -1092,6 +1097,14 @@ class MainWindow(QMainWindow):
         box.exec()
         if box.clickedButton() is page and update.url:
             QDesktopServices.openUrl(QUrl(update.url))
+
+    def _app_state(self, state) -> None:
+        set_quiet("away", state != Qt.ApplicationState.ApplicationActive)
+
+    def changeEvent(self, event) -> None:
+        if event.type() == QEvent.Type.WindowStateChange:
+            set_quiet("minimized", self.isMinimized())
+        super().changeEvent(event)
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)

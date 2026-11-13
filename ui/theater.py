@@ -17,7 +17,7 @@ from . import festive, theme
 from .episodes import add_download_actions
 from .holiday import SnowLayer
 from .paintcache import CARDS
-from .motion import reduce_motion, scrolling
+from .motion import holding_still, park, reduce_motion
 from .widgets import Combo, PosterWidget, WrapLabel
 
 RAIL_W = 300
@@ -125,7 +125,7 @@ class Lights(QWidget):
         self._timer.stop()
 
     def _step(self) -> None:
-        if scrolling():
+        if park(self._timer, self) or holding_still():
             return
         self.t += 0.09
         self.update()

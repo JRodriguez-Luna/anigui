@@ -229,6 +229,56 @@ def scrolling() -> bool:
     return time.monotonic() - _last_scroll < SCROLL_QUIET_S
 
 
+# Why decorations hold still right now (2.0.1): "video" while an episode plays, "away" while
+# AniGUI isn't the window you're using. A repaint anywhere in the window while the video is
+# drawing makes Qt repaint (and send to the graphics chip) everything under the video too, on
+# every frame, so falling snow or twinkling lights behind a playing episode cost far more than
+# they look.
+_quiet: set[str] = set()
+_parked: list = []        # (timer, widget) stopped while quiet, started again after
+
+
+def set_quiet(reason: str, on: bool) -> None:
+    if on:
+        _quiet.add(reason)
+    else:
+        _quiet.discard(reason)
+    if not _quiet:
+        parked, _parked[:] = list(_parked), []
+        for timer, widget in parked:
+            try:
+                if widget.isVisible() and not timer.isActive():
+                    timer.start()
+            except RuntimeError:          # (deleted meanwhile)
+                pass
+
+
+def reset_quiet() -> None:
+    _quiet.clear()
+    _parked.clear()
+
+
+def park(timer, widget) -> bool:
+    """In a decoration's frame: while it's quiet, stop the timer (no wake-ups at all) and start
+    it again when it's over. True when parked (skip this frame)."""
+    if not _quiet:
+        return False
+    timer.stop()
+    if not any(t is timer for t, _w in _parked):
+        _parked.append((timer, widget))
+    return True
+
+
+def quiet() -> bool:
+    return bool(_quiet)
+
+
+def holding_still() -> bool:
+    """Decorations skip their next frame: a page is scrolling, an episode is playing, or
+    you're in another app."""
+    return bool(_quiet) or scrolling()
+
+
 def shimmer_phase() -> float:
     """0..1, looping every 1.2 s: where the loading highlight is."""
     return (time.monotonic() % 1.2) / 1.2
