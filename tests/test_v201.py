@@ -111,3 +111,40 @@ def test_picture_caches_have_a_memory_budget():
         cache.draw(p, QRectF(0, 0, 500, 500), ("card", i), lambda q, r: True)   # 1 MB each
     p.end()
     assert len(cache) == 3 and cache.bytes <= 3 * 1024 * 1024
+
+
+def test_a_mac_asks_for_modern_opengl_for_the_whole_app():
+    """mpv needs OpenGL 3+ to take VideoToolbox's frames straight from the graphics chip;
+    asked for once, before Qt starts, so the window and the video match."""
+    import subprocess
+    code = (
+        "import sys; sys.path.insert(0, '.'); sys.platform = 'darwin'\n"
+        "import main\n"
+        "from PySide6.QtGui import QSurfaceFormat\n"
+        "print(main.use_modern_opengl())\n"
+        "f = QSurfaceFormat.defaultFormat(); print(f.majorVersion(), f.minorVersion(), f.profile().name)\n"
+        "import os; os.environ['ANIGUI_GL'] = 'legacy'; print(main.use_modern_opengl())\n"
+    )
+    out = subprocess.run([sys.executable, "-c", code], cwd=ROOT, capture_output=True, text=True, timeout=60)
+    assert out.stdout.split() == ["True", "4", "1", "CoreProfile", "False"], out.stderr[-500:]
+    import main
+    if sys.platform != "darwin":
+        assert main.use_modern_opengl() is False
+
+
+def test_the_log_says_how_video_is_decoded(win, caplog):
+    import logging
+    from ui.player_view import VideoView
+
+    class FakeMpv:
+        handle = 1
+
+        def get(self, name):
+            return {"hwdec-current": "videotoolbox", "video-params/w": "1920"}.get(name)
+
+    view = VideoView.__new__(VideoView)
+    view.mpv = FakeMpv()
+    view.context = lambda: None
+    with caplog.at_level(logging.INFO):
+        VideoView._log_decoding(view)
+    assert "decoding=videotoolbox" in caplog.text

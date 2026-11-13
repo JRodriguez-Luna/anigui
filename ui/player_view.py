@@ -9,14 +9,13 @@ players use, so progress, skips and auto-play work exactly as before (ui/playbac
 
 from __future__ import annotations
 
+import logging
 import math
-import os
 import random
-import sys
 import time
 
 from PySide6.QtCore import QEvent, QPoint, QPointF, QRect, QRectF, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QCursor, QFont, QGuiApplication, QPainter, QPainterPath, QPen, QSurfaceFormat
+from PySide6.QtGui import QColor, QCursor, QFont, QGuiApplication, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QApplication, QFrame, QMenu, QPushButton, QVBoxLayout, QWidget
 
 from core import libmpv, macwin, sharper
@@ -24,6 +23,8 @@ from core.power import KeepAwake
 
 from . import festive, theme
 from .motion import reduce_motion, set_quiet
+
+log = logging.getLogger(__name__)
 
 MINI_W, MINI_H = 336, 189
 HIDE_AFTER_MS = 2500
@@ -73,12 +74,8 @@ class VideoView(QOpenGLWidget):
         super().__init__(parent)
         # The video's OpenGL context must match the window's: a context of its own kind
         # (asking for a different version here) can't share with the window, and the slot then
-        # shows a flipped copy of the window instead of the video (1.11.0).
-        if os.environ.get("ANIGUI_GL") == "widget-core":
-            fmt = QSurfaceFormat()
-            fmt.setVersion(4, 1)
-            fmt.setProfile(QSurfaceFormat.OpenGLContextProfile.CoreProfile)
-            self.setFormat(fmt)
+        # shows a flipped copy of the window instead of the video (1.11.0). The kind is chosen
+        # once for the whole app, in main.py (2.0.1).
         self.mpv = libmpv.Mpv(options)          # opens the control socket right away
         self.url, self.tracks = url, list(tracks)
         self.renderer: libmpv.GlRenderer | None = None
@@ -134,12 +131,25 @@ class VideoView(QOpenGLWidget):
         if not self.mpv.handle:
             return
         for kind, _data in self.mpv.events():
+            if kind == "loaded":
+                QTimer.singleShot(3000, self._log_decoding)
             if kind == "loaded" and self.tracks:
                 for cmd, url, flag in self.tracks:
                     self.mpv.command(cmd, url, flag)
                 self.tracks = []
             elif kind == "shutdown":
                 self.shutdown.emit()
+
+    def _log_decoding(self) -> None:
+        """How the video is being decoded, in AniGUI's log (2.0.1): "videotoolbox" is the
+        graphics chip handing frames straight over; "videotoolbox-copy" copies each one."""
+        if not self.mpv.handle:
+            return
+        ctx = self.context()
+        fmt = ctx.format() if ctx is not None else None
+        gl = f"{fmt.majorVersion()}.{fmt.minorVersion()}" if fmt is not None else "?"
+        log.info("video: decoding=%s opengl=%s size=%s", self.mpv.get("hwdec-current"), gl,
+                 self.mpv.get("video-params/w"))
 
     def close_engine(self) -> None:
         if self.renderer is not None:

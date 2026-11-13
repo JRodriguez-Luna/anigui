@@ -192,6 +192,23 @@ def refresh_signer_agent() -> None:
         print(f"signer: couldn't reload the background check: {exc}")
 
 
+def use_modern_opengl() -> bool:
+    """A modern (4.1 core) OpenGL context for the whole app on a Mac, set before Qt starts so
+    every window and the video share the same kind (2.0.1). With macOS's default (2.1), mpv
+    can't take VideoToolbox's frames straight from the graphics chip: it copied every frame
+    out to memory and back up again, about a third of the work while an episode played.
+    (1.11.0 asked for 4.1 for the video alone; it couldn't share with the window's 2.1 and the
+    picture came out flipped.) ANIGUI_GL=legacy goes back to the old way."""
+    if sys.platform != "darwin" or os.environ.get("ANIGUI_GL") == "legacy":
+        return False
+    from PySide6.QtGui import QSurfaceFormat
+    fmt = QSurfaceFormat()
+    fmt.setVersion(4, 1)
+    fmt.setProfile(QSurfaceFormat.OpenGLContextProfile.CoreProfile)
+    QSurfaceFormat.setDefaultFormat(fmt)
+    return True
+
+
 def main() -> int:
     if "--self-test" in sys.argv:
         return self_test()
@@ -210,6 +227,7 @@ def main() -> int:
     # One family of OpenGL contexts for every window: the video keeps its context when it
     # moves into the pop-out window and back, so it plays straight through (2.0)
     from PySide6.QtCore import QCoreApplication, Qt
+    use_modern_opengl()
     QCoreApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
     app = QApplication(sys.argv)
     app.setApplicationName("AniGUI")

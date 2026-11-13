@@ -35,6 +35,10 @@ RELEASES: tuple[Release, ...] = (
                                           "in full screen, on a TV or big display, and with the holiday theme "
                                           "on. Snow and lights hold still while an episode plays or while "
                                           "you're in another app, and pick up again after."),
+        Change("Video straight from the graphics chip", "The built-in player now lets your Mac's graphics chip "
+                                                        "hand each frame over directly, instead of copying it "
+                                                        "out to memory and back, so playing an episode takes "
+                                                        "much less work."),
         Change("Less memory", "Pictures AniGUI keeps ready for scrolling now stay within a fixed budget, so it "
                               "no longer grows to gigabytes after a long evening of browsing."),
     )),
