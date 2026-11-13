@@ -9,7 +9,6 @@ players use, so progress, skips and auto-play work exactly as before (ui/playbac
 
 from __future__ import annotations
 
-import logging
 import math
 import random
 import time
@@ -24,7 +23,6 @@ from core.power import KeepAwake
 from . import festive, theme
 from .motion import reduce_motion, set_quiet
 
-log = logging.getLogger(__name__)
 
 MINI_W, MINI_H = 336, 189
 HIDE_AFTER_MS = 2500
@@ -148,8 +146,8 @@ class VideoView(QOpenGLWidget):
         ctx = self.context()
         fmt = ctx.format() if ctx is not None else None
         gl = f"{fmt.majorVersion()}.{fmt.minorVersion()}" if fmt is not None else "?"
-        log.info("video: decoding=%s opengl=%s size=%s", self.mpv.get("hwdec-current"), gl,
-                 self.mpv.get("video-params/w"))
+        print(f"video: decoding={self.mpv.get('hwdec-current')} opengl={gl} "
+              f"size={self.mpv.get('video-params/w')}x{self.mpv.get('video-params/h')}", flush=True)
 
     def close_engine(self) -> None:
         if self.renderer is not None:
@@ -943,6 +941,11 @@ class PlayerHost(QWidget):
         self.controls.skip.connect(self._skip)
         self.controls.upNext.connect(self._up_next)
         self.controls.dragBy.connect(self._drag_mini)
+        # On battery, once: IINA uses less (2.0.1)
+        from .player_choice import BatteryHint
+        self.battery_hint = BatteryHint(ctx, self)
+        self._battery_check = QTimer(self, singleShot=True, interval=20_000)
+        self._battery_check.timeout.connect(self._maybe_battery_hint)
         # The episode list, sliding in over the right of the video (☰ or E)
         self.drawer = QFrame(self, objectName="PlayerDrawer")
         self.drawer.setLayout(QVBoxLayout())
@@ -1055,6 +1058,8 @@ class PlayerHost(QWidget):
         """The session ended (or you closed the player)."""
         self.awake.release()
         set_quiet("video", False)
+        self._battery_check.stop()
+        self.battery_hint.hide()
         self.sleep_at, self.sleep_after_episode = None, False      # (a sleep timer ends with the player)
         self._sleep_tick.stop()
         self.controls.sleep_text = ""
@@ -1111,6 +1116,8 @@ class PlayerHost(QWidget):
                 self.awake.release()
             else:
                 self.awake.hold()
+                if not self._battery_check.isActive() and not self.battery_hint.isVisible():
+                    self._battery_check.start()
             set_quiet("video", not c.paused)      # decorations hold still while it plays (2.0.1)
         elif name == "mute":
             c.muted = value is True
@@ -1343,6 +1350,12 @@ class PlayerHost(QWidget):
         self.modeChanged.emit(mode)
         self.place()
 
+    def _maybe_battery_hint(self) -> None:
+        if (self.video is None or self.controls.paused or self.mode not in ("theater", "full")
+                or not self.battery_hint.wanted(self.ctx)):
+            return
+        self.battery_hint.offer()
+
     def _cover(self, on: bool) -> None:
         """Full screen hides the sidebar and the page under the video. They stop repainting
         meanwhile: otherwise every change to the controls repainted all of them, under the
@@ -1427,6 +1440,8 @@ class PlayerHost(QWidget):
         self.controls.setGeometry(inner)
         self.controls.mode = self.mode
         self._place_drawer(inner)
+        if self.battery_hint.isVisible():
+            self.battery_hint.place()
         if moved or self.isHidden():
             self.show()
             self.raise_()

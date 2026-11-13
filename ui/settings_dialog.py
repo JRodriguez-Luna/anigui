@@ -20,7 +20,7 @@ from .showprefs import SUB_COLORS, SUB_SIZES
 
 PLAYERS = [("AniGUI (built-in)", "anigui"), ("Auto (IINA, then mpv)", "auto"), ("IINA", "iina"), ("mpv", "mpv")]
 AUDIO = [("Sub (original audio, subtitles)", False), ("Dub (English audio)", True)]
-SCOPES = [("My List", "library"), ("My List and Continue Watching", "library+continue")]
+SCOPES = [("Saved", "library"), ("Saved and Continue Watching", "library+continue")]
 VPN_LABELS = {"warp": "Cloudflare WARP", "own": "Your own VPN", "none": "No VPN"}
 
 
@@ -165,11 +165,23 @@ class SettingsDialog(QDialog):
 
     # -- sections -----------------------------------------------------------------------
 
+    def _player_choice(self) -> QWidget:
+        """The AniGUI player or IINA, side by side, measured on this Mac (2.0.1)."""
+        from .player_choice import PlayerChooser
+        win = self.parent()
+        playback = getattr(win, "playback", None)
+
+        def busy() -> bool:
+            s = getattr(playback, "session", None)
+            return bool(s is not None and s.alive)
+
+        resolver = getattr(self.ctx.downloads, "resolver", None) or getattr(playback, "resolver", None)
+        self.player_choice = PlayerChooser(self.ctx, self.controls, resolver, busy)
+        return self.player_choice
+
     def _playback(self) -> list[QWidget]:
         return [
-            SettingRow("Player", "Where episodes play: right here in AniGUI, or in IINA or mpv. If the one you pick "
-                       "isn't available, another is used.",
-                       self._choice("player", PLAYERS)),
+            self._player_choice(),
             SettingRow("Audio", "Episodes without a dub play subbed.", self._choice("dub", AUDIO)),
             SettingRow("Subtitles with dubs", "Subtitles are made for the Japanese audio, so with a dub they're often "
                        "out of sync and don't match what's said. Off: you can still turn them on in the player's "
@@ -415,7 +427,7 @@ class SettingsDialog(QDialog):
     def _history(self) -> list[QWidget]:
         return [
             SettingRow("Clear watch history", "Empties Continue Watching and removes resume points and watched "
-                       "marks. My List stays.", self._button("Clear History…", self.clearHistoryRequested.emit)),
+                       "marks. Saved shows and your lists stay.", self._button("Clear History…", self.clearHistoryRequested.emit)),
             SettingRow("Include Terminal history", "Also shows what you watch with ani-cli in Terminal.",
                        self._check("import_history")),
         ]

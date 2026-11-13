@@ -109,6 +109,24 @@ QPushButton#WrapArrow:disabled {{ background: rgba(255,255,255,0.06); color: rgb
 QPushButton#DrawerClose {{ background: rgba(255,255,255,0.08); border: none; border-radius: 15px; color: {MUTED};
     font-size: 13px; font-weight: 700; padding: 0; }}
 QPushButton#DrawerClose:hover {{ background: rgba(255,255,255,0.18); color: {TEXT}; }}
+#PlayerCard {{ background: {SURFACE_2}; border: 1.5px solid {BORDER}; border-radius: 12px; }}
+#PlayerCard:hover {{ border-color: {SURFACE_3}; }}
+#PlayerCard[selected="true"] {{ border: 1.5px solid {ACCENT}; }}
+#PlayerRadio {{ border: 2px solid {FAINT}; border-radius: 8px; background: transparent; }}
+#PlayerRadio[selected="true"] {{ border: 2px solid {ACCENT}; background: qradialgradient(cx:0.5, cy:0.5, radius:0.5,
+    fx:0.5, fy:0.5, stop:0 {ACCENT}, stop:0.42 {ACCENT}, stop:0.5 transparent); }}
+#PlayerName {{ font-size: 15px; font-weight: 800; }}
+#PlayerTag {{ background: {SURFACE_3}; color: {MUTED}; border-radius: 5px; padding: 2px 6px; font-size: 10px;
+    font-weight: 800; }}
+#PlayerTag[light="true"] {{ background: rgba(61, 214, 140, 0.16); color: {GOOD}; }}
+#PlayerValue {{ font-size: 14px; font-weight: 800; }}
+#FeatYes {{ color: {GOOD}; font-weight: 900; }}
+#FeatNo {{ color: {FAINT}; font-weight: 900; }}
+#FeatText {{ font-size: 12px; }}
+#FeatOff {{ font-size: 12px; color: {FAINT}; }}
+#MeasureBox {{ background: {SURFACE_2}; border: 1px dashed {SURFACE_3}; border-radius: 10px; }}
+#BatteryHint {{ background: rgba(18, 18, 26, 0.96); border: 1px solid #2C2C3A; border-radius: 12px; }}
+#BatteryIcon {{ font-size: 20px; }}
 #Greeting {{ color: rgba(255, 255, 255, 0.86); font-size: 15px; font-weight: 700; background: rgba(0, 0, 0, 0.28);
     border-radius: 12px; padding: 5px 12px; }}
 #WelcomeTitle {{ font-size: 28px; font-weight: 800; }}

@@ -31,6 +31,10 @@ class Release:
 
 RELEASES: tuple[Release, ...] = (
     Release("2.0.1", "November 12, 2026", (
+        Change("Choose your player", "Settings → Playback shows the AniGUI player and IINA side by side: what "
+                                     "each can do, and how hard each makes your Mac work. “Measure on this Mac” "
+                                     "plays 20 seconds of your last episode in each, muted, and shows the real "
+                                     "numbers. On battery, AniGUI mentions once that IINA uses less."),
         Change("Lighter while you watch", "AniGUI uses far less of your Mac while an episode plays, most of all "
                                           "in full screen, on a TV or big display, and with the holiday theme "
                                           "on. Snow and lights hold still while an episode plays or while "
