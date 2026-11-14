@@ -30,6 +30,11 @@ class Release:
 
 
 RELEASES: tuple[Release, ...] = (
+    Release("2.0.2", "November 14, 2026", (
+        Change("ani-cli 5.1.8", "AniGUI now uses the newest ani-cli, which finds an episode's video a little "
+                                "faster. It's installed for you on the next launch."),
+        Change("Minor fixes", "Updated the parts AniGUI is built with."),
+    )),
     Release("2.0.1", "November 12, 2026", (
         Change("Choose your player", "Settings → Playback shows the AniGUI player and IINA side by side: what "
                                      "each can do, and how hard each makes your Mac work. “Measure on this Mac” "

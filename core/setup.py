@@ -29,9 +29,9 @@ from .env import find_player
 from .hianime import NETWORK_EXIT_CODES, SEARCH_URL, HianimeClient, parse_search
 
 # The ani-cli build AniGUI is tested against (CI runs the suite on this exact file).
-ANI_CLI_PIN_VERSION = "5.1.6"
-ANI_CLI_PIN_COMMIT = "0301d67d5768d332b049821a30082ad43d9a215a"
-ANI_CLI_PIN_SHA256 = "585ecc18d36104053d55ebabde905af207ca12cca19c43d3457920925f3959be"
+ANI_CLI_PIN_VERSION = "5.1.8"
+ANI_CLI_PIN_COMMIT = "8527f185a12c6b5d0247a30b2217000dd65457fe"
+ANI_CLI_PIN_SHA256 = "24ada974b567789da4ea51f9f92ec5b975b43fc0e999543f9053bcf5a628105c"
 ANI_CLI_RAW = "https://raw.githubusercontent.com/pystardust/ani-cli/{ref}/ani-cli"
 
 IINA_RELEASES = "https://api.github.com/repos/iina/iina/releases/latest"

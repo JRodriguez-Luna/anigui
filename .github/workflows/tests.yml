@@ -20,8 +20,8 @@ jobs:
         os: [macos-latest, ubuntu-latest]
     env:
       QT_QPA_PLATFORM: offscreen
-      # ani-cli 5.1.6, the version AniGUI's parser is verified against
-      ANI_CLI_COMMIT: 0301d67d5768d332b049821a30082ad43d9a215a
+      # ani-cli 5.1.8, the version AniGUI's parser is verified against
+      ANI_CLI_COMMIT: 8527f185a12c6b5d0247a30b2217000dd65457fe
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
