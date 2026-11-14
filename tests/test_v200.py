@@ -318,9 +318,14 @@ def test_cards_are_drawn_once_then_copied(win):
     win.home.load_remote()
     row = win.home.trending_row
     assert pump(lambda: row.model().cards())
-    pump(lambda: False, 1.5)                                   # covers arrive and finish fading in
     vp = row.view.viewport()
-    vp.repaint()
+
+    def settled():                                             # covers arrived and finished fading in:
+        vp.repaint()                                           # a repaint draws nothing new (a slow
+        misses = CARDS.misses                                  # cover on a busy CI Mac used to count)
+        vp.repaint()
+        return CARDS.misses == misses
+    assert pump(settled, 8)
     before = (CARDS.hits, CARDS.misses)
     vp.repaint()
     assert CARDS.hits > before[0] and CARDS.misses == before[1]   # copied, not drawn again
