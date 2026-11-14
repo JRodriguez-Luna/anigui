@@ -83,7 +83,7 @@ def test_bump_rewrites_every_pin(tmp_path):
     assert len(before) == len(after)
     assert sum(a != b for a, b in zip(before, after)) == 3
 
-    assert watch.bump("5.1.7", COMMIT, SHA, root=tmp_path) == []   # running twice is harmless
+    assert watch.bump("9.9.9", COMMIT, SHA, root=tmp_path) == []   # running twice is harmless
 
 
 @pytest.mark.parametrize("args", [("5.1.7\nX", COMMIT, SHA), ("5.1.7", "abc", SHA),
