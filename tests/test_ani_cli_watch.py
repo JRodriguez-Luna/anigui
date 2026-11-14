@@ -66,16 +66,16 @@ def test_bump_rewrites_every_pin(tmp_path):
         (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(ROOT / rel, tmp_path / rel)
 
-    changed = watch.bump("5.1.7", COMMIT, SHA, root=tmp_path)
+    changed = watch.bump("9.9.9", COMMIT, SHA, root=tmp_path)
     assert sorted(changed) == [".github/workflows/tests.yml", "README.md", "core/setup.py"]
 
     code = (tmp_path / "core/setup.py").read_text()
-    assert f'ANI_CLI_PIN_VERSION = "5.1.7"' in code
+    assert f'ANI_CLI_PIN_VERSION = "9.9.9"' in code
     assert f'ANI_CLI_PIN_COMMIT = "{COMMIT}"' in code
     assert f'ANI_CLI_PIN_SHA256 = "{SHA}"' in code
     ci = (tmp_path / ".github/workflows/tests.yml").read_text()
-    assert f"ANI_CLI_COMMIT: {COMMIT}" in ci and "# ani-cli 5.1.7, the version" in ci
-    assert "tested against ani-cli **5.1.7**" in (tmp_path / "README.md").read_text()
+    assert f"ANI_CLI_COMMIT: {COMMIT}" in ci and "# ani-cli 9.9.9, the version" in ci
+    assert "tested against ani-cli **9.9.9**" in (tmp_path / "README.md").read_text()
 
     # Only the pin changed, nothing else in those files.
     before = (ROOT / "core/setup.py").read_text().splitlines()
