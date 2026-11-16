@@ -88,7 +88,9 @@ def self_test() -> int:
             okl = ap.load("http://127.0.0.1:9/index.m3u8", play=False)
             st = ap.status()
             ap.close()
-            print(f"self-test: TV mode ok (AVPlayer {okl}, state {st['state']}, item {st['item']})")
+            from core.tvrelay import airplay_receivers
+            print(f"self-test: TV mode ok (AVPlayer {okl}, state {st['state']}, item {st['item']}, "
+                  f"receivers here: {airplay_receivers(2.0)})")
         # Touch ID locks (2.0): reach LocalAuthentication without asking anything
         if sys.platform == "darwin":
             from core.touchid import TouchID

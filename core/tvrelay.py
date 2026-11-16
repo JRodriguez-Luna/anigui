@@ -39,6 +39,31 @@ TYPES = {".m3u8": "application/vnd.apple.mpegurl", ".ts": "video/mp2t", ".m4s": 
 
 # -- this Mac on the Wi-Fi ---------------------------------------------------------------------
 
+def airplay_receivers(seconds: float = 3.0) -> list[str]:
+    """Names of AirPlay receivers macOS can see on this network right now (Bonjour, via the
+    dns-sd tool that ships with macOS). Empty off a Mac or when none answer."""
+    if sys.platform != "darwin":
+        return []
+    try:
+        proc = subprocess.Popen(["dns-sd", "-B", "_airplay._tcp", "local."], stdout=subprocess.PIPE,
+                                stderr=subprocess.DEVNULL, text=True)
+    except OSError:
+        return []
+    names: list[str] = []
+    try:
+        proc.wait(timeout=seconds)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+    out = proc.stdout.read() if proc.stdout else ""
+    for line in out.splitlines():
+        m = re.search(r"\s_airplay\._tcp\.\s+(.+?)\s*$", line)
+        if m and " Add " in f" {line} ":
+            name = m.group(1).replace("\\032", " ")
+            if name not in names:
+                names.append(name)
+    return names
+
+
 def lan_addresses() -> list[str]:
     """IPv4 addresses a TV on the same Wi-Fi could reach, best first. A VPN's own address
     (10.x on a utun interface, say) is left out: the TV can't reach it."""
@@ -229,6 +254,7 @@ class Relay:
 
         class Handler(http.server.BaseHTTPRequestHandler):
             protocol_version = "HTTP/1.1"
+            timeout = 20                   # an idle kept-alive connection lets go after this
 
             def log_message(self, *_a):
                 pass
@@ -241,6 +267,7 @@ class Relay:
 
         self.server = http.server.ThreadingHTTPServer(("0.0.0.0", self.port), Handler)
         self.server.daemon_threads = True
+        self.server.block_on_close = False   # stop() doesn't wait for a TV that's still connected
         self.port = self.server.server_address[1]
         self.thread = threading.Thread(target=self.server.serve_forever, name="tv relay", daemon=True)
         self.thread.start()

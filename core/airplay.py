@@ -74,8 +74,13 @@ class AirPlayer:
             self._get_int = CFUNCTYPE(c_int, c_void_p, c_void_p)(addr)
             self._get_str = CFUNCTYPE(c_char_p, c_void_p, c_void_p)(addr)
             self._get_time = CFUNCTYPE(CMTime, c_void_p, c_void_p)(addr)
+            self._send_point = CFUNCTYPE(CGPoint, c_void_p, c_void_p, CGPoint, c_void_p)(addr)
+            self._get_ulong = CFUNCTYPE(c_ulong, c_void_p, c_void_p)(addr)
+            self._mouse_event = CFUNCTYPE(c_void_p, c_void_p, c_void_p, c_ulong, CGPoint, c_ulong, c_double, c_long,
+                                          c_void_p, c_long, c_long, c_float)(addr)
             self._cls = {n: o.objc_getClass(n.encode()) for n in (
-                "AVPlayer", "AVPlayerItem", "AVURLAsset", "AVRoutePickerView", "NSURL", "NSString", "NSView")}
+                "AVPlayer", "AVPlayerItem", "AVURLAsset", "AVRoutePickerView", "NSURL", "NSString", "NSView",
+                "NSColor", "NSEvent")}
             self.ok = all(self._cls.values())
         except (OSError, AttributeError, ValueError):
             self.ok = False
@@ -148,10 +153,45 @@ class AirPlayer:
             return False
         self._send_ptr(nsview, self._sel("addSubview:"), picker)
         self._send_bool(picker, self._sel("setRoutePickerButtonBordered:"), True)
+        white = self._send(self._cls["NSColor"], self._sel("whiteColor"))
+        self._send_ptr(picker, self._sel("setRoutePickerButtonColor:"), white)      # (it drew black on dark)
         if self.player:
             self._send_ptr(picker, self._sel("setPlayer:"), self.player)
         self.picker = picker
         return True
+
+    def press_picker(self) -> str:
+        """Open the picker's menu without a mouse click (a click into the picker from a Qt
+        window didn't reach it). Returns what was done."""
+        if not self.picker:
+            return "no picker"
+        subviews = self._send(self.picker, self._sel("subviews"))
+        count = int(self._get_ulong(subviews, self._sel("count"))) if subviews else 0
+        for i in range(count):
+            view = self._send_ptr(subviews, self._sel("objectAtIndex:"), c_void_p(i))
+            if view and self._responds(view, "performClick:"):
+                self._send_ptr(view, self._sel("performClick:"), None)
+                return "performClick on the picker's button"
+        # No button inside: a synthetic click on the picker itself
+        window = self._send(self.picker, self._sel("window"))
+        if not window:
+            return "picker has no window"
+        bounds_mid = CGPoint(24, 18)
+        at = self._send_point(self.picker, self._sel("convertPoint:toView:"), bounds_mid, None)
+        number = int(self._get_long(window, self._sel("windowNumber")))
+        down = self._mouse_event(self._cls["NSEvent"], self._sel(
+            "mouseEventWithType:location:modifierFlags:timestamp:windowNumber:context:eventNumber:clickCount:pressure:"),
+            1, at, 0, 0.0, number, None, 0, 1, 1.0)
+        up = self._mouse_event(self._cls["NSEvent"], self._sel(
+            "mouseEventWithType:location:modifierFlags:timestamp:windowNumber:context:eventNumber:clickCount:pressure:"),
+            2, at, 0, 0.0, number, None, 0, 1, 0.0)
+        self._send_ptr(self.picker, self._sel("mouseDown:"), down)
+        self._send_ptr(self.picker, self._sel("mouseUp:"), up)
+        return "synthetic click on the picker"
+
+    def _responds(self, obj, selector: str) -> bool:
+        fn = CFUNCTYPE(c_bool, c_void_p, c_void_p, c_void_p)(ctypes.cast(self._objc.objc_msgSend, c_void_p).value)
+        return bool(fn(obj, self._sel("respondsToSelector:"), self._sel(selector)))
 
     def move_picker(self, x: float, y: float, w: float, h: float) -> None:
         if self.picker:

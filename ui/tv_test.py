@@ -5,6 +5,7 @@ closed."""
 
 from __future__ import annotations
 
+import threading
 import time
 
 from PySide6.QtCore import Qt, QTimer
@@ -12,7 +13,7 @@ from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QApplication, QDialog, QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
 from core.airplay import AirPlayer
-from core.tvrelay import Relay, lan_addresses
+from core.tvrelay import Relay, airplay_receivers, lan_addresses
 
 PICKER = (48, 36)
 
@@ -46,11 +47,16 @@ class TvTestWindow(QDialog):
         self.status.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.picker_host = QWidget()
         self.picker_host.setFixedSize(PICKER[0] + 160, PICKER[1] + 8)
-        self.picker_label = QLabel("← Click the AirPlay button and pick your TV", objectName="Muted")
+        self.pick_btn = QPushButton("Pick your TV…", objectName="Primary", cursor=Qt.CursorShape.PointingHandCursor)
+        self.pick_btn.clicked.connect(self._press_picker)
+        self.picker_label = QLabel("← or click the AirPlay icon", objectName="Muted")
         picker_row = QHBoxLayout()
         picker_row.setContentsMargins(0, 0, 0, 0)
+        picker_row.addWidget(self.pick_btn)
         picker_row.addWidget(self.picker_host)
         picker_row.addWidget(self.picker_label, 1)
+        self.seen = QLabel("Looking for AirPlay TVs on your Wi-Fi…", objectName="Muted", wordWrap=True)
+        self.receivers: list[str] | None = None
         self.details = QLabel("", objectName="Muted", wordWrap=True)
         self.details.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         box = QFrame(objectName="WelcomeRow")
@@ -76,6 +82,7 @@ class TvTestWindow(QDialog):
         col.addSpacing(6)
         col.addWidget(self.step)
         col.addLayout(picker_row)
+        col.addWidget(self.seen)
         col.addWidget(self.status)
         col.addWidget(box, 1)
         col.addLayout(buttons)
@@ -110,12 +117,25 @@ class TvTestWindow(QDialog):
         loaded = self.player.load(url, self.start_at, play=True)
         self._note(f"AVPlayer loaded: {loaded}")
         self.player.attach_picker(int(self.picker_host.winId()), 4, 4, *PICKER)
-        self.step.setText("1 · If macOS asks whether AniGUI may accept incoming connections, click Allow.\n"
-                          "2 · Click the AirPlay button and pick your TV.")
+        self.step.setText("1 · If macOS asks about incoming connections or the local network, click Allow.\n"
+                          "2 · Click “Pick your TV…” and choose your TV in the menu.")
+        threading.Thread(target=self._scan, daemon=True).start()
         self.timer.start()
         self.refresh()
 
+    def _scan(self) -> None:
+        self.receivers = airplay_receivers(3.0)
+        self._note(f"AirPlay receivers on the network: {self.receivers or 'none'}")
+
+    def _press_picker(self) -> None:
+        how = self.player.press_picker()
+        self._note(f"pick your TV: {how}")
+
     def refresh(self) -> None:
+        if self.receivers is not None and self.seen.text().startswith("Looking"):
+            self.seen.setText("AirPlay on your Wi-Fi: " + ", ".join(self.receivers) if self.receivers
+                              else "No AirPlay receivers answered on your Wi-Fi (is the TV on and on the same "
+                                   "network?)")
         if not self.relay.running:
             return
         s = self.player.status()
