@@ -95,8 +95,11 @@ def self_test() -> int:
             host = QWidget()
             host.resize(80, 60)
             host.show()
-            print("self-test: TV mode: attaching the picker", flush=True)
-            picked = ap.attach_picker(int(host.winId()), 4, 4, 48, 36)
+            _app.processEvents()
+            _app.processEvents()
+            wid = int(host.winId())
+            print(f"self-test: TV mode: attaching the picker (view {wid:#x})", flush=True)
+            picked = ap.attach_picker(wid, 4, 4, 48, 36) if wid else False
             print(f"self-test: TV mode: picker attached {picked}; pressing it", flush=True)
             pressed = ap.press_picker() if picked else "no picker"
             print(f"self-test: TV mode: pressed ({pressed}); closing", flush=True)
