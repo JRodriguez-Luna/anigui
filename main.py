@@ -83,7 +83,8 @@ def self_test() -> int:
         from core.airplay import AirPlayer
         ap = AirPlayer()
         if not ap.ok:
-            problems.append("TV mode: AVFoundation not reachable")
+            if sys.platform == "darwin":
+                problems.append("TV mode: AVFoundation not reachable")
         else:
             okl = ap.load("http://127.0.0.1:9/index.m3u8", play=False)
             st = ap.status()
