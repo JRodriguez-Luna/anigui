@@ -185,7 +185,8 @@ class Session(QObject):
     countdown = Signal(str, int)        # built-in player: "Episode 6", seconds left (-1: none)
 
     def __init__(self, ctx: AppContext, resolver: StreamResolver, kind: str, ipc_path: str,
-                 anime_id: str, title: str, episode: str, parent: QObject | None = None) -> None:
+                 anime_id: str, title: str, episode: str, parent: QObject | None = None, ipc=None) -> None:
+        """ipc: a ready control channel instead of mpv's socket (TV mode, 2.1)."""
         super().__init__(parent)
         self.ctx, self.resolver, self.kind = ctx, resolver, kind
         self.now = _Now(anime_id, title, episode)
@@ -204,7 +205,9 @@ class Session(QObject):
         self._countdown = QTimer(self, interval=1000)
         self._countdown.timeout.connect(self._tick)
 
-        self.ipc = MpvIpc(ipc_path, self)
+        self.ipc = ipc if ipc is not None else MpvIpc(ipc_path, self)
+        if ipc is not None:
+            ipc.setParent(self)
         self.ipc.connected.connect(self._on_connected)
         self.ipc.gaveUp.connect(self._on_gave_up)
         self.ipc.disconnected.connect(self._on_closed)
@@ -216,7 +219,11 @@ class Session(QObject):
 
     @property
     def embedded(self) -> bool:
-        return self.kind == "anigui"
+        return self.kind in ("anigui", "tv")      # (the TV's remote shows the Up next card too)
+
+    @property
+    def on_tv(self) -> bool:
+        return self.kind == "tv"
 
     def _osd(self, text: str, ms: int) -> None:
         """mpv's on-screen text, or the built-in player's own message chip."""
@@ -275,6 +282,8 @@ class Session(QObject):
         same_show = anime_id == self.now.anime_id
         self._cancel_next()
         self.now = _Now(anime_id, title, episode, info=info)
+        if hasattr(self.ipc, "set_stream"):
+            self.ipc.set_stream(info)             # TV mode: the relay needs the whole stream
         if not same_show:
             self.episodes, self.filler_keys = None, set()
             self._load_episode_list()
@@ -670,6 +679,9 @@ class PlaybackController(QObject):
         self._start_at = None
         if start is None:
             start = self.resume_position(job.anime_id, job.episode)
+        h = getattr(self, "_handoff", None)
+        if h is not None and not h.done:
+            h.cancel("")                      # another episode: the picker that was waiting was for the old one
         if self.session and self.session.alive:
             self.session.load(info, job.anime_id, job.title, job.episode, start)
             kind = self.session.kind
@@ -701,6 +713,78 @@ class PlaybackController(QObject):
         elif start:
             mins, secs = divmod(int(start), 60)
             self.notice.emit(f"Resuming episode {job.episode} at {mins}:{secs:02d}", False)
+
+    # -- TV mode (2.1) ----------------------------------------------------------------------
+
+    tvChanged = Signal(bool)            # the TV took over / it came back
+
+    def send_to_tv(self, picker_host) -> bool:
+        """Get the playing episode ready for the TV and open macOS's picker. picker_host: a
+        widget in a shown window (the picker needs one)."""
+        from .tv_mode import TvHandoff
+        s = self.session
+        if s is None or not s.alive or s.now.info is None or s.on_tv:
+            return False
+        if getattr(self, "_handoff", None) is not None and not self._handoff.done:
+            self._handoff.player.press_picker()      # already waiting: open the menu again
+            return True
+        h = TvHandoff(self.ctx, s.now.info, s.now.position, picker_host, self)
+        h.taken.connect(self._tv_taken)
+        h.gaveUp.connect(self._tv_gave_up)
+        self._handoff = h
+        return h.begin()
+
+    def _tv_taken(self, ipc) -> None:
+        old = self.session
+        if old is None or not old.alive:
+            ipc.stop()
+            return
+        n = old.now
+        info, position = n.info, n.position
+        old.close()                                    # saves where you were
+        old.deleteLater()
+        s = Session(self.ctx, self.resolver, "tv", "", n.anime_id, n.title, n.episode, self, ipc=ipc)
+        s.now.info = info
+        s.now.position = position
+        s.saved.connect(self.progressSaved)
+        s.episodeChanged.connect(self.episodeChanged)
+        s.notice.connect(self.notice)
+        s.ended.connect(self.sessionEnded)
+        s.ended.connect(lambda: self.tvChanged.emit(False))
+        self.session = s
+        self._handoff = None
+        print(f"tv: playing episode {n.episode} on the TV from {position or 0:.0f}s", flush=True)
+        self.started.emit(n.anime_id, n.episode, "tv")
+        self.tvChanged.emit(True)
+
+    def _tv_gave_up(self, why: str) -> None:
+        self._handoff = None
+        if why:
+            self.notice.emit(why, True)
+
+    def bring_back(self) -> None:
+        """From the TV to the built-in player, from the same second."""
+        s = self.session
+        if s is None or not s.on_tv:
+            return
+        n = s.now
+        info, position = n.info, n.position
+        s.close()
+        s.deleteLater()
+        self.session = None
+        self.tvChanged.emit(False)
+        if info is not None:
+            self.play_info(info, n.anime_id, n.title, n.episode, position, player="anigui")
+
+    def play_info(self, info: StreamInfo, anime_id: str, title: str, episode: str, start: float | None,
+                  player: str | None = None) -> None:
+        """Play a stream that's already been found (no lookup)."""
+        self.cancel()
+        self._start_at = start
+        self._player_once = player
+        job = ResolveJob(anime_id, title, episode, lambda _i: None, lambda _m: None, lambda _s: None)
+        self._job = job
+        self._start(job, info)
 
     def _new_session(self, kind: str, job: ResolveJob) -> None:
         if self.session:

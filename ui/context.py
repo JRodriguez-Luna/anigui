@@ -35,6 +35,8 @@ DEFAULTS: dict[str, Any] = {
     "sub_size": "normal",        # subtitle style (2.0): small | normal | large | huge
     "sub_color": "white",        # white | yellow
     "sub_box": False,            # a dark box behind subtitles
+    "tv_used": False,            # TV mode (2.1): an episode has played on a TV
+    "tv_pointed": False,         # the one-time pointer to the AirPlay button was shown
     "welcomed": False,           # Welcome (2.0) shown (or not needed: you had history)
     "downloads_folder": "",      # Downloads (2.0); empty: ~/Movies/AniGUI
     "media_keys": True,          # Now Playing in Control Center, ⏯ ⏭ keys (built-in player)

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import math
 import random
+import threading
 import time
 
 from PySide6.QtCore import QEvent, QPoint, QPointF, QRect, QRectF, Qt, QTimer, Signal
@@ -263,6 +264,25 @@ def _icon(p: QPainter, kind: str, c: QPointF, s: float, color: QColor) -> None:
         ux, uy = d.x() / n, d.y() / n
         for side in (1, -1):
             p.drawLine(b, b - QPointF(ux * h * 0.45 - side * uy * h * 0.3, uy * h * 0.45 + side * ux * h * 0.3))
+    elif kind == "airplay":          # a screen with a triangle at its foot (TV mode, 2.1)
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.setPen(pen)
+        screen = QPainterPath()
+        screen.moveTo(-h * 0.45, h * 0.35)
+        screen.lineTo(-h * 0.85, h * 0.35)
+        screen.lineTo(-h * 0.85, -h * 0.7)
+        screen.lineTo(h * 0.85, -h * 0.7)
+        screen.lineTo(h * 0.85, h * 0.35)
+        screen.lineTo(h * 0.45, h * 0.35)
+        p.drawPath(screen)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(color)
+        tri = QPainterPath()
+        tri.moveTo(0, h * 0.1)
+        tri.lineTo(h * 0.6, h * 0.85)
+        tri.lineTo(-h * 0.6, h * 0.85)
+        tri.closeSubpath()
+        p.drawPath(tri)
     elif kind == "list":
         p.setBrush(Qt.BrushStyle.NoBrush)
         p.setPen(pen)
@@ -316,6 +336,10 @@ class PlayerControls(QWidget):
         self.hover_x: float | None = None
         self.dragging = False
         self._hits: dict[str, QRectF] = {}
+        self.tv_button = True            # the AirPlay button (TV mode, 2.1); off where it can't work
+        self.pointer: str | None = None  # one-time pointer above the AirPlay button
+        self._pointer_timer = QTimer(self, singleShot=True)
+        self._pointer_timer.timeout.connect(self.clear_pointer)
         self._hide = QTimer(self, singleShot=True, interval=HIDE_AFTER_MS)
         self._hide.timeout.connect(self._auto_hide)
         self._fade = QTimer(self, interval=16)
@@ -354,7 +378,22 @@ class PlayerControls(QWidget):
 
     def keep_visible(self) -> bool:
         return (self.paused or self.menu_open or self.dragging or self.countdown is not None
-                or self.hover.startswith(("bar", "btn")))
+                or self.pointer is not None or self.hover.startswith(("bar", "btn")))
+
+    def show_pointer(self, text: str, ms: int = 14_000) -> None:
+        """A one-time pointer at the AirPlay button (TV mode, 2.1); keeps the controls up while shown."""
+        self.pointer = text
+        self._pointer_timer.start(ms)
+        self.poke()
+        self.update()
+
+    def clear_pointer(self) -> None:
+        if self.pointer is None:
+            return
+        self.pointer = None
+        self._pointer_timer.stop()
+        self._hide.start()
+        self.update()
 
     def poke(self) -> None:
         """Mouse moved: show the controls and start the hide timer again."""
@@ -433,6 +472,8 @@ class PlayerControls(QWidget):
             self._paint_up_next(p, r, mini)
         if self.message and self.mode != "mini":
             self._paint_message(p, r)
+        if self.pointer and self.mode != "mini" and a > 0.3 and "btn:tv" in self._hits:
+            self._paint_pointer(p, r, a)
         if theme.HOLIDAY and self.mode == "theater" and festive_on("player_bow"):
             self._bow(p, r)
         p.end()
@@ -565,7 +606,9 @@ class PlayerControls(QWidget):
                        ("❄ " if theme.HOLIDAY else "☾ ") + self.sleep_text)
         x = r.right() - pad - 10
         for name, icon in (("full", "unfull" if self.mode == "full" else "full"), ("popout", "popout"),
-                           ("mini", "pip"), ("menu", "gear"), ("list", "list")):
+                           ("mini", "pip"), ("tv", "airplay"), ("menu", "gear"), ("list", "list")):
+            if name == "tv" and not self.tv_button:
+                continue
             self._button(p, name, QPointF(x, y), 20, white, icon)
             x -= 40
 
@@ -708,9 +751,40 @@ class PlayerControls(QWidget):
         p.setPen(QColor("#FFFFFF"))
         p.drawText(box, Qt.AlignmentFlag.AlignCenter, text)
 
+    def _paint_pointer(self, p: QPainter, r: QRectF, a: float) -> None:
+        """A small card above the AirPlay button with an arrow down to it; click for the guide."""
+        at = self._hits["btn:tv"]
+        p.save()
+        p.setOpacity(a)
+        p.setFont(theme.font(12, QFont.Weight.DemiBold))
+        fm = p.fontMetrics()
+        more = "Show me how"
+        w = fm.horizontalAdvance(self.pointer) + fm.horizontalAdvance(more) + 52
+        h = 34.0
+        x = min(max(r.left() + 12, at.center().x() - w + 40), r.right() - w - 12)
+        box = QRectF(x, at.top() - h - 14, w, h)
+        path = QPainterPath()
+        path.addRoundedRect(box, 9, 9)
+        tip = QPointF(at.center().x(), at.top() - 4)
+        path.moveTo(tip.x() - 7, box.bottom())
+        path.lineTo(tip)
+        path.lineTo(tip.x() + 7, box.bottom())
+        path.closeSubpath()
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor(theme.ACCENT) if self.hover == "pointer" else QColor(theme.ACCENT).darker(112))
+        p.drawPath(path)
+        p.setPen(QColor("#FFFFFF"))
+        p.drawText(box.adjusted(14, 0, 0, 0), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, self.pointer)
+        p.setFont(theme.font(12, QFont.Weight.ExtraBold))
+        p.drawText(box.adjusted(0, 0, -14, 0), Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, more)
+        p.restore()
+        self._hits["pointer"] = box.adjusted(0, 0, 0, 14)
+
     # -- mouse ------------------------------------------------------------------------------
 
     def _hit(self, pos: QPointF) -> str:
+        if self.pointer and "pointer" in self._hits and self._hits["pointer"].contains(pos) and self.alpha > 0.3:
+            return "pointer"
         for name in ("upnext:play", "upnext:cancel", "skip", "btn:back"):
             if name in self._hits and self._hits[name].contains(pos):
                 return name
@@ -774,7 +848,12 @@ class PlayerControls(QWidget):
             self.dragging = True
             self._seek_at(e.position().x())
         elif hit.startswith("btn:"):
+            if hit == "btn:tv":
+                self.clear_pointer()
             self.action.emit(hit[4:])
+        elif hit == "pointer":
+            self.clear_pointer()
+            self.action.emit("tv_guide")
         elif hit == "skip":
             self.skip.emit()
         elif hit.startswith("upnext:"):
@@ -921,11 +1000,13 @@ class PlayerHost(QWidget):
 
     closed = Signal()
     expandRequested = Signal()       # mini-player clicked: go back to the show
+    tvGuideRequested = Signal()      # "Show me how" on the TV pointer, or the menu's "Watch on your TV…"
     backRequested = Signal()         # the player's Back
     modeChanged = Signal(str)
     drawerChanged = Signal(bool)     # the episode list opened or closed
     momentSaved = Signal()           # Moments (2.0)
-    sendToTv = Signal()              # TV mode preview (2.1)
+    sendToTv = Signal()              # TV mode (2.1): the AirPlay button
+    bringBack = Signal()             # TV mode: back to this Mac
 
     def __init__(self, ctx, parent: QWidget) -> None:
         super().__init__(parent)
@@ -942,6 +1023,11 @@ class PlayerHost(QWidget):
         self.controls.skip.connect(self._skip)
         self.controls.upNext.connect(self._up_next)
         self.controls.dragBy.connect(self._drag_mini)
+        # TV mode (2.1): macOS's AirPlay picker needs a native view in a shown window to hang on
+        self.picker_host = QWidget(self)      # macOS's AirPlay picker lives in here (native only when used)
+        self.picker_host.setFixedSize(2, 2)
+        self.picker_host.move(0, 0)
+        self.picker_host.lower()
         # On battery, once: IINA uses less (2.0.1)
         from .player_choice import BatteryHint
         self.battery_hint = BatteryHint(ctx, self)
@@ -1010,11 +1096,71 @@ class PlayerHost(QWidget):
             self._repop.stop()
             self.pop_out()
 
+    @property
+    def on_tv(self) -> bool:
+        return self.session is not None and getattr(self.session, "on_tv", False)
+
+    def start_remote(self, session) -> None:
+        """TV mode (2.1): the episode plays on the TV; this shows the remote where the video was."""
+        from .tv_mode import RemoteView
+        self.stop_engine()
+        self.video = RemoteView(self.ctx, self)
+        self.video.bringBack.connect(self.bringBack)
+        self.video.lower()
+        self.controls.raise_()
+        self.controls.position = self.controls.duration = None
+        self.controls.segments = []
+        self.controls.skip_label = None
+        self.controls.countdown = None
+        if self.mode in ("hidden",):
+            self.mode = "pending"
+        self.place()
+        self.attach(session)
+        self._remote_episode()
+
+    def _maybe_point_to_tv(self) -> None:
+        """Once: when a TV is on this Wi-Fi during the first episodes on the built-in player, point at the
+        AirPlay button. Found in the background; nothing shows when no TV answers."""
+        if (self.on_tv or not self.controls.tv_button or self.ctx.pref("tv_pointed") or self.ctx.pref("tv_used")
+                or getattr(self, "_tv_scan", None) is not None):
+            return
+        from core.tvrelay import airplay_receivers
+        self._tv_scan = {"done": False, "names": []}
+        scan = self._tv_scan
+
+        def look() -> None:
+            scan["names"] = airplay_receivers(3.0)
+            scan["done"] = True
+
+        threading.Thread(target=look, daemon=True).start()
+        self._tv_settle = QTimer(self, interval=400)        # a child: gone with the host, unlike a singleShot
+        self._tv_settle.timeout.connect(self._tv_scan_settled)
+        self._tv_settle.start()
+
+    def _tv_scan_settled(self) -> None:
+        from core.tvrelay import tv_name, tvs
+        scan = getattr(self, "_tv_scan", None)
+        if scan is None or not scan["done"]:
+            return
+        self._tv_settle.stop()
+        found = tvs(scan["names"])
+        if not found or self.on_tv or self.session is None or self.ctx.pref("tv_pointed"):
+            return
+        self.ctx.set_pref("tv_pointed", True)
+        name = tv_name(scan["names"]) or "Your TV"
+        self.controls.show_pointer(f"{name} is on your Wi-Fi: watch there" + (" 🎄" if theme.HOLIDAY else ""))
+
+    def _remote_episode(self) -> None:
+        if isinstance(self.video, QWidget) and hasattr(self.video, "set_episode") and self.session is not None:
+            n = self.session.now
+            self.video.set_episode(n.title, n.episode, bool(self.ctx.pref("dub", False)))
+
     def attach(self, session) -> None:
         """The playback session for this video: its control socket drives the controls."""
         if self.session is session:
             return
         self.session = session
+        self._maybe_point_to_tv()
         session.ipc.propertyChanged.connect(self._on_property)
         session.ipc.connected.connect(self._observe)
         if session.ipc.is_connected:
@@ -1034,6 +1180,7 @@ class PlayerHost(QWidget):
         if s is None:
             return
         n = s.now
+        self._remote_episode()
         self.controls.title = f"{n.title} · Episode {n.episode}"
         dub = bool(self.ctx.pref("dub", False))
         self.controls.chip = "DUB" if dub else "SUB"
@@ -1139,6 +1286,8 @@ class PlayerHost(QWidget):
             return
         self.controls.next_title = label
         self.controls.set_countdown(label, seconds)
+        if hasattr(self.video, "set_up_next"):
+            self.video.set_up_next(label if seconds >= 0 else "")
 
     def _cmd(self, *args) -> None:
         if self.session is not None:
@@ -1202,6 +1351,13 @@ class PlayerHost(QWidget):
             self.close_player()
         elif name == "full":
             self.set_mode("theater" if self.mode == "full" else "full", forced=True)
+        elif name == "tv":
+            if self.on_tv:
+                self.controls.show_message("It's on the TV. Use “Bring back to this Mac” to play here.", 2500)
+            else:
+                self.sendToTv.emit()
+        elif name == "tv_guide":
+            self.tvGuideRequested.emit()
 
     def _play_next(self) -> None:
         s = self.session
@@ -1298,11 +1454,16 @@ class PlayerHost(QWidget):
         sharp = menu.addAction("Sharper picture")
         sharp.setCheckable(True)
         sharp.setChecked(bool(self.ctx.pref("sharper")))
-        sharp.setEnabled(sharper.available())
+        sharp.setEnabled(sharper.available() and not self.on_tv)
         sharp.toggled.connect(self.set_sharper)
         menu.addSeparator()
-        menu.addAction("Save this moment  (B)").triggered.connect(self.save_moment)
-        menu.addAction("Send to TV (preview)…").triggered.connect(self.sendToTv)
+        moment = menu.addAction("Save this moment  (B)")
+        moment.triggered.connect(self.save_moment)
+        moment.setEnabled(not self.on_tv)
+        if self.on_tv:
+            menu.addAction("Bring back to this Mac").triggered.connect(self.bringBack)
+        elif self.controls.tv_button:
+            menu.addAction("Watch on your TV…").triggered.connect(self.tvGuideRequested)
         menu.addSeparator()
         auto = menu.addAction("Auto-play next episode")
         auto.setCheckable(True)
@@ -1645,7 +1806,7 @@ class PlayerHost(QWidget):
     def save_moment(self) -> int | None:
         """Keep this frame and the time: Library → Moments takes you back to it."""
         s = self.session
-        if s is None or self.controls.position is None:
+        if s is None or self.controls.position is None or self.on_tv:
             return None
         from core import paths
 

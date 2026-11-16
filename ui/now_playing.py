@@ -30,7 +30,7 @@ class NowPlayingBridge(QObject):
 
     def _session(self):
         s = self.playback.session
-        return s if s is not None and s.alive and s.kind == "anigui" else None
+        return s if s is not None and s.alive and s.kind in ("anigui", "tv") else None
 
     def refresh(self) -> None:
         s = self._session()

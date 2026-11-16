@@ -849,7 +849,9 @@ class DetailPage(QScrollArea):
             self.grid.model_.set_busy(None)
             self._set_status("")
             self._refresh_episode_states()
-        if kind != "anigui":
+        if kind == "tv":
+            self.toast.emit(f"Playing episode {episode} on your TV", False)
+        elif kind != "anigui":
             self.toast.emit(f"Playing episode {episode} in {'IINA' if kind == 'iina' else 'mpv'}", False)
 
     def _on_failed(self, anime_id: str, episode: str, message: str) -> None:

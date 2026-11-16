@@ -61,6 +61,7 @@ class SettingsDialog(QDialog):
     backupsFolderRequested = Signal()
     importAniListRequested = Signal(str)
     importMalRequested = Signal()
+    tvGuideRequested = Signal()
 
     SECTIONS = ("Playback", "Skipping", "Content", "Privacy", "Make it yours", "Your data", "Appearance",
                 "New Episodes", "History", "Connection", "Updates")
@@ -193,6 +194,9 @@ class SettingsDialog(QDialog):
             SettingRow("Media keys and Now Playing", "Your keyboard's ⏯ and ⏭ keys, AirPods and Control Center "
                        "control the built-in player, and show what's playing. It stays on your Mac.",
                        self._check("media_keys")),
+            SettingRow("Watch on your TV", "Send an episode to your AirPlay TV from the player's AirPlay button; this "
+                       "Mac becomes the remote. Built-in player only.",
+                       self._button("Show me how…", self.tvGuideRequested.emit)),
             SettingRow("Sharper picture", "Cleans up and sharpens the picture with Anime4K, on your Mac's graphics "
                        "chip. Best for 1080p and lower; uses more battery. Built-in player only. You can also switch "
                        "it in the player's ⚙ menu.", self._check("sharper")),

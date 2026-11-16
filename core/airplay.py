@@ -125,6 +125,26 @@ class AirPlayer:
             self.play()
         return True
 
+    def replace(self, url: str, start: float | None = None) -> bool:
+        """The next episode on the same player (so the TV route stays)."""
+        if not self.ok or not self.player:
+            return self.load(url, start)
+        self.url = url
+        nsurl = self._send_ptr(self._cls["NSURL"], self._sel("URLWithString:"), self._string(url))
+        if not nsurl:
+            return False
+        asset = self._send_2ptr(self._cls["AVURLAsset"], self._sel("URLAssetWithURL:options:"), nsurl, None)
+        item = self._send_ptr(self._cls["AVPlayerItem"], self._sel("playerItemWithAsset:"), asset)
+        self._send_ptr(self.player, self._sel("replaceCurrentItemWithPlayerItem:"), item)
+        if start:
+            self.seek(start)
+        return True
+
+    @property
+    def external(self) -> bool:
+        p = self.player
+        return bool(self.ok and p and self._get_bool(p, self._sel("isExternalPlaybackActive")))
+
     def play(self) -> None:
         if self.player:
             self._send(self.player, self._sel("play"))

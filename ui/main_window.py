@@ -236,6 +236,9 @@ class MainWindow(QMainWindow):
                                                                         error=True))
         self.playback.progressSaved.connect(lambda _a, _e: self._check_goal())
         self.player_host.sendToTv.connect(self.send_to_tv)
+        self.player_host.bringBack.connect(self.playback.bring_back)
+        self.player_host.tvGuideRequested.connect(self.show_tv_guide)
+        self.playback.tvChanged.connect(self._tv_changed)
         self.player_host.momentSaved.connect(lambda: self.stack.currentWidget() is self.library and self.library.refresh())
         self.stats.wrappedRequested.connect(lambda: self.open_wrapped())
         self._lists_changed()
@@ -470,16 +473,25 @@ class MainWindow(QMainWindow):
         self.playback.play(show.anime_id, show.title, m.episode, start=max(0.0, m.position - 2))
 
     def send_to_tv(self) -> None:
-        """TV mode preview (2.1): the playing episode, sent to an AirPlay TV in a test window."""
-        from .tv_test import TvTestWindow
-        s = self.playback.session
-        if s is None or not s.alive or s.now.info is None:
+        """TV mode (2.1): the AirPlay button. Opens macOS's picker; the TV takes over when picked."""
+        if not self.playback.send_to_tv(self.player_host.picker_host):
             self.toast.show_message("Play an episode in the built-in player first.", error=True)
-            return
-        self.player_host._cmd("set_property", "pause", True)
-        win = TvTestWindow(self.ctx, s.now.info, s.now.title, s.now.episode, s.now.position, self)
-        win.show()
-        self._tv_test = win
+
+    def show_tv_guide(self) -> None:
+        """Watch on your TV: the guide (from the player's pointer or menu, or Settings → Playback)."""
+        from .tv_guide import TvGuideDialog
+        s = self.playback.session
+        can_send = bool(s is not None and s.alive and s.kind == "anigui" and s.now.info is not None)
+        dlg = TvGuideDialog(self.ctx, self, can_send=can_send)
+        dlg.sendRequested.connect(self.send_to_tv)
+        dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+        dlg.show()
+        self._tv_guide = dlg
+
+    def _tv_changed(self, on_tv: bool) -> None:
+        if on_tv:
+            self.ctx.set_pref("tv_used", True)
+        self._sync_theater()
 
     def play_download(self, anime_id: str, title: str, episode: str) -> None:
         show = self.ctx.store.get_show(anime_id)
@@ -648,6 +660,7 @@ class MainWindow(QMainWindow):
             dlg.backupsFolderRequested.connect(self.data.show_folder)
             dlg.importAniListRequested.connect(self.data.import_anilist)
             dlg.importMalRequested.connect(lambda: self.data.import_mal())
+            dlg.tvGuideRequested.connect(self.show_tv_guide)
             self.alerts.status.connect(dlg.set_episodes_status)
             self._settings = dlg
         self._settings.set_versions(self._ani_cli_version)
@@ -754,7 +767,9 @@ class MainWindow(QMainWindow):
             self.back()
 
     def _on_play_started(self, anime_id: str, episode: str, kind: str) -> None:
-        if kind == "anigui" and self.playback.session is not None:
+        if kind == "tv" and self.playback.session is not None:
+            self.player_host.start_remote(self.playback.session)      # TV mode (2.1)
+        if kind in ("anigui", "tv") and self.playback.session is not None:
             self.player_host.attach(self.playback.session)
             self.player_host.forced_mini = False
             self.player_host.setFocus()

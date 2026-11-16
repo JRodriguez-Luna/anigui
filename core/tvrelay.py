@@ -39,6 +39,26 @@ TYPES = {".m3u8": "application/vnd.apple.mpegurl", ".ts": "video/mp2t", ".m4s": 
 
 # -- this Mac on the Wi-Fi ---------------------------------------------------------------------
 
+def this_mac_name() -> str:
+    """This Mac's name as AirPlay would show it (it lists itself as a receiver too)."""
+    name = socket.gethostname()
+    if name.endswith(".local"):
+        name = name[:-6]
+    return name.replace("-", " ").strip().lower()
+
+
+def tvs(receivers: list[str]) -> list[str]:
+    """The receivers seen that aren't this Mac."""
+    mine = this_mac_name()
+    return [r for r in receivers if r.replace("-", " ").strip().lower() != mine]
+
+
+def tv_name(receivers: list[str]) -> str | None:
+    """The TV among the receivers seen: everything but this Mac. None when it can't tell."""
+    others = tvs(receivers)
+    return others[0] if len(others) == 1 else None
+
+
 def airplay_receivers(seconds: float = 3.0) -> list[str]:
     """Names of AirPlay receivers macOS can see on this network right now (Bonjour, via the
     dns-sd tool that ships with macOS). Empty off a Mac or when none answer."""
@@ -267,6 +287,9 @@ class Relay:
                 raise OSError("This Mac doesn't seem to be on a Wi-Fi or Ethernet network.")
             self.host = addrs[0]
         self.info, self.title = info, title
+        self._variant, self._length = None, None
+        if self.server is not None:              # the next episode: same relay, new stream
+            return self.link(info.url, "m")
         self.stats = Stats()
         relay = self
 
@@ -292,10 +315,19 @@ class Relay:
         return self.link(info.url, "m")
 
     def stop(self) -> None:
-        if self.server is not None:
-            self.server.shutdown()
-            self.server.server_close()
-            self.server = None
+        """Stops serving. Never blocks the caller: the server winds down on its own thread
+        (a TV still mid-request kept the window from closing, 2.1 preview)."""
+        server, self.server = self.server, None
+        if server is None:
+            return
+
+        def wind_down():
+            try:
+                server.shutdown()
+                server.server_close()
+            except OSError:
+                pass
+        threading.Thread(target=wind_down, name="tv relay stop", daemon=True).start()
 
     # serving
     def _serve(self, h: http.server.BaseHTTPRequestHandler, head: bool = False) -> None:

@@ -52,6 +52,11 @@ DESTINATIONS: tuple[Destination, ...] = (
                 "Requests for cover and episode pictures.",
                 "Showing artwork.",
                 "As pictures come into view (then they're kept on this Mac)."),
+    Destination("Your TV (TV mode)", (),
+                "The episode's video, passed along from this Mac to your TV over your Wi-Fi only; the TV never "
+                "talks to the video host itself, and nothing about you goes with it.",
+                "Playing an episode on your AirPlay TV.",
+                "Only while an episode plays on the TV."),
     Destination("GitHub", ("github.com", "api.github.com", "githubusercontent.com", "objects.githubusercontent.com"),
                 "Which AniGUI version you have.",
                 "Checking for updates and downloading them (each one signed and checked), and setting up ani-cli or IINA.",

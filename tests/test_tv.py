@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 
-from test_step4 import pump, win  # noqa: E402,F401
+from test_step4 import fast, pump, win  # noqa: E402,F401
 from test_v1110 import play_inside  # noqa: E402
 
 
@@ -178,27 +178,18 @@ def test_lan_addresses_and_airplay_off_a_mac():
         ap.close()
 
 
-def test_send_to_tv_is_in_the_player_menu_and_knows_the_stream(win, monkeypatch):
-    from ui.tv_test import TvTestWindow
-    mpv = play_inside(win)
+def test_the_player_controls_have_an_airplay_button_that_knows_the_stream(win):
+    play_inside(win)
     s = win.playback.session
     assert s.now.info is not None and s.now.info.url.startswith("http")
     host = win.player_host
-    host.menu_test = True
-    menu = host._menu()
-    act = next(a for a in menu.actions() if a.text().startswith("Send to TV"))
-    opened = []
-    monkeypatch.setattr(TvTestWindow, "show", lambda self: opened.append(self))
-    act.trigger()
-    assert pump(lambda: opened, 3)
-    assert pump(lambda: ["set_property", "pause", True] in mpv.commands)
-    w = opened[0]
-    pump(lambda: w.step.text(), 2)
-    if sys.platform != "darwin":
-        assert "isn't available here" in w.step.text() and not w.relay.running
-    assert "episode" in w.report().lower()
-    w.close()
-    assert not w.relay.running
+    host.controls.resize(900, 120)
+    host.controls.repaint()
+    assert pump(lambda: "btn:tv" in host.controls._hits)
+    host.controls.tv_button = False
+    host.controls.repaint()
+    assert pump(lambda: "btn:tv" not in host.controls._hits)
+    host.controls.tv_button = True
 
 
 def test_a_single_quality_stream_gets_wrapped_so_subtitles_come_along(site):
@@ -223,3 +214,261 @@ def test_a_single_quality_stream_gets_wrapped_so_subtitles_come_along(site):
         assert not any("#v" in p for p, _r, _g in site.seen)             # the marker never reaches the server
     finally:
         relay.stop()
+
+
+# -- TV mode: the session on the TV ------------------------------------------------------------
+
+from test_step4 import LANTERN, _show  # noqa: E402
+
+
+def play_on_mac(w, episode="5"):
+    if not w.ctx.store.get_show(LANTERN):
+        _show(w, LANTERN, "The Lantern Keeper")
+    return play_inside(w, LANTERN, episode)
+
+
+class FakeAirPlayer:
+    """Plays at normal speed once playing; a test flips `external` when the TV takes over."""
+    ok = True
+
+    def __init__(self):
+        self.url = ""
+        self.external = False
+        self.playing = False
+        self.time = 0.0
+        self.duration = 1440.0
+        self.volume = 1.0
+        self.error = ""
+        self.loads = []
+        self.picker_attached = False
+        self.pressed = 0
+        self.closed = False
+        self._t = None
+
+    def _sync(self):
+        import time as _t
+        now = _t.monotonic()
+        if self.playing and self._t is not None:
+            self.time = min(self.duration, self.time + (now - self._t) * 60)      # 60x: tests are quick
+        self._t = now
+
+    def load(self, url, start=None, play=True):
+        self.url = url
+        self.loads.append((url, start))
+        self.time = float(start or 0)
+        self.playing = play
+        self._t = None
+        return True
+
+    def replace(self, url, start=None):
+        return self.load(url, start, play=False)
+
+    def play(self):
+        self._sync()
+        self.playing = True
+
+    def pause(self):
+        self._sync()
+        self.playing = False
+
+    def seek(self, seconds):
+        self._sync()
+        self.time = float(seconds)
+
+    def set_volume(self, level):
+        self.volume = level
+
+    def attach_picker(self, nsview, x, y, w, h):
+        self.picker_attached = True
+        return True
+
+    def press_picker(self):
+        self.pressed += 1
+        return "fake"
+
+    def status(self):
+        self._sync()
+        return {"external": self.external, "state": "playing" if self.playing else "paused", "time": self.time,
+                "duration": self.duration, "rate": 1.0 if self.playing else 0.0, "waiting": "",
+                "error": self.error, "item": "ready"}
+
+    def close(self):
+        self.closed = True
+        self.playing = False
+
+    def detach_picker(self):
+        self.picker_attached = False
+
+
+class FakeRelay:
+    def __init__(self):
+        self.streams = []
+        self.running = False
+        self.host = "127.0.0.1"
+        self.base = "http://127.0.0.1:1"
+
+    def start(self, info, title=""):
+        self.streams.append(info)
+        self.running = True
+        return f"http://127.0.0.1:1/m/{len(self.streams)}/index.m3u8"
+
+    def stop(self):
+        self.running = False
+
+
+@pytest.fixture
+def tv(monkeypatch):
+    from ui import tv_mode
+    player, relay = FakeAirPlayer(), FakeRelay()
+    monkeypatch.setattr(tv_mode, "AirPlayer", lambda: player)
+    monkeypatch.setattr(tv_mode, "Relay", lambda: relay)
+    monkeypatch.setattr(tv_mode, "airplay_receivers", lambda seconds=3.0: ["DevBook Pro", '75" Crystal UHD'])
+    monkeypatch.setattr(tv_mode, "tv_name", lambda names: '75" Crystal UHD')
+    return player, relay
+
+
+def test_the_airplay_button_hands_the_episode_to_the_tv(win, tv):
+    from ui.tv_mode import RemoteView
+    player, relay = tv
+    mpv = play_on_mac(win)
+    mpv.set_prop("duration", 1440.0)
+    mpv.set_prop("time-pos", 300.0)
+    assert pump(lambda: win.playback.session.now.position == 300.0)
+    host = win.player_host
+    host._action("tv")
+    assert pump(lambda: player.pressed == 1 and player.picker_attached)
+    assert player.loads == [("http://127.0.0.1:1/m/1/index.m3u8", 300.0)] and not player.playing
+    assert player.volume == 0.0 and relay.streams[0].url.startswith("https://cdn.example/")
+    assert win.playback.session.kind == "anigui"                 # nothing moves until a TV is picked
+    player.external = True                                       # the TV takes over
+    assert pump(lambda: win.playback.session is not None and win.playback.session.kind == "tv", 3)
+    s = win.playback.session
+    assert player.playing and player.volume == 1.0 and abs(player.time - 300) < 5
+    assert isinstance(host.video, RemoteView) and host.session is s and host.on_tv
+    assert win.ctx.store.get_progress(LANTERN, "5").position == 300.0     # saved at the handoff
+    assert win.ctx.pref("tv_used") is True
+    assert pump(lambda: host.video.tv == '75" Crystal UHD')
+    assert host.video.title == "Episode 5"
+    # the controls drive the TV
+    assert pump(lambda: s.now.position is not None and s.now.position > 300)
+    host._action("play")
+    assert pump(lambda: not player.playing and host.controls.paused)
+    host._action("play")
+    assert pump(lambda: player.playing)
+    host._cmd("seek", "600", "absolute")
+    assert abs(player.time - 600) < 5
+    assert pump(lambda: win.ctx.store.get_progress(LANTERN, "5").position >= 600, 4)
+    # the next episode plays on the TV by itself
+    player.seek(player.duration - 1)
+    player.pause()
+    player.time = player.duration
+    assert pump(lambda: s.next_info is not None or s._target is not None, 6)
+    assert pump(lambda: s.now.episode == "6", 12)
+    assert len(relay.streams) == 2 and player.loads[-1][0].endswith("/m/2/index.m3u8") and player.playing
+    assert win.ctx.store.get_progress(LANTERN, "5").completed
+    assert host.video.title == "Episode 6"
+
+
+def test_bring_back_to_this_mac_resumes_where_the_tv_was(win, tv):
+    player, relay = tv
+    play_on_mac(win)
+    host = win.player_host
+    host._action("tv")
+    player.external = True
+    assert pump(lambda: win.playback.session.kind == "tv", 3)
+    player.seek(777)
+    assert pump(lambda: win.playback.session.now.position and win.playback.session.now.position >= 777)
+    before = len(win.ctx.player.launched)
+    host.bringBack.emit()
+    assert pump(lambda: len(win.ctx.player.launched) > before)
+    info, _title, start = win.ctx.player.launched[-1]
+    assert start >= 777 and info.url == relay.streams[0].url
+    assert player.closed and not relay.running
+    assert pump(lambda: win.playback.session is not None and win.playback.session.kind == "anigui", 5)
+    assert not host.on_tv
+
+
+def test_no_tv_picked_changes_nothing(win, tv, monkeypatch):
+    from ui import tv_mode
+    player, relay = tv
+    monkeypatch.setattr(tv_mode, "HANDOFF_TIMEOUT_S", 0.5)
+    play_on_mac(win)
+    host = win.player_host
+    host._action("tv")
+    assert pump(lambda: player.pressed == 1)
+    host._action("tv")                                            # again: just reopens the menu
+    assert player.pressed == 2 and len(player.loads) == 1
+    assert pump(lambda: player.closed and not relay.running, 3)   # gave up quietly
+    assert win.playback.session.kind == "anigui" and win.playback._handoff is None
+    host._action("tv")                                            # and can try again
+    assert pump(lambda: player.pressed == 3)
+
+
+def test_on_the_tv_the_menu_has_no_moments_but_a_way_back(win, tv):
+    player, relay = tv
+    play_on_mac(win)
+    host = win.player_host
+    host._action("tv")
+    player.external = True
+    assert pump(lambda: win.playback.session.kind == "tv", 3)
+    host.menu_test = True
+    menu = host._menu()
+    texts = {a.text(): a for a in menu.actions()}
+    assert not texts["Save this moment  (B)"].isEnabled() and not texts["Sharper picture"].isEnabled()
+    assert "Bring back to this Mac" in texts
+    assert host.save_moment() is None
+    host._action("tv")
+    assert "on the TV" in host.controls.message[0]
+
+
+def test_the_first_time_a_tv_is_on_the_wifi_the_player_points_at_the_button(win, tv, monkeypatch):
+    from ui import tv_guide
+    from ui.tv_guide import TvGuideDialog
+    import core.tvrelay as relay_mod
+    seen = lambda seconds=3.0: ["DevBook Pro", '75" Crystal UHD']  # noqa: E731
+    monkeypatch.setattr(relay_mod, "airplay_receivers", seen)
+    monkeypatch.setattr(tv_guide, "airplay_receivers", seen)
+    monkeypatch.setattr(relay_mod, "this_mac_name", lambda: "devbook pro")
+    play_on_mac(win)
+    host = win.player_host
+    assert pump(lambda: host.controls.pointer is not None, 4)
+    assert '75" Crystal UHD' in host.controls.pointer and win.ctx.pref("tv_pointed") is True
+    host.controls.resize(900, 120)
+    host.controls.repaint()
+    assert pump(lambda: "pointer" in host.controls._hits)
+    assert host.controls.keep_visible()                      # the controls stay up while it shows
+    opened = []
+    monkeypatch.setattr(TvGuideDialog, "show", lambda self: opened.append(self))
+    host._action("tv_guide")
+    assert pump(lambda: opened)
+    g = opened[0]
+    assert g.send.isVisibleTo(g)                             # an episode is playing here: "Send this episode"
+    assert pump(lambda: "Found on your Wi-Fi" in g.found.text(), 4)
+    assert '75" Crystal UHD' in g.found.text()
+    g.send.click()
+    assert pump(lambda: tv[0].pressed == 1)
+    host.controls.clear_pointer()
+    assert host.controls.pointer is None
+    # once only; and playing something else drops the picker that was waiting
+    host._tv_scan = None
+    play_on_mac(win, "6")
+    assert pump(lambda: win.playback.session.now.episode == "6", 4)
+    assert win.playback._handoff is None and tv[0].closed
+    pump(lambda: False, 1.2)
+    assert host.controls.pointer is None
+
+
+def test_no_pointer_when_no_tv_answers(win, tv, monkeypatch):
+    import core.tvrelay as relay_mod
+    monkeypatch.setattr(relay_mod, "airplay_receivers", lambda seconds=3.0: ["DevBook Pro"])
+    monkeypatch.setattr(relay_mod, "this_mac_name", lambda: "devbook pro")
+    play_on_mac(win)
+    pump(lambda: False, 1.2)
+    assert win.player_host.controls.pointer is None and not win.ctx.pref("tv_pointed")
+
+
+def test_the_guide_is_in_settings_and_privacy_knows_the_relay():
+    from core import privacy
+    from ui.settings_dialog import SettingsDialog
+    assert any(d.name.startswith("Your TV") and not d.hosts for d in privacy.DESTINATIONS)
+    assert "tvGuideRequested" in dir(SettingsDialog)
