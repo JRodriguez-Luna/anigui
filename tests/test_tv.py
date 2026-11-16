@@ -199,3 +199,27 @@ def test_send_to_tv_is_in_the_player_menu_and_knows_the_stream(win, monkeypatch)
     assert "episode" in w.report().lower()
     w.close()
     assert not w.relay.running
+
+
+def test_a_single_quality_stream_gets_wrapped_so_subtitles_come_along(site):
+    """ani-cli hands over one quality's playlist (…/1080/index.m3u8), not a master: the TV
+    only sees a subtitle track if the relay builds a master around it."""
+    from core.ani_cli import StreamInfo
+    from core.tvrelay import Relay
+    info = StreamInfo(url=site.base + "/v/1080/index.m3u8", referrer=None, title="x",
+                      subtitle_url=site.base + "/subs/en.vtt")
+    relay = Relay(host="127.0.0.1")
+    try:
+        url = relay.start(info)
+        master = _get(url)[2].decode()
+        assert "#EXT-X-STREAM-INF" in master and 'TYPE=SUBTITLES' in master and 'SUBTITLES="anigui-subs"' in master
+        inner = [ln for ln in master.splitlines() if not ln.startswith("#")][0]
+        assert inner != url and inner.startswith(relay.base + "/m/")
+        variant = _get(inner)[2].decode()
+        assert "#EXTINF:4.000" in variant and variant.count(relay.base + "/s/") == 5   # the real pieces
+        subs_url = [ln for ln in master.splitlines() if "TYPE=SUBTITLES" in ln][0].split('URI="')[1].rstrip('"')
+        pl = _get(subs_url)[2].decode()
+        assert "#EXTINF:9.750," in pl                                    # 4 + 3.5 + 2.25: the whole episode
+        assert not any("#v" in p for p, _r, _g in site.seen)             # the marker never reaches the server
+    finally:
+        relay.stop()

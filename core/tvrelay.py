@@ -177,6 +177,24 @@ def playlist_duration(text: str) -> float:
     return total
 
 
+def wrap_variant(variant_link: str, subtitles: str | None, audio: str | None) -> str:
+    """A master playlist around a single-quality playlist (what ani-cli hands over), so a TV
+    gets the subtitle (and audio) tracks as selectable tracks. BANDWIDTH is required by the
+    format; the TV only uses it to pick between qualities, and there's one."""
+    out = ["#EXTM3U", "#EXT-X-VERSION:3"]
+    inf = "#EXT-X-STREAM-INF:BANDWIDTH=6000000"
+    if subtitles:
+        out.append('#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="anigui-subs",NAME="English",LANGUAGE="en",DEFAULT=YES,'
+                   f'AUTOSELECT=YES,FORCED=NO,URI="{subtitles}"')
+        inf += ',SUBTITLES="anigui-subs"'
+    if audio:
+        out.append('#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="anigui-audio",NAME="Audio",DEFAULT=YES,AUTOSELECT=YES,'
+                   f'URI="{audio}"')
+        inf += ',AUDIO="anigui-audio"'
+    out += [inf, variant_link]
+    return "\n".join(out) + "\n"
+
+
 def subtitles_playlist(vtt_url: str, seconds: float) -> str:
     seconds = max(1.0, seconds)
     return ("#EXTM3U\n#EXT-X-VERSION:3\n"
@@ -324,6 +342,7 @@ class Relay:
         return {"Referer": self.info.referrer} if self.info and self.info.referrer else {}
 
     def _fetch_text(self, url: str) -> tuple[str, str]:
+        url = url.split("#", 1)[0]           # ("#v" marks the wrapped variant; servers never see it)
         with _http.open_stream(url, self._headers()) as resp:
             return resp.read().decode("utf-8", "replace"), resp.geturl()
 
@@ -333,16 +352,21 @@ class Relay:
             raise ValueError("That wasn't a playlist")
         self.stats.playlists += 1
         subs = audio = None
-        if "#EXT-X-STREAM-INF" in text:
+        root = url == self.info.url and (self.info.subtitle_url or self.info.audio_url)
+        if root:
             if self.info.subtitle_url:
                 payload = self._b64(self.info.subtitle_url)
                 subs = f"{self.base}/subs/{self._sign('subs', payload)}/{payload}/index.m3u8"
             if self.info.audio_url:
                 audio = self.link(self.info.audio_url, "m")
-        elif self._variant is None:
+        if "#EXT-X-STREAM-INF" not in text and self._variant is None:
             self._variant = final
             self._length = playlist_duration(text)
-        body = rewrite_playlist(text, final, self.link, subs, audio).encode()
+        if root and "#EXT-X-STREAM-INF" not in text:
+            # ani-cli hands over one quality's playlist: wrap it so the tracks come along
+            body = wrap_variant(self.link(final if final != url else url + "#v", "m"), subs, audio).encode()
+        else:
+            body = rewrite_playlist(text, final, self.link, subs, audio).encode()
         self._send(h, body, TYPES[".m3u8"], head)
 
     def _subs(self, h, vtt_url: str, head: bool) -> None:
