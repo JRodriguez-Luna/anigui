@@ -80,7 +80,7 @@ class AirPlayer:
                                           c_void_p, c_long, c_long, c_float)(addr)
             self._cls = {n: o.objc_getClass(n.encode()) for n in (
                 "AVPlayer", "AVPlayerItem", "AVURLAsset", "AVRoutePickerView", "NSURL", "NSString", "NSView",
-                "NSColor", "NSEvent")}
+                "NSColor", "NSEvent", "NSAppearance")}
             self.ok = all(self._cls.values())
         except (OSError, AttributeError, ValueError):
             self.ok = False
@@ -117,7 +117,7 @@ class AirPlayer:
         self._send_bool(player, self._sel("setAllowsExternalPlayback:"), True)
         self._send_bool(player, self._sel("setUsesExternalPlaybackWhileExternalScreenIsActive:"), True)
         self.player = player
-        if self.picker:
+        if self.picker and self._responds(self.picker, "setPlayer:"):
             self._send_ptr(self.picker, self._sel("setPlayer:"), player)
         if start:
             self.seek(start)
@@ -152,10 +152,18 @@ class AirPlayer:
         if not picker:
             return False
         self._send_ptr(nsview, self._sel("addSubview:"), picker)
-        self._send_bool(picker, self._sel("setRoutePickerButtonBordered:"), True)
-        white = self._send(self._cls["NSColor"], self._sel("whiteColor"))
-        self._send_ptr(picker, self._sel("setRoutePickerButtonColor:"), white)      # (it drew black on dark)
-        if self.player:
+        # Optional looks, only where this macOS has them (macOS 27 lacks the color setter and
+        # crashed on it): a bordered button, drawn for a dark window
+        if self._responds(picker, "setRoutePickerButtonBordered:"):
+            self._send_bool(picker, self._sel("setRoutePickerButtonBordered:"), True)
+        dark = self._send_ptr(self._cls["NSAppearance"], self._sel("appearanceNamed:"),
+                              self._string("NSAppearanceNameDarkAqua"))
+        if dark and self._responds(picker, "setAppearance:"):
+            self._send_ptr(picker, self._sel("setAppearance:"), dark)
+        if self._responds(picker, "setRoutePickerButtonColor:"):
+            self._send_ptr(picker, self._sel("setRoutePickerButtonColor:"),
+                           self._send(self._cls["NSColor"], self._sel("whiteColor")))
+        if self.player and self._responds(picker, "setPlayer:"):
             self._send_ptr(picker, self._sel("setPlayer:"), self.player)
         self.picker = picker
         return True
@@ -224,7 +232,7 @@ class AirPlayer:
     def close(self) -> None:
         if self.player:
             self.pause()
-            if self.picker:
+            if self.picker and self._responds(self.picker, "setPlayer:"):
                 self._send_ptr(self.picker, self._sel("setPlayer:"), None)
             self._send(self.player, self._sel("release"))
             self.player = None

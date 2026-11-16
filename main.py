@@ -87,10 +87,21 @@ def self_test() -> int:
         else:
             okl = ap.load("http://127.0.0.1:9/index.m3u8", play=False)
             st = ap.status()
+            from PySide6.QtWidgets import QApplication, QWidget
+            _app = QApplication.instance() or QApplication(sys.argv)   # (a window to hang the picker on)
+            host = QWidget()
+            host.resize(80, 60)
+            host.show()
+            picked = ap.attach_picker(int(host.winId()), 4, 4, 48, 36)
+            pressed = ap.press_picker() if picked else "no picker"
             ap.close()
+            ap.detach_picker()
+            host.close()
+            if not picked:
+                problems.append("TV mode: AirPlay picker not reachable")
             from core.tvrelay import airplay_receivers
-            print(f"self-test: TV mode ok (AVPlayer {okl}, state {st['state']}, item {st['item']}, "
-                  f"receivers here: {airplay_receivers(2.0)})")
+            print(f"self-test: TV mode ok (AVPlayer {okl}, state {st['state']}, item {st['item']}, picker "
+                  f"{picked}: {pressed}, receivers here: {airplay_receivers(2.0)})")
         # Touch ID locks (2.0): reach LocalAuthentication without asking anything
         if sys.platform == "darwin":
             from core.touchid import TouchID
