@@ -41,6 +41,8 @@ def setup_logging() -> None:
 
 def self_test() -> int:
     """Import everything and check bundled files. Used by the build script."""
+    import faulthandler
+    faulthandler.enable()          # a crash inside a system framework still names the Python line
     problems = []
     try:
         from PySide6.QtNetwork import QLocalSocket  # noqa: F401
@@ -93,8 +95,11 @@ def self_test() -> int:
             host = QWidget()
             host.resize(80, 60)
             host.show()
+            print("self-test: TV mode: attaching the picker", flush=True)
             picked = ap.attach_picker(int(host.winId()), 4, 4, 48, 36)
+            print(f"self-test: TV mode: picker attached {picked}; pressing it", flush=True)
             pressed = ap.press_picker() if picked else "no picker"
+            print(f"self-test: TV mode: pressed ({pressed}); closing", flush=True)
             ap.close()
             ap.detach_picker()
             host.close()
