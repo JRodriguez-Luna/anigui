@@ -69,5 +69,9 @@ if sys.platform == "darwin":
             "LSMinimumSystemVersion": "13.0",
             "NSHighResolutionCapable": True,
             "NSRequiresAquaSystemAppearance": False,
+            # TV mode (2.1): the AirPlay player loads the relay on this Mac over plain http
+            "NSAppTransportSecurity": {"NSAllowsLocalNetworking": True, "NSAllowsArbitraryLoadsInMedia": True},
+            "NSLocalNetworkUsageDescription": "AniGUI finds TVs on your Wi-Fi and sends episodes to them.",
+            "NSBonjourServices": ["_airplay._tcp", "_raop._tcp"],
         },
     )

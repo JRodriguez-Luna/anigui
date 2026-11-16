@@ -79,6 +79,16 @@ def self_test() -> int:
             print("self-test: Downloads ok (decrypt)")
         except Exception as exc:  # noqa: BLE001
             problems.append(f"Downloads: can't decrypt ({exc})")
+        # TV mode (2.1): reach AVFoundation and AVKit, make a player and the AirPlay picker
+        from core.airplay import AirPlayer
+        ap = AirPlayer()
+        if not ap.ok:
+            problems.append("TV mode: AVFoundation not reachable")
+        else:
+            okl = ap.load("http://127.0.0.1:9/index.m3u8", play=False)
+            st = ap.status()
+            ap.close()
+            print(f"self-test: TV mode ok (AVPlayer {okl}, state {st['state']}, item {st['item']})")
         # Touch ID locks (2.0): reach LocalAuthentication without asking anything
         if sys.platform == "darwin":
             from core.touchid import TouchID

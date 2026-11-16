@@ -235,6 +235,7 @@ class MainWindow(QMainWindow):
         dl.failed.connect(lambda _aid, ep, msg: self.toast.show_message(f"Couldn't download episode {ep}: {msg}",
                                                                         error=True))
         self.playback.progressSaved.connect(lambda _a, _e: self._check_goal())
+        self.player_host.sendToTv.connect(self.send_to_tv)
         self.player_host.momentSaved.connect(lambda: self.stack.currentWidget() is self.library and self.library.refresh())
         self.stats.wrappedRequested.connect(lambda: self.open_wrapped())
         self._lists_changed()
@@ -467,6 +468,18 @@ class MainWindow(QMainWindow):
             return
         self.open_item(show)
         self.playback.play(show.anime_id, show.title, m.episode, start=max(0.0, m.position - 2))
+
+    def send_to_tv(self) -> None:
+        """TV mode preview (2.1): the playing episode, sent to an AirPlay TV in a test window."""
+        from .tv_test import TvTestWindow
+        s = self.playback.session
+        if s is None or not s.alive or s.now.info is None:
+            self.toast.show_message("Play an episode in the built-in player first.", error=True)
+            return
+        self.player_host._cmd("set_property", "pause", True)
+        win = TvTestWindow(self.ctx, s.now.info, s.now.title, s.now.episode, s.now.position, self)
+        win.show()
+        self._tv_test = win
 
     def play_download(self, anime_id: str, title: str, episode: str) -> None:
         show = self.ctx.store.get_show(anime_id)

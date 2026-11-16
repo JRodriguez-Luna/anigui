@@ -162,6 +162,7 @@ class _Now:
     skips: list[aniskip.Segment] | None = None   # None until looked up
     skipped: set[str] = field(default_factory=set)
     ended: bool = False                           # reached the end (auto-next started once)
+    info: StreamInfo | None = None                # the stream that's playing (TV mode sends it on)
 
 
 @dataclass(frozen=True)
@@ -273,7 +274,7 @@ class Session(QObject):
         self.countdown.emit("", -1)
         same_show = anime_id == self.now.anime_id
         self._cancel_next()
-        self.now = _Now(anime_id, title, episode)
+        self.now = _Now(anime_id, title, episode, info=info)
         if not same_show:
             self.episodes, self.filler_keys = None, set()
             self._load_episode_list()
@@ -682,6 +683,7 @@ class PlaybackController(QObject):
                 self.failed.emit(job.anime_id, job.episode, str(exc))
                 return
             self._new_session(kind, job)
+            self.session.now.info = info
         if not self.ctx.store.get_progress(job.anime_id, job.episode):
             self.ctx.store.record_progress(job.anime_id, job.episode, 0.0)
         self.started.emit(job.anime_id, job.episode, kind)

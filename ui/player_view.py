@@ -925,6 +925,7 @@ class PlayerHost(QWidget):
     modeChanged = Signal(str)
     drawerChanged = Signal(bool)     # the episode list opened or closed
     momentSaved = Signal()           # Moments (2.0)
+    sendToTv = Signal()              # TV mode preview (2.1)
 
     def __init__(self, ctx, parent: QWidget) -> None:
         super().__init__(parent)
@@ -1301,6 +1302,7 @@ class PlayerHost(QWidget):
         sharp.toggled.connect(self.set_sharper)
         menu.addSeparator()
         menu.addAction("Save this moment  (B)").triggered.connect(self.save_moment)
+        menu.addAction("Send to TV (preview)…").triggered.connect(self.sendToTv)
         menu.addSeparator()
         auto = menu.addAction("Auto-play next episode")
         auto.setCheckable(True)
