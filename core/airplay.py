@@ -145,7 +145,7 @@ class AirPlayer:
 
     def attach_picker(self, nsview: int, x: float, y: float, w: float, h: float) -> bool:
         """macOS's AirPlay picker button inside a Qt widget (its winId() is an NSView)."""
-        if not self.ok or not nsview:
+        if not self.ok or not nsview or nsview < 0x10000:      # (offscreen Qt: not a real NSView)
             return False
         picker = self._send_rect(self._send(self._cls["AVRoutePickerView"], self._sel("alloc")),
                                  self._sel("initWithFrame:"), CGRect(CGPoint(x, y), CGSize(w, h)))

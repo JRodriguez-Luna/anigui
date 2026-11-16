@@ -98,15 +98,16 @@ def self_test() -> int:
             _app.processEvents()
             _app.processEvents()
             wid = int(host.winId())
-            print(f"self-test: TV mode: attaching the picker (view {wid:#x})", flush=True)
-            picked = ap.attach_picker(wid, 4, 4, 48, 36) if wid else False
+            native = _app.platformName() == "cocoa"
+            print(f"self-test: TV mode: attaching the picker (view {wid:#x}, {_app.platformName()})", flush=True)
+            picked = ap.attach_picker(wid, 4, 4, 48, 36) if native else False
             print(f"self-test: TV mode: picker attached {picked}; pressing it", flush=True)
             pressed = ap.press_picker() if picked else "no picker"
             print(f"self-test: TV mode: pressed ({pressed}); closing", flush=True)
             ap.close()
             ap.detach_picker()
             host.close()
-            if not picked:
+            if native and not picked:
                 problems.append("TV mode: AirPlay picker not reachable")
             from core.tvrelay import airplay_receivers
             print(f"self-test: TV mode ok (AVPlayer {okl}, state {st['state']}, item {st['item']}, picker "
