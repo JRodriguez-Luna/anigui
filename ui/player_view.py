@@ -1108,6 +1108,7 @@ class PlayerHost(QWidget):
         self.video.bringBack.connect(self.bringBack)
         self.video.lower()
         self.controls.raise_()
+        self.video.back.raise_()                 # the one thing that sits above the controls
         self.controls.position = self.controls.duration = None
         self.controls.segments = []
         self.controls.skip_label = None

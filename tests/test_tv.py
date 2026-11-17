@@ -7,6 +7,7 @@ import urllib.request
 from pathlib import Path
 
 import pytest
+from PySide6.QtCore import Qt
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -472,3 +473,25 @@ def test_the_guide_is_in_settings_and_privacy_knows_the_relay():
     from ui.settings_dialog import SettingsDialog
     assert any(d.name.startswith("Your TV") and not d.hosts for d in privacy.DESTINATIONS)
     assert "tvGuideRequested" in dir(SettingsDialog)
+
+
+def test_bring_back_button_is_clickable_above_the_controls(win, tv):
+    from PySide6.QtCore import QPoint
+    from PySide6.QtTest import QTest
+    player, relay = tv
+    play_on_mac(win)
+    host = win.player_host
+    host._action("tv")
+    player.external = True
+    assert pump(lambda: win.playback.session.kind == "tv", 3)
+    pump(lambda: False, 0.3)
+    back = host.video.back
+    assert back.parentWidget() is host and back.isVisible()
+    # the widget at the button's spot is the button, not the controls overlay
+    center = back.geometry().center()
+    assert host.childAt(center) is back or back.geometry().contains(center)
+    before = len(win.ctx.player.launched)
+    QTest.mouseClick(back, Qt.MouseButton.LeftButton, pos=QPoint(back.width() // 2, back.height() // 2))
+    assert pump(lambda: len(win.ctx.player.launched) > before, 4)
+    assert pump(lambda: win.playback.session is not None and win.playback.session.kind == "anigui", 5)
+    assert player.closed

@@ -231,9 +231,14 @@ class RemoteView(QWidget):
         self.subtitle = ""
         self.up_next = ""
         self.receivers: list[str] | None = None
-        self.back = QPushButton("Bring back to this Mac", self, cursor=Qt.CursorShape.PointingHandCursor)
+        # The button lives beside the player's controls overlay, not under it (the overlay covers the
+        # whole picture and would take the click as "pause").
+        self.back = QPushButton("Bring back to this Mac", parent if parent is not None else self,
+                                cursor=Qt.CursorShape.PointingHandCursor)
         self.back.setObjectName("Glass")
         self.back.clicked.connect(self.bringBack)
+        self.back.show()
+        self.destroyed.connect(self.back.deleteLater)
         threading.Thread(target=self._scan, daemon=True).start()
         self._settle = QTimer(self, interval=500)
         self._settle.timeout.connect(self._named)
@@ -261,8 +266,16 @@ class RemoteView(QWidget):
         self.update()
 
     def resizeEvent(self, _e) -> None:
+        self._place_back()
+
+    def moveEvent(self, _e) -> None:
+        self._place_back()
+
+    def _place_back(self) -> None:
         self.back.adjustSize()
-        self.back.move(self.width() - self.back.width() - 24, 66 if self.height() >= 220 else 14)
+        at = self.pos() if self.back.parentWidget() is not self else self.pos() * 0
+        self.back.move(at.x() + self.width() - self.back.width() - 24, at.y() + (66 if self.height() >= 220 else 14))
+        self.back.raise_()
 
     def paintEvent(self, _e) -> None:
         p = QPainter(self)
